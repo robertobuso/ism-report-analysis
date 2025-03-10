@@ -1,4 +1,6 @@
+# agents.py
 from crewai import Agent
+from crewai.tools import tool
 from tools import (
     SimplePDFExtractionTool,
     SimpleDataStructurerTool,
@@ -8,6 +10,7 @@ from tools import (
 )
 
 def create_extractor_agent():
+    extractor_tool = SimplePDFExtractionTool()
     return Agent(
         role="Document Extractor",
         goal="Extract all relevant data from ISM Manufacturing Report PDFs accurately",
@@ -16,11 +19,11 @@ def create_extractor_agent():
         and transforming it into structured data.""",
         verbose=True,
         allow_delegation=False,
-        tools=[SimplePDFExtractionTool()],
-        max_retries_on_error=3,
+        tools=[extractor_tool],
     )
 
 def create_structurer_agent():
+    structurer_tool = SimpleDataStructurerTool()
     return Agent(
         role="Data Organizer",
         goal="Convert extracted ISM data into properly structured formats",
@@ -29,11 +32,11 @@ def create_structurer_agent():
         extracted data is correctly categorized and follows ISM's specific structure.""",
         verbose=True,
         allow_delegation=False,
-        tools=[SimpleDataStructurerTool()],
-        max_retries_on_error=3,
+        tools=[structurer_tool],
     )
 
 def create_validator_agent():
+    validator_tool = DataValidatorTool()
     return Agent(
         role="QA & Validation Specialist",
         goal="Ensure all structured ISM data is complete, accurate, and follows expected formats",
@@ -42,11 +45,11 @@ def create_validator_agent():
         makes ISM data valid and can identify any inconsistencies.""",
         verbose=True,
         allow_delegation=False,
-        tools=[DataValidatorTool()],
-        max_retries_on_error=3,
+        tools=[validator_tool],
     )
 
 def create_formatter_agent():
+    formatter_tool = GoogleSheetsFormatterTool()
     return Agent(
         role="Output Generator",
         goal="Format and update Google Sheets with validated ISM data",
@@ -55,11 +58,11 @@ def create_formatter_agent():
         ensure that updates don't overwrite existing information.""",
         verbose=True,
         allow_delegation=False,
-        tools=[GoogleSheetsFormatterTool()],
-        max_retries_on_error=3,
+        tools=[formatter_tool],
     )
 
 def create_orchestrator_agent():
+    orchestrator_tool = PDFOrchestratorTool()
     return Agent(
         role="Workflow Controller",
         goal="Manage the processing of multiple ISM Manufacturing Report PDFs",
@@ -68,6 +71,5 @@ def create_orchestrator_agent():
         and that the final output meets all requirements.""",
         verbose=True,
         allow_delegation=True,
-        tools=[PDFOrchestratorTool()],
-        max_retries_on_error=3,
+        tools=[orchestrator_tool],
     )

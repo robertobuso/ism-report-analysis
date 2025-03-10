@@ -38,7 +38,7 @@ def process_single_pdf(pdf_path):
     
     try:
         # Import Task directly here to ensure we're using the correct version
-        from crewai import Task
+        from crewai import Task, Crew, Process
         
         # Create agents
         extractor_agent = create_extractor_agent()
@@ -49,16 +49,14 @@ def process_single_pdf(pdf_path):
         # Execute extraction
         logger.info("Starting data extraction...")
         try:
-            # Custom extraction task without context parameter
+            # Custom extraction task
             extraction_task = Task(
                 description=f"""
                 Extract all relevant data from the ISM Manufacturing Report PDF.
                 The PDF path is: {pdf_path}
 
-                IMPORTANT: When using the PDF Extraction Tool, pass the input in this exact format: 
-                {{
-                    "path": "{pdf_path}"
-                }}
+                When using the PDF Extraction Tool, pass the path directly:
+                "{pdf_path}"
                 
                 You must extract:
                 1. The month and year of the report
@@ -74,21 +72,14 @@ def process_single_pdf(pdf_path):
                 
                 Ensure all data is correctly identified and structured for further processing.
                 """,
-                expected_output="""A dictionary containing the extracted data with the following keys:
-                - month_year: The month and year of the report
-                - manufacturing_table: The Manufacturing at a Glance table content
-                - index_summaries: Summaries for each index
-                - industry_data: Industries mentioned for each index, categorized appropriately
-                """,
-                agent=extractor_agent,
-                tools=[SimplePDFExtractionTool()],
-                async_execution=False
+                expected_output="A dictionary containing the extracted data with month_year, manufacturing_table, index_summaries, and industry_data",
+                agent=extractor_agent
             )
 
             extraction_crew = Crew(
                 agents=[extractor_agent],
                 tasks=[extraction_task],
-                verbose=True,  # Changed from 2 to True
+                verbose=True,
                 process=Process.sequential
             )
             
@@ -112,17 +103,17 @@ def process_single_pdf(pdf_path):
         # Execute structuring
         logger.info("Starting data structuring...")
         try:
-            # Create structuring task without context
+            # Create structuring task
             structuring_task = Task(
                 description=f"""
                 Convert the extracted ISM Manufacturing Report data into a structured format.
                 
                 Requirements:
                 1. For each index, organize industries into the correct categories:
-                   - Growing/Declining for most indices
-                   - Slower/Faster for Supplier Deliveries
-                   - Higher/Lower for Inventories
-                   - Too High/Too Low for Customers' Inventories
+                - Growing/Declining for most indices
+                - Slower/Faster for Supplier Deliveries
+                - Higher/Lower for Inventories
+                - Too High/Too Low for Customers' Inventories
                 
                 2. Ensure industry names are preserved exactly as they appear in the report
                 
@@ -130,22 +121,17 @@ def process_single_pdf(pdf_path):
                 
                 4. Handle any edge cases such as missing categories or inconsistent naming
                 
-                The extracted data is: {extraction_result}
+                When using the Data Structurer Tool, pass the extracted data directly as input:
+                {extraction_result}
                 """,
-                expected_output="""
-                A dictionary containing structured data for each index, with:
-                - The index name as the key
-                - A sub-dictionary with:
-                  - month_year: The month and year of the report
-                  - categories: A dictionary mapping category names to lists of industries
-                """,
+                expected_output="A dictionary containing structured data for each index",
                 agent=structurer_agent
             )
             
             structuring_crew = Crew(
                 agents=[structurer_agent],
                 tasks=[structuring_task],
-                verbose=True,  # Changed from 2 to True
+                verbose=True,
                 process=Process.sequential
             )
             
@@ -166,7 +152,7 @@ def process_single_pdf(pdf_path):
         # Execute validation
         logger.info("Starting data validation...")
         try:
-            # Create validation task without context
+            # Create validation task
             validation_task = Task(
                 description=f"""
                 Validate the structured ISM Manufacturing Report data for accuracy and completeness.
@@ -181,17 +167,14 @@ def process_single_pdf(pdf_path):
                 
                 The structured data is: {structured_data}
                 """,
-                expected_output="""
-                A dictionary mapping each index name to a boolean indicating whether
-                it passed validation.
-                """,
+                expected_output="A dictionary mapping each index name to a boolean indicating validation status",
                 agent=validator_agent
             )
             
             validation_crew = Crew(
                 agents=[validator_agent],
                 tasks=[validation_task],
-                verbose=True,  # Changed from 2 to True
+                verbose=True,
                 process=Process.sequential
             )
             
@@ -217,7 +200,7 @@ def process_single_pdf(pdf_path):
         # Execute formatting
         logger.info("Starting Google Sheets formatting...")
         try:
-            # Create formatting task without context
+            # Create formatting task
             formatting_task = Task(
                 description=f"""
                 Format the validated ISM Manufacturing Report data for Google Sheets and update the sheet.
@@ -233,19 +216,18 @@ def process_single_pdf(pdf_path):
                 Remember that each index may have different numbers of industries and they may
                 be in different orders.
                 
-                The structured data is: {structured_data}
-                The validation results are: {validation_results}
+                The input for the Google Sheets Formatter Tool should be a dictionary with:
+                'structured_data': {structured_data}
+                'validation_results': {validation_results}
                 """,
-                expected_output="""
-                A boolean indicating whether the Google Sheets update was successful.
-                """,
+                expected_output="A boolean indicating whether the Google Sheets update was successful",
                 agent=formatter_agent
             )
             
             formatting_crew = Crew(
                 agents=[formatter_agent],
                 tasks=[formatting_task],
-                verbose=True,  # Changed from 2 to True
+                verbose=True,
                 process=Process.sequential
             )
             
@@ -269,7 +251,7 @@ def process_single_pdf(pdf_path):
         logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
-
+    
 def process_multiple_pdfs(pdf_directory):
     """Process all PDF files in a directory using the Orchestrator agent."""
     logger.info(f"Processing all PDFs in directory: {pdf_directory}")

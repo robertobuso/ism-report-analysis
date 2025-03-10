@@ -1,5 +1,5 @@
 import traceback
-from crewai.tools import BaseTool
+from crewai.tools import tool
 from typing import Dict, Any, Optional, List, Union, Tuple
 import json
 import os
@@ -14,29 +14,20 @@ os.makedirs("logs", exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
-class SimplePDFExtractionTool(BaseTool):
-    name: str = "PDF Extraction Tool"
-    description: str = "Extracts ISM Manufacturing Report data from a PDF file. Input should be in format: {\"path\": \"your-pdf-path-here\"}"
-    
-    def _run(self, tool_input: Union[str, Dict]) -> Dict[str, Any]:
-        """Extract data from an ISM Manufacturing Report PDF."""
+class SimplePDFExtractionTool:
+    @tool("Extract data from ISM Manufacturing Report PDF")
+    def run(self, pdf_path: str) -> Dict[str, Any]:
+        """
+        Extracts ISM Manufacturing Report data from a PDF file.
+        
+        Args:
+            pdf_path: The path to the PDF file to extract data from
+        
+        Returns:
+            A dictionary containing the extracted data including month_year, manufacturing_table, 
+            index_summaries, and industry_data
+        """
         try:
-            # Handle different input formats
-            if isinstance(tool_input, dict):
-                if "path" in tool_input:
-                    pdf_path = tool_input["path"]
-                else:
-                    # Try to find any value that might be a path
-                    for key, value in tool_input.items():
-                        if isinstance(value, str) and value.endswith(".pdf"):
-                            pdf_path = value
-                            break
-                    else:
-                        raise ValueError(f"Could not find PDF path in input: {tool_input}")
-            else:
-                # Assume it's a string path
-                pdf_path = tool_input
-            
             logger.info(f"PDF Extraction Tool using pdf_path: {pdf_path}")
             
             # Parse the ISM report
@@ -51,30 +42,19 @@ class SimplePDFExtractionTool(BaseTool):
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-class SimpleDataStructurerTool(BaseTool):
-    name: str = "Data Structurer Tool"
-    description: str = "Structures extracted ISM data into a consistent format"
-    
-    def _run(self, tool_input: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+class SimpleDataStructurerTool:
+    @tool("Structure extracted ISM data")
+    def run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Structure the extracted data into a format suitable for Google Sheets.
+        Structures extracted ISM data into a consistent format.
         
         Args:
-            tool_input: Either the extracted data dict or a JSON string
-            
+            extracted_data: The raw data extracted from the ISM Manufacturing Report
+        
         Returns:
-            dict: Structured data ready for validation
+            A dictionary containing structured data for each index
         """
         try:
-            # Parse input if it's a string
-            if isinstance(tool_input, str):
-                try:
-                    extracted_data = json.loads(tool_input)
-                except json.JSONDecodeError:
-                    raise ValueError("Invalid JSON input for data structuring")
-            else:
-                extracted_data = tool_input
-            
             logger.info("Data Structurer Tool received input")
             
             # Get month and year
@@ -87,10 +67,6 @@ class SimpleDataStructurerTool(BaseTool):
             structured_data = {}
             
             for index, data in industry_data.items():
-                # Logic for structuring data (same as before)
-                # ...
-                
-                # Create data structure for this index
                 structured_data[index] = {
                     "month_year": month_year,
                     "categories": data  # Simplified for this example
@@ -102,20 +78,19 @@ class SimpleDataStructurerTool(BaseTool):
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-class DataValidatorTool(BaseTool):
-    name: str = "Data Validator Tool"
-    description: str = "Validates structured ISM data for accuracy and completeness"
-    
-    def _run(self, structured_data=None, context=None):
-        """Validate the structured data for consistency and completeness."""
+class DataValidatorTool:
+    @tool("Validate structured ISM data")
+    def run(self, structured_data: Dict[str, Any]) -> Dict[str, bool]:
+        """
+        Validates structured ISM data for accuracy and completeness.
+        
+        Args:
+            structured_data: The structured data to validate
+        
+        Returns:
+            A dictionary mapping each index name to a boolean indicating validation status
+        """
         try:
-            # If context is provided, extract structured_data from it
-            if context and not structured_data:
-                for key, value in context:
-                    if key == 'structured_data':
-                        structured_data = value
-                        break
-            
             if not structured_data:
                 raise ValueError("Structured data not provided")
                 
@@ -158,21 +133,25 @@ class DataValidatorTool(BaseTool):
             logger.error(f"Error in data validation: {str(e)}")
             raise
 
-class GoogleSheetsFormatterTool(BaseTool):
-    name: str = "Google Sheets Formatter Tool"
-    description: str = "Formats validated ISM data for Google Sheets and updates the sheet"
-    
-    def _run(self, structured_data=None, validation_results=None, context=None):
-        """Format and update Google Sheets with the validated data."""
+class GoogleSheetsFormatterTool:
+    @tool("Format and update Google Sheets with ISM data")
+    def run(self, data: Dict[str, Any]) -> bool:
+        """
+        Formats validated ISM data for Google Sheets and updates the sheet.
+        
+        Args:
+            data: Dictionary containing structured_data and validation_results
+        
+        Returns:
+            A boolean indicating whether the Google Sheets update was successful
+        """
         try:
-            # If context is provided, extract parameters from it
-            if context:
-                if not structured_data or not validation_results:
-                    for key, value in context:
-                        if key == 'structured_data':
-                            structured_data = value
-                        elif key == 'validation_results':
-                            validation_results = value
+            # Check if required keys exist
+            if not isinstance(data, dict) or 'structured_data' not in data or 'validation_results' not in data:
+                raise ValueError("Input must include structured_data and validation_results")
+                
+            structured_data = data['structured_data']
+            validation_results = data['validation_results']
             
             if not structured_data:
                 raise ValueError("Structured data not provided")
@@ -217,6 +196,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
             raise
     
+    # Keep existing helper methods
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
         try:
@@ -412,20 +392,19 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error updating sheet tab {index}: {str(e)}")
             return False
 
-class PDFOrchestratorTool(BaseTool):
-    name: str = "PDF Orchestrator Tool"
-    description: str = "Orchestrates the processing of multiple ISM Manufacturing Report PDFs"
-    
-    def _run(self, pdf_directory=None, context=None):
-        """Process all PDF files in the given directory."""
+class PDFOrchestratorTool:
+    @tool("Process multiple ISM Manufacturing Report PDFs")
+    def run(self, pdf_directory: str) -> Dict[str, Any]:
+        """
+        Orchestrates the processing of multiple ISM Manufacturing Report PDFs.
+        
+        Args:
+            pdf_directory: Directory containing PDF files to process
+        
+        Returns:
+            A dictionary with processing results for each PDF file
+        """
         try:
-            # If context is provided, extract pdf_directory from it
-            if context and not pdf_directory:
-                for key, value in context:
-                    if key == 'pdf_directory':
-                        pdf_directory = value
-                        break
-            
             if not pdf_directory:
                 raise ValueError("PDF directory not provided")
                 
@@ -444,23 +423,23 @@ class PDFOrchestratorTool(BaseTool):
                 
                 # Extract data from the PDF
                 extraction_tool = SimplePDFExtractionTool()
-                extracted_data = extraction_tool._run(pdf_path=pdf_path)
+                extracted_data = extraction_tool._run(pdf_path)
                 
                 # Structure the extracted data
                 structurer_tool = SimpleDataStructurerTool()
-                structured_data = structurer_tool._run(extracted_data=extracted_data)
+                structured_data = structurer_tool._run(extracted_data)
                 
                 # Validate the structured data
                 validator_tool = DataValidatorTool()
-                validation_results = validator_tool._run(structured_data=structured_data)
+                validation_results = validator_tool._run(structured_data)
                 
                 # Check if any validations passed
                 if any(validation_results.values()):
                     formatter_tool = GoogleSheetsFormatterTool()
-                    update_result = formatter_tool._run(
-                        structured_data=structured_data, 
-                        validation_results=validation_results
-                    )
+                    update_result = formatter_tool._run({
+                        'structured_data': structured_data, 
+                        'validation_results': validation_results
+                    })
                     results[pdf_file] = update_result
                 else:
                     logger.warning(f"All validations failed for {pdf_file}")
