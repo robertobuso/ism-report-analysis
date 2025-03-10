@@ -170,3 +170,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+#Conda
+Miniconda3-latest-MacOSX-x86_64.sh
