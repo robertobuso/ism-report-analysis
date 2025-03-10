@@ -1,6 +1,7 @@
 from crewai import Task
 
 def create_extraction_task(agent, pdf_path):
+    """Create a task for extracting data from a PDF."""
     return Task(
         description=f"""
         Extract all relevant data from the ISM Manufacturing Report PDF at {pdf_path}.
@@ -27,10 +28,11 @@ def create_extraction_task(agent, pdf_path):
         - industry_data: Industries mentioned for each index, categorized appropriately
         """,
         agent=agent,
-        context={"pdf_path": pdf_path}
+        context=[("pdf_path", pdf_path)]
     )
 
 def create_structuring_task(agent, extraction_result):
+    """Create a task for structuring extracted data."""
     return Task(
         description=f"""
         Convert the extracted ISM Manufacturing Report data into a structured format.
@@ -56,10 +58,11 @@ def create_structuring_task(agent, extraction_result):
           - categories: A dictionary mapping category names to lists of industries
         """,
         agent=agent,
-        context={"extracted_data": extraction_result}
+        context=[("extracted_data", extraction_result)]
     )
 
 def create_validation_task(agent, structured_data):
+    """Create a task for validating structured data."""
     return Task(
         description=f"""
         Validate the structured ISM Manufacturing Report data for accuracy and completeness.
@@ -77,10 +80,11 @@ def create_validation_task(agent, structured_data):
         it passed validation.
         """,
         agent=agent,
-        context={"structured_data": structured_data}
+        context=[("structured_data", structured_data)]
     )
 
 def create_formatting_task(agent, structured_data, validation_results):
+    """Create a task for formatting and updating Google Sheets."""
     return Task(
         description=f"""
         Format the validated ISM Manufacturing Report data for Google Sheets and update the sheet.
@@ -100,13 +104,14 @@ def create_formatting_task(agent, structured_data, validation_results):
         A boolean indicating whether the Google Sheets update was successful.
         """,
         agent=agent,
-        context={
-            "structured_data": structured_data,
-            "validation_results": validation_results
-        }
+        context=[
+            ("structured_data", structured_data),
+            ("validation_results", validation_results)
+        ]
     )
 
 def create_orchestration_task(agent, pdf_directory):
+    """Create a task for orchestrating the processing of multiple PDFs."""
     return Task(
         description=f"""
         Orchestrate the processing of all ISM Manufacturing Report PDFs in the directory {pdf_directory}.
@@ -128,5 +133,5 @@ def create_orchestration_task(agent, pdf_directory):
         A dictionary containing the processing results for each PDF file.
         """,
         agent=agent,
-        context={"pdf_directory": pdf_directory}
+        context=[("pdf_directory", pdf_directory)]
     )

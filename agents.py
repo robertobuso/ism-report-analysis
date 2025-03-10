@@ -1,7 +1,7 @@
 from crewai import Agent
 from tools import (
-    PDFExtractionTool,
-    DataStructurerTool,
+    SimplePDFExtractionTool,
+    SimpleDataStructurerTool,
     DataValidatorTool,
     GoogleSheetsFormatterTool,
     PDFOrchestratorTool
@@ -16,7 +16,7 @@ def create_extractor_agent():
         and transforming it into structured data.""",
         verbose=True,
         allow_delegation=False,
-        tools=[PDFExtractionTool()],
+        tools=[SimplePDFExtractionTool()],
         max_retries_on_error=3,
     )
 
@@ -29,7 +29,7 @@ def create_structurer_agent():
         extracted data is correctly categorized and follows ISM's specific structure.""",
         verbose=True,
         allow_delegation=False,
-        tools=[DataStructurerTool()],
+        tools=[SimpleDataStructurerTool()],
         max_retries_on_error=3,
     )
 

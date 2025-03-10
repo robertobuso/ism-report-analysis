@@ -1,6 +1,13 @@
 import os
 import logging
+import traceback
 from dotenv import load_dotenv
+
+# Create necessary directories first
+os.makedirs("logs", exist_ok=True)
+os.makedirs("pdfs", exist_ok=True)
+os.makedirs("uploads", exist_ok=True)
+
 from crewai import Crew, Process
 from agents import (
     create_extractor_agent,
@@ -44,61 +51,79 @@ def process_single_pdf(pdf_path):
         
         # Execute extraction
         logger.info("Starting data extraction...")
-        extraction_task = create_extraction_task(extractor_agent, pdf_path)
-        extraction_crew = Crew(
-            agents=[extractor_agent],
-            tasks=[extraction_task],
-            verbose=2,
-            process=Process.sequential
-        )
-        
-        extraction_result = extraction_crew.kickoff()
-        if isinstance(extraction_result, str):
-            try:
-                extraction_result = eval(extraction_result)
-            except Exception as e:
-                logger.error(f"Error parsing extraction result: {str(e)}")
-                return False
+        try:
+            extraction_task = create_extraction_task(extractor_agent, pdf_path)
+            extraction_crew = Crew(
+                agents=[extractor_agent],
+                tasks=[extraction_task],
+                verbose=2,
+                process=Process.sequential
+            )
+            
+            extraction_result = extraction_crew.kickoff()
+            logger.info("Extraction result received")
+            
+            if isinstance(extraction_result, str):
+                try:
+                    extraction_result = eval(extraction_result)
+                except Exception as e:
+                    logger.error(f"Error parsing extraction result: {str(e)}")
+                    logger.error(f"Raw extraction result: {extraction_result}")
+                    return False
+        except Exception as e:
+            logger.error(f"Error during extraction phase: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
         
         logger.info("Data extraction completed")
         
         # Execute structuring
         logger.info("Starting data structuring...")
-        structuring_task = create_structuring_task(structurer_agent, extraction_result)
-        structuring_crew = Crew(
-            agents=[structurer_agent],
-            tasks=[structuring_task],
-            verbose=2,
-            process=Process.sequential
-        )
-        
-        structured_data = structuring_crew.kickoff()
-        if isinstance(structured_data, str):
-            try:
-                structured_data = eval(structured_data)
-            except Exception as e:
-                logger.error(f"Error parsing structured data: {str(e)}")
-                return False
+        try:
+            structuring_task = create_structuring_task(structurer_agent, extraction_result)
+            structuring_crew = Crew(
+                agents=[structurer_agent],
+                tasks=[structuring_task],
+                verbose=2,
+                process=Process.sequential
+            )
+            
+            structured_data = structuring_crew.kickoff()
+            if isinstance(structured_data, str):
+                try:
+                    structured_data = eval(structured_data)
+                except Exception as e:
+                    logger.error(f"Error parsing structured data: {str(e)}")
+                    return False
+        except Exception as e:
+            logger.error(f"Error during structuring phase: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
         
         logger.info("Data structuring completed")
         
         # Execute validation
         logger.info("Starting data validation...")
-        validation_task = create_validation_task(validator_agent, structured_data)
-        validation_crew = Crew(
-            agents=[validator_agent],
-            tasks=[validation_task],
-            verbose=2,
-            process=Process.sequential
-        )
-        
-        validation_results = validation_crew.kickoff()
-        if isinstance(validation_results, str):
-            try:
-                validation_results = eval(validation_results)
-            except Exception as e:
-                logger.error(f"Error parsing validation results: {str(e)}")
-                return False
+        try:
+            validation_task = create_validation_task(validator_agent, structured_data)
+            validation_crew = Crew(
+                agents=[validator_agent],
+                tasks=[validation_task],
+                verbose=2,
+                process=Process.sequential
+            )
+            
+            validation_results = validation_crew.kickoff()
+            if isinstance(validation_results, str):
+                try:
+                    validation_results = eval(validation_results)
+                except Exception as e:
+                    logger.error(f"Error parsing validation results: {str(e)}")
+                    return False
+        except Exception as e:
+            logger.error(f"Error during validation phase: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
         
         logger.info("Data validation completed")
         
@@ -109,21 +134,26 @@ def process_single_pdf(pdf_path):
         
         # Execute formatting
         logger.info("Starting Google Sheets formatting...")
-        formatting_task = create_formatting_task(formatter_agent, structured_data, validation_results)
-        formatting_crew = Crew(
-            agents=[formatter_agent],
-            tasks=[formatting_task],
-            verbose=2,
-            process=Process.sequential
-        )
-        
-        formatting_result = formatting_crew.kickoff()
-        if isinstance(formatting_result, str):
-            try:
-                formatting_result = eval(formatting_result)
-            except Exception as e:
-                logger.error(f"Error parsing formatting result: {str(e)}")
-                return False
+        try:
+            formatting_task = create_formatting_task(formatter_agent, structured_data, validation_results)
+            formatting_crew = Crew(
+                agents=[formatter_agent],
+                tasks=[formatting_task],
+                verbose=2,
+                process=Process.sequential
+            )
+            
+            formatting_result = formatting_crew.kickoff()
+            if isinstance(formatting_result, str):
+                try:
+                    formatting_result = eval(formatting_result)
+                except Exception as e:
+                    logger.error(f"Error parsing formatting result: {str(e)}")
+                    return False
+        except Exception as e:
+            logger.error(f"Error during formatting phase: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
         
         logger.info("Google Sheets formatting completed")
         
@@ -131,6 +161,7 @@ def process_single_pdf(pdf_path):
     
     except Exception as e:
         logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 def process_multiple_pdfs(pdf_directory):

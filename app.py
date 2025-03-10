@@ -1,11 +1,16 @@
 import os
 import tempfile
 import logging
+import sys
+
+# Create necessary directories first
+os.makedirs("logs", exist_ok=True)
+os.makedirs("uploads", exist_ok=True)
+
 from flask import Flask, request, render_template, redirect, url_for, flash, session, jsonify
 from werkzeug.utils import secure_filename
 from main import process_single_pdf, process_multiple_pdfs
-from google_auth import get_google_sheets_service
-import sys
+from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
 
 # Configure logging
 logging.basicConfig(
@@ -22,10 +27,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 console_handler.setFormatter(formatter)
 logging.getLogger().addHandler(console_handler)
 
-# Ensure directories exist
-os.makedirs("logs", exist_ok=True)
-os.makedirs("uploads", exist_ok=True)
-
+# Create Flask application
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
@@ -48,6 +50,11 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    # Check if Google auth is set up
+    if not os.path.exists('token.pickle'):
+        flash('Please set up Google Authentication first')
+        return redirect(url_for('index'))
+    
     # Check if the post request has the file part
     if 'file' not in request.files:
         flash('No file part')
@@ -141,8 +148,36 @@ def process():
 @app.route('/setup-google')
 def setup_google():
     try:
-        service = get_google_sheets_service()
-        flash('Google Sheets authentication successful!')
+        # Get the auth URL
+        auth_url = get_google_auth_url()
+        if not auth_url:
+            flash('Error setting up Google authentication.')
+            return redirect(url_for('index'))
+        
+        # Redirect to Google's auth page
+        return redirect(auth_url)
+    except Exception as e:
+        flash(f'Error with Google authentication: {str(e)}')
+        return redirect(url_for('index'))
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    try:
+        # Get state and code from query parameters
+        state = request.args.get('state')
+        code = request.args.get('code')
+        
+        if not state or not code:
+            flash('Invalid authentication response')
+            return redirect(url_for('index'))
+        
+        # Complete the authentication flow
+        creds = finish_google_auth(state, code)
+        
+        if creds:
+            flash('Google Sheets authentication successful!')
+        else:
+            flash('Google Sheets authentication failed.')
     except Exception as e:
         flash(f'Error with Google authentication: {str(e)}')
     
@@ -152,6 +187,7 @@ def setup_google():
 def health():
     return jsonify({"status": "healthy"})
 
+# Ensure app is available at the module level
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
