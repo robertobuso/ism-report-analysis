@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ISM Report Analysis</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .container { max-width: 800px; }
+        .mt-5 { margin-top: 3rem !important; }
+        .card { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">ISM Manufacturing Report Analysis</h1>
+        
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-info">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>Upload ISM PDF Reports</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="fileInput" class="form-label">Select one or more PDF files</label>
+                        <input class="form-control" type="file" id="fileInput" name="file" accept=".pdf" multiple>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Upload and Process</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        {% if not google_auth_ready %}
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5>Google Authentication Required</h5>
+            </div>
+            <div class="card-body">
+                <p>Google Sheets authentication is not set up yet. Click the button below to set it up.</p>
+                <a href="{{ url_for('setup_google') }}" class="btn btn-warning">Set Up Google Authentication</a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>Instructions</h5>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li>Upload one or more ISM Manufacturing Report PDFs.</li>
+                    <li>The system will extract data from each PDF.</li>
+                    <li>Data will be validated and structured.</li>
+                    <li>Results will be updated in Google Sheets.</li>
+                    <li>You'll receive a processing report when complete.</li>
+                </ol>
+                <p><strong>Note:</strong> Each index tab in Google Sheets will have industries as rows and months as columns. The number of industries may vary for each index and month.</p>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
