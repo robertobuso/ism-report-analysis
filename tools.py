@@ -16,36 +16,28 @@ logger = logging.getLogger(__name__)
 
 class SimplePDFExtractionTool(BaseTool):
     name: str = "PDF Extraction Tool"
-    description: str = "Extracts ISM Manufacturing Report data from a PDF file"
+    description: str = "Extracts ISM Manufacturing Report data from a PDF file. Input should be in format: {\"path\": \"your-pdf-path-here\"}"
     
-    def _run(self, tool_input: str = None) -> Dict[str, Any]:
-        """
-        Extract data from an ISM Manufacturing Report PDF.
-        
-        Args:
-            tool_input (str): Path to the PDF file or JSON string with "pdf_path" key
-            
-        Returns:
-            dict: Extracted data from the PDF
-        """
+    def _run(self, tool_input: Union[str, Dict]) -> Dict[str, Any]:
+        """Extract data from an ISM Manufacturing Report PDF."""
         try:
-            # Try to parse the input as a path directly
-            pdf_path = tool_input
-            
-            # If it looks like a JSON string, try to parse it
-            if tool_input and (tool_input.startswith('{') or tool_input.startswith('[')):
-                try:
-                    parsed_input = json.loads(tool_input)
-                    if isinstance(parsed_input, dict) and 'pdf_path' in parsed_input:
-                        pdf_path = parsed_input['pdf_path']
-                except json.JSONDecodeError:
-                    # Not JSON, treat as a string path
-                    pass
+            # Handle different input formats
+            if isinstance(tool_input, dict):
+                if "path" in tool_input:
+                    pdf_path = tool_input["path"]
+                else:
+                    # Try to find any value that might be a path
+                    for key, value in tool_input.items():
+                        if isinstance(value, str) and value.endswith(".pdf"):
+                            pdf_path = value
+                            break
+                    else:
+                        raise ValueError(f"Could not find PDF path in input: {tool_input}")
+            else:
+                # Assume it's a string path
+                pdf_path = tool_input
             
             logger.info(f"PDF Extraction Tool using pdf_path: {pdf_path}")
-            
-            if not pdf_path:
-                raise ValueError("PDF path not provided")
             
             # Parse the ISM report
             extracted_data = parse_ism_report(pdf_path)

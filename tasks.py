@@ -28,7 +28,7 @@ def create_extraction_task(agent, pdf_path):
         - industry_data: Industries mentioned for each index, categorized appropriately
         """,
         agent=agent,
-        context=[("pdf_path", pdf_path)]
+        context={"pdf_path": pdf_path}  # Changed from list of tuples to dictionary
     )
 
 def create_structuring_task(agent, extraction_result):
@@ -58,7 +58,7 @@ def create_structuring_task(agent, extraction_result):
           - categories: A dictionary mapping category names to lists of industries
         """,
         agent=agent,
-        context=[("extracted_data", extraction_result)]
+        context={"extracted_data": extraction_result}  # Changed from tuple to dictionary
     )
 
 def create_validation_task(agent, structured_data):
@@ -80,7 +80,7 @@ def create_validation_task(agent, structured_data):
         it passed validation.
         """,
         agent=agent,
-        context=[("structured_data", structured_data)]
+        context={"structured_data": structured_data}  # Changed from tuple to dictionary
     )
 
 def create_formatting_task(agent, structured_data, validation_results):
@@ -104,10 +104,10 @@ def create_formatting_task(agent, structured_data, validation_results):
         A boolean indicating whether the Google Sheets update was successful.
         """,
         agent=agent,
-        context=[
-            ("structured_data", structured_data),
-            ("validation_results", validation_results)
-        ]
+        context={  # Changed from list of tuples to dictionary
+            "structured_data": structured_data,
+            "validation_results": validation_results
+        }
     )
 
 def create_orchestration_task(agent, pdf_directory):
@@ -133,5 +133,5 @@ def create_orchestration_task(agent, pdf_directory):
         A dictionary containing the processing results for each PDF file.
         """,
         agent=agent,
-        context=[("pdf_directory", pdf_directory)]
+        context={"pdf_directory": pdf_directory}  # Changed from tuple to dictionary
     )
