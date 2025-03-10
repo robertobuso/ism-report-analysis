@@ -172,4 +172,4 @@ cython_debug/
 .pypirc
 
 #Conda
-Miniconda3-latest-MacOSX-x86_64.sh
+.Miniconda3-latest-MacOSX-x86_64.sh
