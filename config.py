@@ -41,6 +41,9 @@ INDEX_CATEGORIES = {
     "Imports": ["Growing", "Declining"]
 }
 
+# Add configuration for Manufacturing at a Glance table
+MANUFACTURING_TABLE_TAB_NAME = "Manufacturing at a Glance"
+
 # Logging configuration
 LOG_FILE = "logs/ism_analysis.log"
 LOG_LEVEL = "INFO"
@@ -48,3 +51,8 @@ LOG_LEVEL = "INFO"
 # Retry configuration
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
+
+# Ensure all required directories exist
+os.makedirs("logs", exist_ok=True)
+os.makedirs("pdfs", exist_ok=True)
+os.makedirs("uploads", exist_ok=True)

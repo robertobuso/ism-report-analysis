@@ -515,7 +515,7 @@ def process_single_pdf(pdf_path):
             description=f"""
             CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
             
-            The extracted data is: {extraction_data}
+            The extracted data is: {extraction_data.get('industry_data', {})}
             
             STEP 1: Directly examine the textual summaries in index_summaries to find industry mentions.
             
@@ -563,14 +563,18 @@ def process_single_pdf(pdf_path):
         # Safely parse verification result
         verified_data = safely_parse_agent_output(verified_result)
         
-        if verified_data:
+        if verified_data and 'industry_data' in verified_data:
             # Use the verified data if it was successfully parsed
             extraction_data = verified_data
             logger.info("Successfully verified and corrected data")
+        elif verified_data and 'corrected_industry_data' in verified_data:
+            # Use the corrected industry data
+            extraction_data['industry_data'] = verified_data['corrected_industry_data']
+            logger.info("Successfully applied corrected industry data")
         else:
             logger.warning("Verification failed, continuing with unverified data")
             
-        # Execute structuring - FIXED: ensure we have valid data for structuring
+        # Execute structuring - ensure we have valid data for structuring
         logger.info("Starting data structuring...")
         structurer_tool = SimpleDataStructurerTool()
         
@@ -774,6 +778,20 @@ def process_multiple_pdfs(pdf_directory):
         
         result = orchestration_crew.kickoff()
         result_data = safely_parse_agent_output(result)
+        
+        # If result_data is None or doesn't contain results, try processing each PDF directly
+        if not result_data or not result_data.get('success'):
+            logger.warning("Orchestration failed or returned invalid results. Trying direct processing.")
+            result_data = {'success': True, 'results': {}}
+            
+            # Get all PDF files in the directory
+            pdf_files = [f for f in os.listdir(pdf_directory) if f.lower().endswith('.pdf')]
+            
+            for pdf_file in pdf_files:
+                pdf_path = os.path.join(pdf_directory, pdf_file)
+                logger.info(f"Direct processing of {pdf_file}")
+                processing_result = process_single_pdf(pdf_path)
+                result_data['results'][pdf_file] = processing_result
         
         logger.info("Completed processing all PDFs")
         return result_data if result_data else {"success": False, "message": "Failed to parse orchestration result"}
