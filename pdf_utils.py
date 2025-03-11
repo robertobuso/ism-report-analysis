@@ -226,11 +226,11 @@ def extract_industry_mentions(text, indices):
                 
             else:  # Default pattern for growth/decline for other indices
                 # Pattern to find industries reporting growth
-                growth_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries) (?:that )?reporting (?:growth|expansion|increase|growing)[^:]*:(.+?)(?:\.|The)"
-                decline_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries) (?:that )?reporting (?:contraction|decline|decrease|declining)[^:]*:(.+?)(?:\.|The)"
-                
+                growth_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries) (?:\bthat\b )?reporting (?:growth|expansion|increase|growing)[^:]*:(.+?)(?:\.|The)"
+                decline_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries) (?:\bthat\b )?reporting (?:contraction|decline|decrease|declining)[^:]*:(.+?)(?:\.|The)"
+                 
                 # Alternative patterns to capture industries listed in order
-                alt_growth_pattern = r"(?:in|—)\s+(?:order|the following order)[^:]*:\s*(.+?)(?:\.|The)" 
+                alt_growth_pattern = r"(?:in|—)\s+(?:order|the following order)[^:]*:\s*(.+?)(?:\.|The)"
                 
                 # Try to match the patterns
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)

@@ -2,7 +2,7 @@ import os
 import logging
 import traceback
 from dotenv import load_dotenv
-from tools import SimplePDFExtractionTool
+from tools import SimplePDFExtractionTool, SimpleDataStructurerTool
 
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
@@ -15,7 +15,8 @@ from agents import (
     create_structurer_agent,
     create_validator_agent,
     create_formatter_agent,
-    create_orchestrator_agent
+    create_orchestrator_agent,
+    create_data_correction_agent
 )
 
 # Configure logging
@@ -39,12 +40,14 @@ def process_single_pdf(pdf_path):
     try:
         # Import Task directly here to ensure we're using the correct version
         from crewai import Task, Crew, Process
+        from tools import SimpleDataStructurerTool
         
         # Create agents
         extractor_agent = create_extractor_agent()
         structurer_agent = create_structurer_agent()
         validator_agent = create_validator_agent()
         formatter_agent = create_formatter_agent()
+        data_correction_agent = create_data_correction_agent()
         
         # Execute extraction
         logger.info("Starting data extraction...")
@@ -54,7 +57,7 @@ def process_single_pdf(pdf_path):
                 description=f"""
                 Extract all relevant data from the ISM Manufacturing Report PDF.
                 The PDF path is: {pdf_path}
-
+                
                 When using the PDF Extraction Tool, pass the path directly:
                 "{pdf_path}"
                 
@@ -64,11 +67,15 @@ def process_single_pdf(pdf_path):
                 3. All index-specific summaries (New Orders, Production, etc.)
                 4. Industry mentions in each index summary
                 
-                Pay special attention to correctly identifying:
-                - Different classifications based on the index (Growing/Declining for most indices,
-                Slower/Faster for Supplier Deliveries, Higher/Lower for Inventories, etc.)
-                - The exact list of industries in each category
-                - The correct month and year of the report
+                PAY SPECIAL ATTENTION to correctly identifying:
+                - For each index like New Orders, Production, etc., carefully identify which industries are in the GROWING category and which are in the DECLINING category
+                - READ THE TEXT CAREFULLY to determine whether an industry is growing/expanding or declining/contracting
+                - For Supplier Deliveries, identify which industries report SLOWER deliveries and which report FASTER deliveries
+                - For Inventories, identify which industries report HIGHER inventories and which report LOWER inventories
+                - For Customers' Inventories, identify which industries report TOO HIGH inventories and which report TOO LOW inventories
+                - For Prices, identify which industries report INCREASING prices and which report DECREASING prices
+                
+                VERY IMPORTANT: For each index, make sure industries are placed in the correct category based on the explicit statements in the report.
                 
                 Ensure all data is correctly identified and structured for further processing.
                 """,
@@ -86,66 +93,125 @@ def process_single_pdf(pdf_path):
             extraction_result = extraction_crew.kickoff()
             logger.info("Extraction result received")
             
+            # Convert extraction result to usable format for structuring
+            if hasattr(extraction_result, 'content'):
+                extraction_result = extraction_result.content
+
+            # Convert extraction result to usable format
             if isinstance(extraction_result, str):
                 try:
                     extraction_result = eval(extraction_result)
                 except Exception as e:
                     logger.error(f"Error parsing extraction result: {str(e)}")
                     logger.error(f"Raw extraction result: {extraction_result}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     return False
+            elif hasattr(extraction_result, 'content'):
+                content = extraction_result.content
+                if isinstance(content, str):
+                    try:
+                        extraction_result = eval(content)
+                    except Exception as e:
+                        logger.error(f"Error parsing extraction result content: {str(e)}")
+                        logger.error(f"Raw extraction result content: {content}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        return False
+                else:
+                    extraction_result = content
+            else:
+                print("Please provide either --pdf or --dir argument")
+                parser.print_help()
+
+            # Convert extraction result to usable format for structuring
+            if hasattr(extraction_result, 'content'):
+                content = extraction_result.content
+                if isinstance(content, str):
+                    try:
+                        extraction_result = eval(content)
+                    except Exception as e:
+                        logger.error(f"Error parsing extraction result content: {str(e)}")
+                        logger.error(f"Raw extraction result: {extraction_result}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        return False
+                else:
+                    extraction_result = content
+                    
+            # ADD VERIFICATION STEP HERE
+            logger.info("Starting data verification...")
+            verification_task = Task(
+                description=f"""
+                IMPORTANT: Carefully verify that the extracted industry data is CORRECTLY CATEGORIZED.
+                
+                For each index (New Orders, Production, Employment, etc.):
+                1. Review the actual text in the index_summaries to find explicit mentions of industries
+                2. For each index, check if industries are correctly categorized as:
+                - Growing or Declining for most indices
+                - Slower or Faster for Supplier Deliveries
+                - Higher or Lower for Inventories
+                - Too High or Too Low for Customers' Inventories
+                - Increasing or Decreasing for Prices
+                
+                COMMON ERRORS TO LOOK FOR:
+                - Industries might be listed in the wrong category (e.g., in Declining when they should be in Growing)
+                - Some industries might be missing entirely
+                - There could be empty categories when they should contain industries
+                
+                IF YOU FIND ANY ERRORS:
+                - Move industries to their correct categories
+                - Add any missing industries to appropriate categories
+                - Make sure no industry appears in both categories for the same index
+                
+                Original extracted data to verify: {extraction_result}. The PDF path is: {pdf_path}
+                """,
+                expected_output="A corrected dictionary containing the verified data with month_year, manufacturing_table, index_summaries, and industry_data",
+                agent=data_correction_agent
+            )
+            
+            verification_crew = Crew(
+                agents=[data_correction_agent],
+                tasks=[verification_task],
+                verbose=True,
+                process=Process.sequential
+            )
+            
+            verified_result = verification_crew.kickoff()
+            logger.info("Verification result received")
+            
+            # Convert verification result to usable format
+            if isinstance(verified_result, str):
+                try:
+                    verified_result = eval(verified_result)
+                    extraction_result = verified_result  # Use the verified data
+                except Exception as e:
+                    logger.error(f"Error parsing verification result: {str(e)}")
+                    logger.error(f"Raw verification result: {verified_result}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    # Continue with original extraction result
+            elif hasattr(verified_result, 'content'):
+                content = verified_result.content
+                if isinstance(content, str):
+                    try:
+                        verified_result = eval(content)
+                        extraction_result = verified_result  # Use the verified data
+                    except Exception as e:
+                        logger.error(f"Error parsing verification result content: {str(e)}")
+                        logger.error(f"Raw verification result content: {content}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        # Continue with original extraction result
+                else:
+                    extraction_result = content
+                    
+            logger.info("Data extraction and verification completed")
+                
         except Exception as e:
             logger.error(f"Error during extraction phase: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
         
-        logger.info("Data extraction completed")
-        
         # Execute structuring
         logger.info("Starting data structuring...")
-        try:
-            # Create structuring task
-            structuring_task = Task(
-                description=f"""
-                Convert the extracted ISM Manufacturing Report data into a structured format.
-                
-                Requirements:
-                1. For each index, organize industries into the correct categories:
-                - Growing/Declining for most indices
-                - Slower/Faster for Supplier Deliveries
-                - Higher/Lower for Inventories
-                - Too High/Too Low for Customers' Inventories
-                
-                2. Ensure industry names are preserved exactly as they appear in the report
-                
-                3. Keep the original month and year for proper sheet updates
-                
-                4. Handle any edge cases such as missing categories or inconsistent naming
-                
-                When using the Data Structurer Tool, pass the extracted data directly as input:
-                {extraction_result}
-                """,
-                expected_output="A dictionary containing structured data for each index",
-                agent=structurer_agent
-            )
-            
-            structuring_crew = Crew(
-                agents=[structurer_agent],
-                tasks=[structuring_task],
-                verbose=True,
-                process=Process.sequential
-            )
-            
-            structured_data = structuring_crew.kickoff()
-            if isinstance(structured_data, str):
-                try:
-                    structured_data = eval(structured_data)
-                except Exception as e:
-                    logger.error(f"Error parsing structured data: {str(e)}")
-                    return False
-        except Exception as e:
-            logger.error(f"Error during structuring phase: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
+        structurer_tool = SimpleDataStructurerTool()
+        structured_data = structurer_tool._run(extraction_result)
         
         logger.info("Data structuring completed")
         
@@ -184,7 +250,21 @@ def process_single_pdf(pdf_path):
                     validation_results = eval(validation_results)
                 except Exception as e:
                     logger.error(f"Error parsing validation results: {str(e)}")
+                    logger.error(f"Raw validation results: {validation_results}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     return False
+            elif hasattr(validation_results, 'content'):
+                content = validation_results.content
+                if isinstance(content, str):
+                    try:
+                        validation_results = eval(content)
+                    except Exception as e:
+                        logger.error(f"Error parsing validation results content: {str(e)}")
+                        logger.error(f"Raw validation results content: {content}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        return False
+                else:
+                    validation_results = content
         except Exception as e:
             logger.error(f"Error during validation phase: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -192,8 +272,21 @@ def process_single_pdf(pdf_path):
         
         logger.info("Data validation completed")
         
-        # Check if any validations passed
-        if not any(validation_results.values()):
+        # First convert the CrewOutput to a dictionary if needed
+        if hasattr(validation_results, 'content'):
+            validation_dict = validation_results.content
+            if isinstance(validation_dict, str):
+                try:
+                    validation_dict = eval(validation_dict)
+                except:
+                    logger.error(f"Error parsing validation_dict content: {validation_dict}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    validation_dict = {}
+        else:
+            validation_dict = validation_results
+
+        # Then check if any values are True
+        if not any(validation_dict.values()):
             logger.warning(f"All validations failed for {pdf_path}")
             return False
         
@@ -237,6 +330,8 @@ def process_single_pdf(pdf_path):
                     formatting_result = eval(formatting_result)
                 except Exception as e:
                     logger.error(f"Error parsing formatting result: {str(e)}")
+                    logger.error(f"Raw formatting result: {formatting_result}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     return False
         except Exception as e:
             logger.error(f"Error during formatting phase: {str(e)}")
@@ -296,7 +391,8 @@ def process_multiple_pdfs(pdf_directory):
                 create_extractor_agent(),
                 create_structurer_agent(),
                 create_validator_agent(),
-                create_formatter_agent()
+                create_formatter_agent(),
+                create_data_correction_agent()
             ],
             tasks=[orchestration_task],
             verbose=True,  # Changed from 2 to True
@@ -309,6 +405,8 @@ def process_multiple_pdfs(pdf_directory):
                 result = eval(result)
             except Exception as e:
                 logger.error(f"Error parsing orchestration result: {str(e)}")
+                logger.error(f"Raw orchestration result: {result}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 return False
         
         logger.info("Completed processing all PDFs")
@@ -316,6 +414,7 @@ def process_multiple_pdfs(pdf_directory):
     
     except Exception as e:
         logger.error(f"Error in batch processing: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
 
 if __name__ == "__main__":

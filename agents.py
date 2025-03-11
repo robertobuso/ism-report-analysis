@@ -1,8 +1,7 @@
 # agents.py
 from crewai import Agent
-from crewai.tools import BaseTool  # Import BaseTool directly from crewai
 
-# Import your tool functions directly
+# Import your BaseTool implementations
 from tools import (
     SimplePDFExtractionTool, 
     SimpleDataStructurerTool,
@@ -11,23 +10,9 @@ from tools import (
     PDFOrchestratorTool
 )
 
-# Function to wrap your tools properly for crewAI
-def create_tool_dict(name, description, func):
-    """Create a tool dictionary that crewAI can handle."""
-    return {
-        "name": name,
-        "description": description,
-        "func": func
-    }
-
 def create_extractor_agent():
-    # Create tool in the format crewAI expects
-    pdf_tool = SimplePDFExtractionTool()
-    tool_dict = create_tool_dict(
-        name="extract_pdf_data",
-        description="Extract data from an ISM Manufacturing Report PDF file",
-        func=pdf_tool.run
-    )
+    """Create an agent specialized in extracting data from PDFs."""
+    extraction_tool = SimplePDFExtractionTool()
     
     return Agent(
         role="Document Extractor",
@@ -37,16 +22,13 @@ def create_extractor_agent():
         and transforming it into structured data.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[extraction_tool],
+        llm_config={"model": "gpt-4o"} 
     )
 
 def create_structurer_agent():
+    """Create an agent specialized in structuring extracted data."""
     structurer_tool = SimpleDataStructurerTool()
-    tool_dict = create_tool_dict(
-        name="structure_data",
-        description="Structure extracted ISM Manufacturing Report data",
-        func=structurer_tool.run
-    )
     
     return Agent(
         role="Data Organizer",
@@ -56,16 +38,13 @@ def create_structurer_agent():
         extracted data is correctly categorized and follows ISM's specific structure.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[structurer_tool],
+        llm_config={"model": "gpt-4o"}
     )
 
 def create_validator_agent():
+    """Create an agent specialized in validating structured data."""
     validator_tool = DataValidatorTool()
-    tool_dict = create_tool_dict(
-        name="validate_data",
-        description="Validate structured ISM Manufacturing Report data",
-        func=validator_tool.run
-    )
     
     return Agent(
         role="QA & Validation Specialist",
@@ -75,16 +54,13 @@ def create_validator_agent():
         makes ISM data valid and can identify any inconsistencies.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[validator_tool],
+        llm_config={"model": "gpt-4o"}
     )
 
 def create_formatter_agent():
+    """Create an agent specialized in formatting data for Google Sheets."""
     formatter_tool = GoogleSheetsFormatterTool()
-    tool_dict = create_tool_dict(
-        name="format_for_sheets",
-        description="Format and update Google Sheets with validated ISM data",
-        func=formatter_tool.run
-    )
     
     return Agent(
         role="Output Generator",
@@ -94,16 +70,13 @@ def create_formatter_agent():
         ensure that updates don't overwrite existing information.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[formatter_tool],
+        llm_config={"model": "gpt-4o"}
     )
 
 def create_orchestrator_agent():
+    """Create an agent specialized in orchestrating the processing of multiple PDFs."""
     orchestrator_tool = PDFOrchestratorTool()
-    tool_dict = create_tool_dict(
-        name="orchestrate_processing",
-        description="Orchestrate the processing of multiple ISM Manufacturing Report PDFs",
-        func=orchestrator_tool.run
-    )
     
     return Agent(
         role="Workflow Controller",
@@ -113,5 +86,20 @@ def create_orchestrator_agent():
         and that the final output meets all requirements.""",
         verbose=True,
         allow_delegation=True,
-        tools=[tool_dict],
+        tools=[orchestrator_tool],
+        llm_config={"model": "gpt-4o"}
+    )
+
+def create_data_correction_agent():
+    """Create an agent specialized in verifying and correcting extracted data."""
+    return Agent(
+        role="Data Verification and Correction Specialist",
+        goal="Verify the accuracy of extracted industry data and correct any misclassifications",
+        backstory="""You are a highly skilled data analyst with a keen eye for detail.
+        You specialize in ensuring data integrity and accuracy. Your primary task is to
+        review extracted data, identify any misclassifications or omissions, and correct them
+        based on the original source document.""",
+        verbose=True,
+        allow_delegation=False,
+        llm_config={"model": "gpt-4o"}
     )

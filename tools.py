@@ -1,5 +1,4 @@
 import traceback
-from crewai.tools import tool
 from typing import Dict, Any, Optional, List, Union, Tuple
 import json
 import os
@@ -8,16 +7,18 @@ from google_auth import get_google_sheets_service
 from pdf_utils import parse_ism_report
 import logging
 from config import ISM_INDICES, INDEX_CATEGORIES
+from crewai.tools import BaseTool
+from pydantic import Field
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
-class SimplePDFExtractionTool:
-    @tool("Extract data from ISM Manufacturing Report PDF")
-    def _run(self, pdf_path: str) -> Dict[str, Any]:
-        """
+class SimplePDFExtractionTool(BaseTool):
+    name: str = Field(default="extract_pdf_data")
+    description: str = Field(
+        default="""
         Extracts ISM Manufacturing Report data from a PDF file.
         
         Args:
@@ -26,6 +27,13 @@ class SimplePDFExtractionTool:
         Returns:
             A dictionary containing the extracted data including month_year, manufacturing_table, 
             index_summaries, and industry_data
+        """
+    )
+    
+    def _run(self, pdf_path: str) -> Dict[str, Any]:
+        """
+        Implementation of the required abstract _run method.
+        This extracts data from the ISM Manufacturing Report PDF.
         """
         try:
             logger.info(f"PDF Extraction Tool using pdf_path: {pdf_path}")
@@ -42,10 +50,10 @@ class SimplePDFExtractionTool:
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-class SimpleDataStructurerTool:
-    @tool("Structure extracted ISM data")
-    def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
+class SimpleDataStructurerTool(BaseTool):
+    name: str = Field(default="structure_data")
+    description: str = Field(
+        default="""
         Structures extracted ISM data into a consistent format.
         
         Args:
@@ -53,6 +61,13 @@ class SimpleDataStructurerTool:
         
         Returns:
             A dictionary containing structured data for each index
+        """
+    )
+    
+    def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Implementation of the required abstract _run method.
+        This structures the extracted ISM data.
         """
         try:
             logger.info("Data Structurer Tool received input")
@@ -78,10 +93,10 @@ class SimpleDataStructurerTool:
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-class DataValidatorTool:
-    @tool("Validate structured ISM data")
-    def _run(self, structured_data: Dict[str, Any]) -> Dict[str, bool]:
-        """
+class DataValidatorTool(BaseTool):
+    name: str = Field(default="validate_data")
+    description: str = Field(
+        default="""
         Validates structured ISM data for accuracy and completeness.
         
         Args:
@@ -89,6 +104,13 @@ class DataValidatorTool:
         
         Returns:
             A dictionary mapping each index name to a boolean indicating validation status
+        """
+    )
+    
+    def _run(self, structured_data: Dict[str, Any]) -> Dict[str, bool]:
+        """
+        Implementation of the required abstract _run method.
+        This validates the structured ISM data.
         """
         try:
             if not structured_data:
@@ -133,10 +155,10 @@ class DataValidatorTool:
             logger.error(f"Error in data validation: {str(e)}")
             raise
 
-class GoogleSheetsFormatterTool:
-    @tool("Format and update Google Sheets with ISM data")
-    def _run(self, data: Dict[str, Any]) -> bool:
-        """
+class GoogleSheetsFormatterTool(BaseTool):
+    name: str = Field(default="format_for_sheets")
+    description: str = Field(
+        default="""
         Formats validated ISM data for Google Sheets and updates the sheet.
         
         Args:
@@ -144,6 +166,13 @@ class GoogleSheetsFormatterTool:
         
         Returns:
             A boolean indicating whether the Google Sheets update was successful
+        """
+    )
+    
+    def _run(self, data: Dict[str, Any]) -> bool:
+        """
+        Implementation of the required abstract _run method.
+        This formats and updates Google Sheets with the validated ISM data.
         """
         try:
             # Check if required keys exist
@@ -391,10 +420,10 @@ class GoogleSheetsFormatterTool:
             logger.error(f"Error updating sheet tab {index}: {str(e)}")
             return False
 
-class PDFOrchestratorTool:
-    @tool("Process multiple ISM Manufacturing Report PDFs")
-    def _run(self, pdf_directory: str) -> Dict[str, Any]:
-        """
+class PDFOrchestratorTool(BaseTool):
+    name: str = Field(default="orchestrate_processing")
+    description: str = Field(
+        default="""
         Orchestrates the processing of multiple ISM Manufacturing Report PDFs.
         
         Args:
@@ -402,6 +431,13 @@ class PDFOrchestratorTool:
         
         Returns:
             A dictionary with processing results for each PDF file
+        """
+    )
+    
+    def _run(self, pdf_directory: str) -> Dict[str, Any]:
+        """
+        Implementation of the required abstract _run method.
+        This orchestrates the processing of multiple PDFs.
         """
         try:
             if not pdf_directory:

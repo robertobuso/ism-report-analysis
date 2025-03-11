@@ -6,7 +6,7 @@ load_dotenv()
 
 # OpenAI configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = "gpt-4"  # Using GPT-4 for better extraction accuracy
+OPENAI_MODEL = "gpt-4o"  # Using GPT-4 for better extraction accuracy
 
 # Google Sheets configuration
 GOOGLE_CREDENTIALS_FILE = "credentials.json"
