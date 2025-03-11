@@ -1,5 +1,4 @@
 import traceback
-from crewai.tools import tool
 from typing import Dict, Any, Optional, List, Union, Tuple
 import json
 import os
@@ -8,24 +7,29 @@ from google_auth import get_google_sheets_service
 from pdf_utils import parse_ism_report
 import logging
 from config import ISM_INDICES, INDEX_CATEGORIES
+from langchain.tools import BaseTool
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
-class SimplePDFExtractionTool:
-    @tool("Extract data from ISM Manufacturing Report PDF")
+class SimplePDFExtractionTool(BaseTool):
+    name = "pdf_extraction_tool"
+    description = """
+    Extracts ISM Manufacturing Report data from a PDF file.
+    
+    Args:
+        pdf_path: The path to the PDF file to extract data from
+    
+    Returns:
+        A dictionary containing the extracted data including month_year, manufacturing_table, 
+        index_summaries, and industry_data
+    """
+    
     def _run(self, pdf_path: str) -> Dict[str, Any]:
         """
         Extracts ISM Manufacturing Report data from a PDF file.
-        
-        Args:
-            pdf_path: The path to the PDF file to extract data from
-        
-        Returns:
-            A dictionary containing the extracted data including month_year, manufacturing_table, 
-            index_summaries, and industry_data
         """
         try:
             logger.info(f"PDF Extraction Tool using pdf_path: {pdf_path}")
@@ -42,17 +46,21 @@ class SimplePDFExtractionTool:
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-class SimpleDataStructurerTool:
-    @tool("Structure extracted ISM data")
+class SimpleDataStructurerTool(BaseTool):
+    name = "data_structurer_tool"
+    description = """
+    Structures extracted ISM data into a consistent format.
+    
+    Args:
+        extracted_data: The raw data extracted from the ISM Manufacturing Report
+    
+    Returns:
+        A dictionary containing structured data for each index
+    """
+    
     def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Structures extracted ISM data into a consistent format.
-        
-        Args:
-            extracted_data: The raw data extracted from the ISM Manufacturing Report
-        
-        Returns:
-            A dictionary containing structured data for each index
         """
         try:
             logger.info("Data Structurer Tool received input")
@@ -78,17 +86,21 @@ class SimpleDataStructurerTool:
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
-class DataValidatorTool:
-    @tool("Validate structured ISM data")
+class DataValidatorTool(BaseTool):
+    name = "data_validator_tool"
+    description = """
+    Validates structured ISM data for accuracy and completeness.
+    
+    Args:
+        structured_data: The structured data to validate
+    
+    Returns:
+        A dictionary mapping each index name to a boolean indicating validation status
+    """
+    
     def _run(self, structured_data: Dict[str, Any]) -> Dict[str, bool]:
         """
         Validates structured ISM data for accuracy and completeness.
-        
-        Args:
-            structured_data: The structured data to validate
-        
-        Returns:
-            A dictionary mapping each index name to a boolean indicating validation status
         """
         try:
             if not structured_data:
@@ -133,17 +145,21 @@ class DataValidatorTool:
             logger.error(f"Error in data validation: {str(e)}")
             raise
 
-class GoogleSheetsFormatterTool:
-    @tool("Format and update Google Sheets with ISM data")
+class GoogleSheetsFormatterTool(BaseTool):
+    name = "google_sheets_formatter_tool"
+    description = """
+    Formats validated ISM data for Google Sheets and updates the sheet.
+    
+    Args:
+        data: Dictionary containing structured_data and validation_results
+    
+    Returns:
+        A boolean indicating whether the Google Sheets update was successful
+    """
+    
     def _run(self, data: Dict[str, Any]) -> bool:
         """
         Formats validated ISM data for Google Sheets and updates the sheet.
-        
-        Args:
-            data: Dictionary containing structured_data and validation_results
-        
-        Returns:
-            A boolean indicating whether the Google Sheets update was successful
         """
         try:
             # Check if required keys exist
@@ -196,6 +212,7 @@ class GoogleSheetsFormatterTool:
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
             raise
     
+    # Keep existing helper methods
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
         try:
@@ -391,17 +408,21 @@ class GoogleSheetsFormatterTool:
             logger.error(f"Error updating sheet tab {index}: {str(e)}")
             return False
 
-class PDFOrchestratorTool:
-    @tool("Process multiple ISM Manufacturing Report PDFs")
+class PDFOrchestratorTool(BaseTool):
+    name = "pdf_orchestrator_tool"
+    description = """
+    Orchestrates the processing of multiple ISM Manufacturing Report PDFs.
+    
+    Args:
+        pdf_directory: Directory containing PDF files to process
+    
+    Returns:
+        A dictionary with processing results for each PDF file
+    """
+    
     def _run(self, pdf_directory: str) -> Dict[str, Any]:
         """
         Orchestrates the processing of multiple ISM Manufacturing Report PDFs.
-        
-        Args:
-            pdf_directory: Directory containing PDF files to process
-        
-        Returns:
-            A dictionary with processing results for each PDF file
         """
         try:
             if not pdf_directory:

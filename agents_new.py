@@ -1,32 +1,20 @@
-# agents.py
 from crewai import Agent
-from crewai.tools import BaseTool  # Import BaseTool directly from crewai
-
-# Import your tool functions directly
-from tools import (
-    SimplePDFExtractionTool, 
+from langchain.tools import Tool
+from tools_new import (
+    SimplePDFExtractionTool,
     SimpleDataStructurerTool,
-    DataValidatorTool, 
+    DataValidatorTool,
     GoogleSheetsFormatterTool,
     PDFOrchestratorTool
 )
 
-# Function to wrap your tools properly for crewAI
-def create_tool_dict(name, description, func):
-    """Create a tool dictionary that crewAI can handle."""
-    return {
-        "name": name,
-        "description": description,
-        "func": func
-    }
-
 def create_extractor_agent():
-    # Create tool in the format crewAI expects
-    pdf_tool = SimplePDFExtractionTool()
-    tool_dict = create_tool_dict(
-        name="extract_pdf_data",
-        description="Extract data from an ISM Manufacturing Report PDF file",
-        func=pdf_tool.run
+    # Create LangChain tool from our BaseTool implementation
+    tool = SimplePDFExtractionTool()
+    extraction_tool = Tool(
+        name=tool.name,
+        func=tool._run,
+        description=tool.description
     )
     
     return Agent(
@@ -37,15 +25,16 @@ def create_extractor_agent():
         and transforming it into structured data.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[extraction_tool],
     )
 
 def create_structurer_agent():
-    structurer_tool = SimpleDataStructurerTool()
-    tool_dict = create_tool_dict(
-        name="structure_data",
-        description="Structure extracted ISM Manufacturing Report data",
-        func=structurer_tool.run
+    # Create LangChain tool from our BaseTool implementation
+    tool = SimpleDataStructurerTool()
+    structurer_tool = Tool(
+        name=tool.name,
+        func=tool._run,
+        description=tool.description
     )
     
     return Agent(
@@ -56,15 +45,16 @@ def create_structurer_agent():
         extracted data is correctly categorized and follows ISM's specific structure.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[structurer_tool],
     )
 
 def create_validator_agent():
-    validator_tool = DataValidatorTool()
-    tool_dict = create_tool_dict(
-        name="validate_data",
-        description="Validate structured ISM Manufacturing Report data",
-        func=validator_tool.run
+    # Create LangChain tool from our BaseTool implementation
+    tool = DataValidatorTool()
+    validator_tool = Tool(
+        name=tool.name,
+        func=tool._run,
+        description=tool.description
     )
     
     return Agent(
@@ -75,15 +65,16 @@ def create_validator_agent():
         makes ISM data valid and can identify any inconsistencies.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[validator_tool],
     )
 
 def create_formatter_agent():
-    formatter_tool = GoogleSheetsFormatterTool()
-    tool_dict = create_tool_dict(
-        name="format_for_sheets",
-        description="Format and update Google Sheets with validated ISM data",
-        func=formatter_tool.run
+    # Create LangChain tool from our BaseTool implementation
+    tool = GoogleSheetsFormatterTool()
+    formatter_tool = Tool(
+        name=tool.name,
+        func=tool._run,
+        description=tool.description
     )
     
     return Agent(
@@ -94,15 +85,16 @@ def create_formatter_agent():
         ensure that updates don't overwrite existing information.""",
         verbose=True,
         allow_delegation=False,
-        tools=[tool_dict],
+        tools=[formatter_tool],
     )
 
 def create_orchestrator_agent():
-    orchestrator_tool = PDFOrchestratorTool()
-    tool_dict = create_tool_dict(
-        name="orchestrate_processing",
-        description="Orchestrate the processing of multiple ISM Manufacturing Report PDFs",
-        func=orchestrator_tool.run
+    # Create LangChain tool from our BaseTool implementation
+    tool = PDFOrchestratorTool()
+    orchestrator_tool = Tool(
+        name=tool.name,
+        func=tool._run,
+        description=tool.description
     )
     
     return Agent(
@@ -113,5 +105,5 @@ def create_orchestrator_agent():
         and that the final output meets all requirements.""",
         verbose=True,
         allow_delegation=True,
-        tools=[tool_dict],
+        tools=[orchestrator_tool],
     )
