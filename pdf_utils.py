@@ -98,9 +98,18 @@ def extract_index_summaries(text):
                 pattern = rf"{index}(.*?)(?:{end_pattern}|$)"
             else:
                 # Otherwise, search until the next index
-                pattern = rf"{index}(.*?){indices[i+1]}"
-                
+                # Add additional boundary checks for partial matches
+                next_index = indices[i+1]
+                pattern = rf"{index}(?:\s|\n)(.*?)(?:\s|\n){next_index}"
+            
             match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            
+            # If primary pattern fails, try a fallback pattern
+            if not match and index == "PRODUCTION":
+                # Special handling for Production which may have issues
+                production_pattern = r"PRODUCTION\s*(?:\n|\r\n|\r)?(.*?)(?:\s|\n)EMPLOYMENT"
+                match = re.search(production_pattern, text, re.DOTALL | re.IGNORECASE)
+            
             if match:
                 summary_text = match.group(1).strip()
                 clean_name = index.title().replace("'S", "'s")
