@@ -39,91 +39,6 @@ os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 # Suppress the oauth2client warning
 warnings.filterwarnings('ignore', message='file_cache is only supported with oauth2client<4.0.0')
 
-def safely_parse_agent_output(output):
-    """Safely parse agent output to a dictionary without using eval()."""
-    try:
-        # For CrewOutput objects, directly access the raw_output
-        if hasattr(output, 'raw_output'):
-            # Try to get the raw output directly
-            return output.raw_output
-        
-        # Handle CrewOutput objects (new version)
-        if hasattr(output, 'content'):
-            content = output.content
-            if isinstance(content, dict):
-                return content
-            elif isinstance(content, str):
-                # Try to parse as JSON
-                try:
-                    import json
-                    return json.loads(content.replace("'", '"'))
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse output as JSON: {content[:100]}...")
-                    
-                # Try ast.literal_eval which is safer than eval
-                try:
-                    import ast
-                    return ast.literal_eval(content)
-                except (SyntaxError, ValueError):
-                    logger.warning(f"Failed to parse output using ast.literal_eval: {content[:100]}...")
-                    
-                # Last resort: structured regex parsing
-                logger.warning("Attempting to parse output using regex patterns")
-                return fallback_regex_parsing(content)
-        
-        # If output is already a dictionary, return it directly
-        if isinstance(output, dict):
-            return output
-        
-        # Handle string outputs
-        if isinstance(output, str):
-            # Same parsing logic as above for string output
-            try:
-                import json
-                return json.loads(output.replace("'", '"'))
-            except json.JSONDecodeError:
-                pass
-                
-            try:
-                import ast
-                return ast.literal_eval(output)
-            except (SyntaxError, ValueError):
-                logger.warning(f"Failed to parse output using ast.literal_eval: {output[:100]}...")
-                
-            return fallback_regex_parsing(output)
-        
-        # Special handling for other types of objects
-        logger.warning(f"Trying to extract output from object of type {type(output)}")
-        # Add direct access for common formats - try various attributes that might contain the results
-        for attr in ['result', 'output', 'data', 'response', 'answer', 'final_answer']:
-            if hasattr(output, attr):
-                value = getattr(output, attr)
-                if isinstance(value, dict):
-                    return value
-                elif isinstance(value, str):
-                    try:
-                        import ast
-                        return ast.literal_eval(value)
-                    except (SyntaxError, ValueError):
-                        continue
-        
-        # Last fallback: convert the entire object to a string and try to extract data
-        try:
-            import ast
-            return ast.literal_eval(str(output))
-        except (SyntaxError, ValueError):
-            pass
-            
-        logger.error(f"Unable to parse agent output of type {type(output)}")
-        # When all else fails, return None
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error parsing agent output: {str(e)}")
-        logger.error(f"Raw output type: {type(output)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return None
-    
 def fallback_regex_parsing(text):
     """Fallback method to extract key data using regex patterns."""
     # This would use regex patterns to extract the data structure
@@ -216,6 +131,16 @@ def process_single_pdf(pdf_path):
             - "The X industries reporting growth in February are..."
             - "The Y industries reporting contraction in February are..."
             - "The industries reporting slower supplier deliveries are..."
+
+            YOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.
+            Format your answer as:
+            
+            {{
+                'month_year': 'Month Year',
+                'manufacturing_table': 'table content',
+                'index_summaries': {{...}},
+                'industry_data': {{...}}
+            }}
             
             Ensure all data is correctly identified and structured for further processing.
             """,
@@ -248,13 +173,19 @@ def process_single_pdf(pdf_path):
 
         if not extraction_data:
             logger.error("Failed to parse extraction result")
-            return False
-        
-        # Safely parse extraction result
-        extraction_data = safely_parse_agent_output(extraction_result)
-        if not extraction_data:
-            logger.error("Failed to parse extraction result")
-            return False
+            # Final fallback - try direct PDF parsing
+            try:
+                from pdf_utils import parse_ism_report
+                logger.info("Attempting direct PDF parsing as final fallback")
+                extraction_data = parse_ism_report(pdf_path)
+                if extraction_data:
+                    logger.info("Successfully extracted data using direct PDF parsing")
+            except Exception as e:
+                logger.error(f"Direct PDF parsing failed: {str(e)}")
+            
+            if not extraction_data:
+                logger.error("All extraction methods failed")
+                return False
             
         # Execute verification
         logger.info("Starting data verification...")
@@ -425,59 +356,129 @@ def process_single_pdf(pdf_path):
         logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
-    
-# Function to extract data directly from CrewOutput
+
 def extract_from_crew_output(crew_output):
     """Extract dictionary data directly from a CrewOutput object."""
     try:
-        # First try to get the final_answer attribute which often contains the full output
+        logger.info(f"Attempting to extract from CrewOutput of type: {type(crew_output)}")
+        logger.info(f"CrewOutput attributes: {dir(crew_output)}")
+
+        # If it's already a dict, return it
+        if isinstance(crew_output, dict):
+            return crew_output
+            
+        # Try to get the result attribute which might contain the output
+        if hasattr(crew_output, 'result'):
+            result = crew_output.result
+            if isinstance(result, dict):
+                return result
+
+        # Try accessing the raw_output which might be available
+        if hasattr(crew_output, 'raw_output'):
+            raw = crew_output.raw_output
+            if isinstance(raw, dict):
+                return raw
+
+        # Try content attribute
+        if hasattr(crew_output, 'content'):
+            content = crew_output.content
+            if isinstance(content, dict):
+                return content
+            
+        # If we can get the task_outputs, try to parse them
+        if hasattr(crew_output, 'task_outputs'):
+            task_outputs = crew_output.task_outputs
+            if isinstance(task_outputs, list) and len(task_outputs) > 0:
+                last_output = task_outputs[-1]
+                if isinstance(last_output, dict):
+                    return last_output
+                elif hasattr(last_output, 'output') and isinstance(last_output.output, dict):
+                    return last_output.output
+                elif hasattr(last_output, 'content') and isinstance(last_output.content, dict):
+                    return last_output.content
+        
+        # Access agent_outputs if available
+        if hasattr(crew_output, 'agent_outputs'):
+            agent_outputs = crew_output.agent_outputs
+            if isinstance(agent_outputs, list) and len(agent_outputs) > 0:
+                last_agent_output = agent_outputs[-1]
+                if isinstance(last_agent_output, dict):
+                    return last_agent_output
+                elif hasattr(last_agent_output, 'output') and isinstance(last_agent_output.output, dict):
+                    return last_agent_output.output
+        
+        # Try to access final_answer which might contain the full output
         if hasattr(crew_output, 'final_answer'):
             answer = crew_output.final_answer
-            # If it's already a dict, return it
             if isinstance(answer, dict):
                 return answer
-            # If it's a string, try to parse it
-            if isinstance(answer, str):
+            elif isinstance(answer, str):
                 try:
                     import ast
                     return ast.literal_eval(answer)
                 except (SyntaxError, ValueError):
                     pass
-                    
-        # Next try the content attribute
-        if hasattr(crew_output, 'content'):
-            content = crew_output.content
-            if isinstance(content, dict):
-                return content
-            elif isinstance(content, str):
+        
+        # Last resort: Try to parse the string representation of the object
+        str_output = str(crew_output)
+        
+        # Look for patterns that look like a dictionary, more specific to the data
+        dict_patterns = [
+            # Pattern for month_year and other keys
+            r"\{'month_year':\s*'.*?',\s*'manufacturing_table':.*?,\s*'index_summaries':.*?,\s*'industry_data':.*?\}",
+            # Alternate pattern with double quotes
+            r'{"month_year":\s*".*?",\s*"manufacturing_table":.*?,\s*"index_summaries":.*?,\s*"industry_data":.*?}',
+            # Simpler pattern just looking for month_year
+            r"\{.*?'month_year':\s*'.*?'.*?\}",
+            # Final fallback pattern for any dictionary-like structure
+            r"\{[^{}]*\}"
+        ]
+        
+        for pattern in dict_patterns:
+            dict_matches = re.findall(pattern, str_output)
+            for match in dict_matches:
                 try:
+                    # Try ast.literal_eval first
                     import ast
-                    return ast.literal_eval(content)
+                    result = ast.literal_eval(match)
+                    if isinstance(result, dict) and 'month_year' in result:
+                        return result
                 except (SyntaxError, ValueError):
-                    pass
-                    
-        # Try to access raw_output which might be available in some versions
-        if hasattr(crew_output, 'raw_output'):
-            raw = crew_output.raw_output
-            if isinstance(raw, dict):
-                return raw
+                    # If that fails, try json
+                    try:
+                        import json
+                        result = json.loads(match.replace("'", '"'))
+                        if isinstance(result, dict) and 'month_year' in result:
+                            return result
+                    except json.JSONDecodeError:
+                        continue
         
-        # If we can get the full string representation, try to parse that
-        full_output = str(crew_output)
+        # Another approach - try to look for dictionary keys at the end of output
+        try:
+            # Check if there's a dictionary-like section at the end of the final_answer
+            if hasattr(crew_output, 'final_answer') and isinstance(crew_output.final_answer, str):
+                answer_lines = crew_output.final_answer.strip().split('\n')
+                last_lines = '\n'.join(answer_lines[-20:])  # Check last 20 lines
+                if '{' in last_lines and '}' in last_lines:
+                    dict_text = last_lines[last_lines.find('{'):last_lines.rfind('}')+1]
+                    try:
+                        import ast
+                        result = ast.literal_eval(dict_text)
+                        if isinstance(result, dict):
+                            return result
+                    except (SyntaxError, ValueError):
+                        pass
+        except Exception as e:
+            logger.warning(f"Error parsing final answer: {str(e)}")
+
+        # If still no luck, log detailed information about the object
+        logger.error(f"Failed to extract data from CrewOutput. Object attributes: {dir(crew_output)}")
+        logger.error(f"String representation: {str_output[:500]}...")
         
-        # Look for dictionary-like patterns
-        import re
-        dict_match = re.search(r'\{.*\}', full_output, re.DOTALL)
-        if dict_match:
-            try:
-                import ast
-                return ast.literal_eval(dict_match.group(0))
-            except (SyntaxError, ValueError):
-                pass
-                
         return None
     except Exception as e:
-        logger.error(f"Error extracting from CrewOutput: {str(e)}")
+        logger.error(f"Error in extract_from_crew_output: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
     
 def process_multiple_pdfs(pdf_directory):
