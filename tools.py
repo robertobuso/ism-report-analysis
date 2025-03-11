@@ -210,6 +210,15 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Get or create the Google Sheet
             sheet_id = self._get_or_create_sheet(service, "ISM Manufacturing Report Analysis")
             
+            # Update Manufacturing at a Glance tab
+            manufacturing_table = data.get('structured_data', {}).get('manufacturing_table', '')
+            if not manufacturing_table and 'extraction_data' in data:
+                # Try to get from extraction_data if available
+                manufacturing_table = data.get('extraction_data', {}).get('manufacturing_table', '')
+            
+            if manufacturing_table:
+                self._update_manufacturing_tab(service, sheet_id, month_year, manufacturing_table)
+            
             # Update each index tab that passed validation
             for index, valid in validation_results.items():
                 if valid and index in structured_data:
@@ -224,15 +233,19 @@ class GoogleSheetsFormatterTool(BaseTool):
         except Exception as e:
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
             raise
-    
+
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
         try:
             # Try to find an existing sheet with the given title
-            response = service.spreadsheets().list().execute()
-            for sheet in response.get('files', []):
-                if sheet['name'] == title:
-                    return sheet['id']
+            response = service.files().list(
+                q=f"name='{title}' and mimeType='application/vnd.google-apps.spreadsheet'",
+                fields="files(id, name)"
+            ).execute()
+            
+            items = response.get('files', [])
+            if items:
+                return items[0]['id']
             
             # If not found, create a new sheet
             sheet_metadata = {
@@ -243,19 +256,32 @@ class GoogleSheetsFormatterTool(BaseTool):
             sheet = service.spreadsheets().create(body=sheet_metadata).execute()
             sheet_id = sheet['spreadsheetId']
             
-            # Create tabs for each index
+            # Create tabs for Manufacturing at a Glance and each index
             batch_update_request = {
-                'requests': []
+                'requests': [
+                    {
+                        'addSheet': {
+                            'properties': {
+                                'title': 'Manufacturing at a Glance',
+                                'index': 0  # Make this the first tab
+                            }
+                        }
+                    }
+                ]
             }
             
+            # Add tabs for each index
+            index_position = 1  # Start after the Manufacturing at a Glance tab
             for index in ISM_INDICES:
                 batch_update_request['requests'].append({
                     'addSheet': {
                         'properties': {
-                            'title': index
+                            'title': index,
+                            'index': index_position
                         }
                     }
                 })
+                index_position += 1
             
             service.spreadsheets().batchUpdate(
                 spreadsheetId=sheet_id,
@@ -276,11 +302,21 @@ class GoogleSheetsFormatterTool(BaseTool):
                 sheet = service.spreadsheets().create(body=sheet_metadata).execute()
                 sheet_id = sheet['spreadsheetId']
                 
-                # Create tabs for each index
+                # Create tabs for Manufacturing at a Glance and each index
                 batch_update_request = {
-                    'requests': []
+                    'requests': [
+                        {
+                            'addSheet': {
+                                'properties': {
+                                    'title': 'Manufacturing at a Glance',
+                                    'index': 0  # Make this the first tab
+                                }
+                            }
+                        }
+                    ]
                 }
                 
+                # Add tabs for each index
                 for index in ISM_INDICES:
                     batch_update_request['requests'].append({
                         'addSheet': {
@@ -299,7 +335,91 @@ class GoogleSheetsFormatterTool(BaseTool):
             except Exception as e2:
                 logger.error(f"Fallback sheet creation failed: {str(e2)}")
                 raise
-    
+
+    def _update_manufacturing_tab(self, service, sheet_id, month_year, table_content):
+        """Update the Manufacturing at a Glance tab with the table content."""
+        try:
+            # Get the existing content
+            result = service.spreadsheets().values().get(
+                spreadsheetId=sheet_id,
+                range="'Manufacturing at a Glance'!A:Z"
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            # Check if month already exists in data
+            month_exists = False
+            row_index = 1  # Start at row 1 (A1)
+            
+            if values:
+                for i, row in enumerate(values):
+                    if i > 0 and len(row) > 0 and row[0] == month_year:
+                        month_exists = True
+                        row_index = i + 1  # +1 for 1-indexing in sheets
+                        break
+            
+            # Format the table content
+            if isinstance(table_content, str):
+                # Split the content into lines for better display
+                lines = table_content.strip().split('\n')
+                
+                # Prepare data for update
+                if not month_exists:
+                    # If month doesn't exist, add it with the table content
+                    new_values = []
+                    
+                    # Add header row if sheet is empty
+                    if not values:
+                        new_values.append(["Month/Year", "Manufacturing at a Glance"])
+                    
+                    # Add month and content
+                    new_values.append([month_year, lines[0] if lines else ""])
+                    
+                    # Add remaining lines
+                    for i, line in enumerate(lines[1:], 2):
+                        if i < len(new_values):
+                            new_values[i].append(line)
+                        else:
+                            new_values.append(["", line])
+                    
+                    # Update the sheet
+                    service.spreadsheets().values().update(
+                        spreadsheetId=sheet_id,
+                        range=f"'Manufacturing at a Glance'!A{len(values) + 1}",
+                        valueInputOption="RAW",
+                        body={"values": new_values}
+                    ).execute()
+                else:
+                    # If month exists, update its content
+                    updates = []
+                    
+                    # Update first line
+                    updates.append({
+                        "range": f"'Manufacturing at a Glance'!B{row_index}",
+                        "values": [[lines[0] if lines else ""]]
+                    })
+                    
+                    # Update remaining lines
+                    for i, line in enumerate(lines[1:], 1):
+                        updates.append({
+                            "range": f"'Manufacturing at a Glance'!B{row_index + i}",
+                            "values": [[line]]
+                        })
+                    
+                    # Execute batch update
+                    service.spreadsheets().values().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={
+                            "valueInputOption": "RAW",
+                            "data": updates
+                        }
+                    ).execute()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
+            return False
+
     def _format_index_data(self, index, data):
         """Format data for a specific index."""
         categories = data.get("categories", {})
