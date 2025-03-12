@@ -259,22 +259,32 @@ def extract_industry_mentions(text, indices):
                 
             elif index == "Customers' Inventories":
                 # Extract industries reporting customers' inventories as too high
-                too_high_pattern = r"The (?:[\w\s]+) industries reporting customers['''] inventories as too high(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
+                too_high_pattern = r"The (?:[\w\s]+) (?:industries|industry) reporting (?:customers['']s?|customers) (?:inventories|inventory) as too high(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
                 too_high_match = re.search(too_high_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Fallback pattern if first one doesn't match
+                # Fallback pattern with more variations
                 if not too_high_match:
-                    too_high_fallback = r"industries reporting customers['''] inventories as too high(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    too_high_fallback = r"(?:industries|industry) reporting (?:customers['']s?|customers) (?:inventories|inventory) as too high(?:[^:]*?)(?:are|:|-)([^\.]+)"
                     too_high_match = re.search(too_high_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
+                # More inclusive fallback pattern
+                if not too_high_match:
+                    too_high_fallback2 = r"(?:industries|industry) (?:reporting|that reported) .*?too high(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    too_high_match = re.search(too_high_fallback2, summary, re.IGNORECASE | re.DOTALL)
+                
                 # Extract industries reporting customers' inventories as too low
-                too_low_pattern = r"The (?:[\w\s]+) industries reporting customers['''] inventories as too low(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
+                too_low_pattern = r"The (?:[\w\s]+) (?:industries|industry) reporting (?:customers['']s?|customers) (?:inventories|inventory) as too low(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
                 too_low_match = re.search(too_low_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Fallback pattern if first one doesn't match
+                # Fallback pattern with more variations
                 if not too_low_match:
-                    too_low_fallback = r"industries reporting customers['''] inventories as too low(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    too_low_fallback = r"(?:industries|industry) reporting (?:customers['']s?|customers) (?:inventories|inventory) as too low(?:[^:]*?)(?:are|:|-)([^\.]+)"
                     too_low_match = re.search(too_low_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # More inclusive fallback pattern
+                if not too_low_match:
+                    too_low_fallback2 = r"(?:industries|industry) (?:reporting|that reported) .*?too low(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    too_low_match = re.search(too_low_fallback2, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 too_high = []
@@ -335,22 +345,27 @@ def extract_industry_mentions(text, indices):
                 
             elif index == "Imports":
                 # Extract industries reporting increased imports
-                growth_pattern = r"The (?:[\w\s]+) industries reporting (?:an |a |)(?:increase|increase in|higher|growth in) (?:import volumes|imports)(?:[^:]*?)(?:in order|order|:|—|-)(?:[^:]*?)(?:are|:)([^\.]+)"
+                growth_pattern = r"The (?:[\w\s]+) (?:industries|industry) reporting (?:an |a |)(?:increase|increase in|higher|growth in) (?:import volumes|imports)(?:[^:]*?)(?:are|—|:|in|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Fallback pattern if first one doesn't match
                 if not growth_match:
-                    growth_fallback = r"industries reporting (?:an |a |)(?:increase|higher|growth) in imports(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_fallback = r"(?:industries|industry) reporting (?:an |a |)(?:increase|higher|growth) in imports(?:[^:]*?)(?:are|:|-)([^\.]+)"
                     growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Extract industries reporting decreased imports
-                decline_pattern = r"The (?:[\w\s]+) (?:industries|industry) (?:that |)(?:reported|reporting) (?:lower|decreased|a decrease in|lower volumes of) (?:import volumes|imports)(?:[^:]*?)(?:in order|order|:|—|-)(?:[^:]*?)(?:are|:)([^\.]+)"
+                decline_pattern = r"The (?:[\w\s]+) (?:industries|industry) (?:that |)(?:reported|reporting) (?:lower|decreased|a decrease in|lower volumes of) (?:import volumes|imports)(?:[^:]*?)(?:are|—|:|in|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Fallback pattern if first one doesn't match
                 if not decline_match:
-                    decline_fallback = r"industries (?:that |)(?:reported|reporting) (?:lower|decreased|a decrease) in imports(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_fallback = r"(?:industries|industry) (?:that |)(?:reported|reporting) (?:lower|decreased|a decrease|contraction) in imports(?:[^:]*?)(?:are|:|-)([^\.]+)"
                     decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # More inclusive fallback pattern to catch other variations
+                if not decline_match:
+                    decline_fallback2 = r"The (?:[\w\s]+) (?:industries|industry) that (?:reported|reporting) lower volumes of imports(?:[^:]*?)(?:are|:|in|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback2, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 growing = []
@@ -404,24 +419,75 @@ def extract_industry_mentions(text, indices):
                 }
                 
             elif index == "Backlog of Orders":
-                # Extract industries reporting increased backlogs
-                growth_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries) reported growth in order backlogs(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
+                # Enhanced pattern for growing backlogs with more variations
+                growth_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries|industry) (?:reported|reporting|report) (?:growth|increase|expansion) in (?:order |)backlogs(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Fallback pattern if first one doesn't match
+                # Additional fallback patterns
                 if not growth_match:
                     growth_fallback = r"industries reporting growth in (?:order |)backlogs(?:[^:]*?)(?:are|:|-)([^\.]+)"
                     growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Extract industries reporting decreased backlogs
-                decline_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries) reporting lower backlogs(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
+                if not growth_match:
+                    growth_fallback2 = r"(?:Of|The) (?:[\w\s]+) manufacturing industries, (?:[\w\s]+) reported growth in (?:order |)backlogs(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback2, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Enhanced pattern for declining backlogs with more variations
+                decline_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries|industry) reporting (?:lower|decrease|contraction|decline) in (?:order |)backlogs(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Fallback pattern if first one doesn't match
+                # Additional fallback patterns
                 if not decline_match:
-                    decline_fallback = r"industries reporting (?:lower|decreased|a decrease in) (?:order |)backlogs(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_fallback = r"industries reporting (?:lower|decreased|a decrease in|declining|contraction in) (?:order |)backlogs(?:[^:]*?)(?:are|:|-)([^\.]+)"
                     decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
+                if not decline_match:
+                    decline_fallback2 = r"(?:The|In) (?:[\w\s]+) industries (?:reporting|that reported) (?:lower|decreased|a decrease in) backlogs (?:in|for) (?:February|January|March|April|May|June|July|August|September|October|November|December)(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback2, summary, re.IGNORECASE | re.DOTALL)
+                    
+                # Process matches
+                growing = []
+                if growth_match:
+                    growing_text = growth_match.group(1).strip()
+                    growing = preserve_order_industry_list(growing_text)
+                
+                declining = []
+                if decline_match:
+                    declining_text = decline_match.group(1).strip()
+                    declining = preserve_order_industry_list(declining_text)
+                
+                industry_data[index] = {
+                    "Growing": growing,
+                    "Declining": declining
+                }
+                
+            elif index == "Employment":
+                # Enhanced pattern for growing employment with more variations
+                growth_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries|industry) (?:reporting|report|reported) (?:employment|hiring|workforce) (?:growth|increase|expansion|gains)(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
+                growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Additional fallback patterns
+                if not growth_match:
+                    growth_fallback = r"industries reporting (?:employment|hiring|workforce) growth(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                if not growth_match:
+                    growth_fallback2 = r"(?:Of|The) (?:the |)(?:[\w\s]+) manufacturing industries, (?:[\w\s]+) reported (?:employment|hiring|workforce) growth(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback2, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Enhanced pattern for declining employment with more variations
+                decline_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries|industry) reporting (?:a decrease|decreases|lower|reduced|reduction|decline) in (?:employment|hiring|workforce|headcount)(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
+                decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Additional fallback patterns
+                if not decline_match:
+                    decline_fallback = r"industries reporting (?:a |)(?:decrease|decline|reduction|contraction) in (?:employment|hiring|workforce|headcount)(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                if not decline_match:
+                    decline_fallback2 = r"(?:The |)(?:[\w\s]+) industries reporting a decrease in employment(?:[^:]*?)(?:are|:|in the following order|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback2, summary, re.IGNORECASE | re.DOTALL)
+                    
                 # Process matches
                 growing = []
                 if growth_match:
@@ -459,12 +525,23 @@ def extract_industry_mentions(text, indices):
                 decline_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) (?:a |an |)(?:decline|contraction|decrease|declining|decreased|lower)(?: in| of)? (?:[\w\s&]+)?(?:[^:]*?)(?:are|—|:|in|-|,)(?:.+?)?(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Specific pattern for New Orders decline
+                # Add specific fallback patterns for New Orders decline
                 if index == "New Orders":
-                    new_orders_decline = r"The (?:[\w\s]+) industries reporting a decline in new orders in February,(?:[^:]*?)(?:are|in order|:|-)(?:[^:]*?)(?:order|:)[^:]*?([^\.]+)"
+                    # More specific pattern for New Orders with explicitly mentioned declining industries
+                    new_orders_decline = r"The (?:[\w\s]+) (?:industries|industry) (?:reporting|that reported) a decline in new orders(?:[^:]*?)(?:are|in order|:|-)(?:[^:]*?)(?:order|:)?[^:]*?([^\.]+)"
                     new_orders_decline_match = re.search(new_orders_decline, summary, re.IGNORECASE | re.DOTALL)
                     if new_orders_decline_match:
                         decline_match = new_orders_decline_match
+                        
+                    # Additional fallback pattern for New Orders declining
+                    if not decline_match:
+                        new_orders_decline2 = r"(?:industries|industry) (?:reporting|that reported) a decline in (?:new orders|orders)(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                        decline_match = re.search(new_orders_decline2, summary, re.IGNORECASE | re.DOTALL)
+                        
+                    # Another fallback looking for common formatting in reports
+                    if not decline_match:
+                        new_orders_decline3 = r"industries reporting a decline in (?:February|January|March|April|May|June|July|August|September|October|November|December)(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                        decline_match = re.search(new_orders_decline3, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Fallback pattern if first one doesn't match
                 if not decline_match:
