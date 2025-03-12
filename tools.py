@@ -338,6 +338,9 @@ class GoogleSheetsFormatterTool(BaseTool):
                 from datetime import datetime
                 month_year = datetime.now().strftime("%B %Y")
             
+            # Format the month_year as MM/YY for spreadsheet
+            formatted_month_year = self._format_month_year(month_year)
+            
             # Get Google Sheets service
             service = get_google_sheets_service()
             
@@ -367,8 +370,8 @@ class GoogleSheetsFormatterTool(BaseTool):
                             break
                     
                     if has_industries:
-                        # Update the sheet
-                        self._update_sheet_tab(service, sheet_id, index, formatted_data, month_year)
+                        # Update the sheet with new columnar format
+                        self._update_sheet_tab_columnar(service, sheet_id, index, formatted_data, formatted_month_year)
                     else:
                         logger.warning(f"No industries found for {index}, skipping tab update")
             
@@ -379,6 +382,52 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
 
+    def _format_month_year(self, month_year: str) -> str:
+        """Convert full month and year to MM/YY format."""
+        try:
+            if not month_year or month_year == "Unknown":
+                from datetime import datetime
+                # Default to current month/year
+                return datetime.now().strftime("%m/%y")
+                    
+            # Parse the month year string
+            month_map = {
+                'january': '01', 'february': '02', 'march': '03', 'april': '04',
+                'may': '05', 'june': '06', 'july': '07', 'august': '08',
+                'september': '09', 'october': '10', 'november': '11', 'december': '12'
+            }
+            
+            # Normalize the input
+            month_year_lower = month_year.lower()
+            
+            # Extract month and year
+            month = None
+            year = None
+            
+            # Try to find month
+            for m in month_map.keys():
+                if m in month_year_lower:
+                    month = month_map[m]
+                    break
+            
+            # Try to find year
+            import re
+            year_match = re.search(r'20(\d{2})', month_year)
+            if year_match:
+                year = year_match.group(1)
+            
+            # If month or year not found, use current date
+            if not month or not year:
+                from datetime import datetime
+                return datetime.now().strftime("%m/%y")
+                    
+            return f"{month}/{year}"
+        except Exception as e:
+            logger.error(f"Error formatting month_year {month_year}: {str(e)}")
+            # Return a default in case of error
+            from datetime import datetime
+            return datetime.now().strftime("%m/%y")
+    
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
         try:
@@ -397,7 +446,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                     sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
                     sheet_title = sheet_metadata['properties']['title']
                     
-                    # If the title doesn't match what we want, <u>set sheet_id to None to force creation of a new sheet</u>
+                    # If the title doesn't match what we want, set sheet_id to None to force creation of a new sheet
                     if sheet_title != title:
                         logger.info(f"Saved sheet has title '{sheet_title}' but we need '{title}'. Will create new sheet.")
                         sheet_id = None
@@ -785,14 +834,63 @@ class GoogleSheetsFormatterTool(BaseTool):
             if not categories and 'industry_data' in data:
                 categories = data.get('industry_data', {})
             
+            # Clean the categories data
+            cleaned_categories = {}
+            
             # Ensure all expected categories exist
             if index in INDEX_CATEGORIES:
-                formatted_data = {}
                 for category in INDEX_CATEGORIES[index]:
-                    formatted_data[category] = categories.get(category, [])
-                return formatted_data
+                    # Get the industries for this category
+                    industries = categories.get(category, [])
+                    
+                    # Clean the industry list
+                    cleaned_industries = []
+                    for industry in industries:
+                        if not industry or not isinstance(industry, str):
+                            continue
+                        
+                        # Skip text patterns that indicate artifacts from parsing
+                        if ("following order" in industry.lower() or 
+                            "are:" in industry.lower() or
+                            industry.startswith(',') or 
+                            industry.startswith(':') or
+                            len(industry.strip()) < 3):
+                            continue
+                        
+                        # Clean up the industry name
+                        industry = industry.strip()
+                        
+                        # Add to cleaned list if not already there
+                        if industry not in cleaned_industries:
+                            cleaned_industries.append(industry)
+                    
+                    cleaned_categories[category] = cleaned_industries
+                
+                return cleaned_categories
             else:
-                return categories
+                # For indices not in INDEX_CATEGORIES, clean all categories
+                for category, industries in categories.items():
+                    cleaned_industries = []
+                    for industry in industries:
+                        if not industry or not isinstance(industry, str):
+                            continue
+                        
+                        # Skip invalid entries
+                        if ("following order" in industry.lower() or 
+                            "are:" in industry.lower() or
+                            industry.startswith(',') or 
+                            industry.startswith(':') or
+                            len(industry.strip()) < 3):
+                            continue
+                        
+                        industry = industry.strip()
+                        
+                        if industry not in cleaned_industries:
+                            cleaned_industries.append(industry)
+                    
+                    cleaned_categories[category] = cleaned_industries
+                
+                return cleaned_categories
         except Exception as e:
             logger.error(f"Error formatting index data for {index}: {str(e)}")
             # Return empty dictionary as fallback
@@ -800,8 +898,8 @@ class GoogleSheetsFormatterTool(BaseTool):
                 return {category: [] for category in INDEX_CATEGORIES[index]}
             return {}
     
-    def _update_sheet_tab(self, service, sheet_id, index, formatted_data, month_year):
-        """Update a specific tab in the Google Sheet."""
+    def _update_sheet_tab_columnar(self, service, sheet_id, index, formatted_data, month_year):
+        """Update a specific tab in the Google Sheet with a columnar time-series format."""
         try:
             if not formatted_data:
                 logger.warning(f"No formatted data for {index}, skipping tab update")
@@ -814,7 +912,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Ensure index exists in the sheet
             try:
                 # Try to access the sheet to verify it exists
-                test_range = f"'{index}'!A1:A1"
+                test_range = f"'{index}'!A1:Z1"
                 service.spreadsheets().values().get(
                     spreadsheetId=sheet_id,
                     range=test_range
@@ -850,7 +948,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                     break
             
             if not has_data:
-                logger.warning(f"No industries found for {index}, skipping tab creation")
+                logger.warning(f"No industries found for {index}, skipping tab update")
                 return False
                 
             # Get the sheet data
@@ -861,114 +959,151 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             values = result.get('values', [])
             
-            # Check if header row exists
-            if not values or len(values) == 0:
-                # Create header row with months
-                header_row = ["Industry", month_year]
-                new_values = [header_row]
+            # Check if we need to initialize the sheet
+            need_init = False
+            if not values:
+                need_init = True
+            elif len(values) <= 1 and all(not cell for row in values for cell in row):
+                need_init = True
                 
-                # Add data rows
-                all_industries = []
-                for category, industries in formatted_data.items():
-                    for industry in industries:
-                        if industry and industry not in all_industries:
-                            all_industries.append(industry)
-                            new_values.append([industry, category])
+            if need_init:
+                # Create a single cell with month/year as header
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=f"'{index}'!A1",
+                    valueInputOption="RAW",
+                    body={"values": [[month_year]]}
+                ).execute()
                 
-                # Update the sheet
-                if len(new_values) > 1:  # Only update if we have actual data
-                    service.spreadsheets().values().update(
-                        spreadsheetId=sheet_id,
-                        range=f"'{index}'!A1",
-                        valueInputOption="RAW",
-                        body={"values": new_values}
-                    ).execute()
-                    logger.info(f"Created new tab for {index} with {len(new_values)-1} industries")
-                else:
-                    logger.warning(f"No industries found for {index}, skipping tab creation")
+                # Reset values to just the header
+                values = [[month_year]]
+            
+            # Get the header row
+            header_row = values[0] if values else []
+            
+            # Find the column index for the month, or add it if it doesn't exist
+            if month_year in header_row:
+                month_col_idx = header_row.index(month_year)
+                logger.info(f"Month {month_year} found in column {month_col_idx + 1}")
             else:
-                # Get existing industries and header row
-                header_row = values[0] if values else ["Industry"]
-                existing_industries = {}
+                # Add the new month to the right of the existing columns
+                month_col_idx = len(header_row)
+                header_row.append(month_year)
                 
-                for i, row in enumerate(values[1:], 1):
-                    if row and len(row) > 0:
-                        existing_industries[row[0]] = i + 1  # +1 for 1-indexing in sheets
-                
-                # Check if month already exists in header
-                if month_year in header_row:
-                    month_col = header_row.index(month_year)
-                    logger.info(f"Month {month_year} already exists in {index} tab at column {month_col}")
-                else:
-                    # Add new month to header
-                    month_col = len(header_row)
-                    header_row.append(month_year)
+                # Update the header row
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=f"'{index}'!A1",
+                    valueInputOption="RAW",
+                    body={"values": [header_row]}
+                ).execute()
+                logger.info(f"Added month {month_year} in column {month_col_idx + 1}")
+            
+            # Collect all category data with industry info
+            all_entries = []
+            
+            # Get all unique industries with their categories
+            for category, industries in formatted_data.items():
+                for industry in industries:
+                    if not industry or not isinstance(industry, str):
+                        continue
+                        
+                    # Skip invalid entries that might be parsing artifacts
+                    if ("following order" in industry.lower() or 
+                        "are:" in industry.lower() or
+                        industry.startswith(',') or 
+                        industry.startswith(':') or
+                        len(industry.strip()) < 3):
+                        continue
+                        
+                    # Clean up the industry name
+                    industry = industry.strip()
                     
-                    # Update header row
-                    service.spreadsheets().values().update(
-                        spreadsheetId=sheet_id,
-                        range=f"'{index}'!A1",
-                        valueInputOption="RAW",
-                        body={"values": [header_row]}
-                    ).execute()
-                    logger.info(f"Added month {month_year} to {index} tab header")
-                
-                # Update industry data
-                batch_updates = []
-                new_industries = []
-                
-                # Collect all industries from all categories
-                for category, industries in formatted_data.items():
-                    for industry in industries:
-                        if not industry:  # Skip empty industries
-                            continue
-                            
-                        if industry in existing_industries:
-                            # Update existing industry
-                            row_index = existing_industries[industry]
-                            batch_updates.append({
-                                "range": f"'{index}'!{chr(65 + month_col)}{row_index}",
-                                "values": [[category]]
-                            })
-                        else:
-                            # Add to list of new industries
-                            new_industries.append((industry, category))
-                
-                # Execute batch update for existing industries
-                if batch_updates:
-                    service.spreadsheets().values().batchUpdate(
-                        spreadsheetId=sheet_id,
-                        body={
-                            "valueInputOption": "RAW",
-                            "data": batch_updates
+                    # Add industry with its category
+                    all_entries.append({
+                        "industry": industry,
+                        "status": f"{industry} - {category}"
+                    })
+                    
+            # Build a list for each industry that will go into the cell
+            industry_status_list = []
+            for entry in all_entries:
+                industry_status_list.append(entry["status"])
+            
+            # Join with newline characters
+            cell_content = "\n".join(industry_status_list)
+            
+            # Update the cell for this month
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f"'{index}'!{chr(65 + month_col_idx)}2",  # Update cell at row 2
+                valueInputOption="RAW",
+                body={"values": [[cell_content]]}
+            ).execute()
+            
+            logger.info(f"Updated {index} sheet with data for {month_year} with {len(industry_status_list)} industries")
+            
+            # Format the cell to wrap text and fit content
+            sheet_id_num = self._get_sheet_id_by_name(service, sheet_id, index)
+            
+            if sheet_id_num:
+                requests = [
+                    # Set text wrapping
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": sheet_id_num,
+                                "startRowIndex": 1,  # Row 2 (0-indexed)
+                                "endRowIndex": 2,
+                                "startColumnIndex": month_col_idx,
+                                "endColumnIndex": month_col_idx + 1
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "wrapStrategy": "WRAP",
+                                    "verticalAlignment": "TOP"
+                                }
+                            },
+                            "fields": "userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment"
                         }
-                    ).execute()
-                    logger.info(f"Updated {len(batch_updates)} existing industries in {index} tab")
+                    },
+                    # Auto-resize row height
+                    {
+                        "autoResizeDimensions": {
+                            "dimensions": {
+                                "sheetId": sheet_id_num,
+                                "dimension": "ROWS",
+                                "startIndex": 1,
+                                "endIndex": 2
+                            }
+                        }
+                    },
+                    # Auto-resize column width
+                    {
+                        "autoResizeDimensions": {
+                            "dimensions": {
+                                "sheetId": sheet_id_num,
+                                "dimension": "COLUMNS",
+                                "startIndex": month_col_idx,
+                                "endIndex": month_col_idx + 1
+                            }
+                        }
+                    }
+                ]
                 
-                # Add new industries
-                if new_industries:
-                    new_rows = []
-                    for industry, category in new_industries:
-                        # Create a new row with empty cells up to the month column
-                        new_row = [industry] + [""] * (month_col - 1) + [category]
-                        new_rows.append(new_row)
-                    
-                    # Append the new rows to the sheet
-                    service.spreadsheets().values().append(
-                        spreadsheetId=sheet_id,
-                        range=f"'{index}'!A{len(values) + 1}",
-                        valueInputOption="RAW",
-                        body={"values": new_rows}
-                    ).execute()
-                    logger.info(f"Added {len(new_industries)} new industries to {index} tab")
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={"requests": requests}
+                ).execute()
+                
+                logger.info(f"Applied formatting to cell for {month_year} in {index} tab")
             
             return True
-        
         except Exception as e:
             logger.error(f"Error updating sheet tab {index}: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-    
+            
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")
     description: str = Field(
