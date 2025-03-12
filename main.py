@@ -769,9 +769,21 @@ def count_industries(industry_data):
     count = 0
     if not industry_data:
         return count
+    
+    # Handle case where industry_data is a string
+    if isinstance(industry_data, str):
+        logger.warning(f"industry_data is a string, not a dictionary: {industry_data[:100]}...")
+        return 0
+        
+    # Continue with normal processing for dictionary
     for index, categories in industry_data.items():
-        for category, industries in categories.items():
-            count += len(industries)
+        if isinstance(categories, dict):
+            for category, industries in categories.items():
+                if isinstance(industries, list):
+                    count += len(industries)
+                elif isinstance(industries, str):
+                    # Count a string as a single industry
+                    count += 1
     return count
 
 def merge_industry_data(primary_data, secondary_data):

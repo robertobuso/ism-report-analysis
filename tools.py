@@ -38,6 +38,23 @@ class SimplePDFExtractionTool(BaseTool):
         This structures the extracted ISM data.
         """
         try:
+            # Check if this is just a direct pdf_path request
+            if 'pdf_path' in extracted_data and isinstance(extracted_data['pdf_path'], str):
+                pdf_path = extracted_data['pdf_path']
+                logger.info(f"Extracting data from PDF: {pdf_path}")
+                # Parse the PDF directly
+                from pdf_utils import parse_ism_report
+                parsed_data = parse_ism_report(pdf_path)
+                if parsed_data:
+                    return parsed_data
+                # If parsing failed, continue with empty data structure
+                extracted_data = {
+                    "month_year": "Unknown",
+                    "manufacturing_table": "",
+                    "index_summaries": {},
+                    "industry_data": {}
+                }
+
             logger.info("Data Structurer Tool received input")
             
             # Get month and year
