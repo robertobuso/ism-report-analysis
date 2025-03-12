@@ -10,6 +10,7 @@ from config import ISM_INDICES, INDEX_CATEGORIES
 from crewai.tools import BaseTool
 from pydantic import Field
 from googleapiclient import discovery
+import re
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
@@ -276,22 +277,18 @@ class GoogleSheetsFormatterTool(BaseTool):
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
         try:
-            # Try to find an existing sheet by querying spreadsheets
+            # First check if a saved sheet ID exists in sheet_id.txt
             sheet_id = None
-            
-            # Check if a saved sheet ID exists
-            sheet_id_file = "sheet_id.txt"
-            if os.path.exists(sheet_id_file):
-                with open(sheet_id_file, "r") as f:
+            if os.path.exists("sheet_id.txt"):
+                with open("sheet_id.txt", "r") as f:
                     sheet_id = f.read().strip()
                     logger.info(f"Found saved sheet ID: {sheet_id}")
                 
-                # Verify the sheet exists and we can access it
+                # Verify the sheet exists and is accessible
                 try:
                     sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                    sheet_title = sheet_metadata['properties']['title']
-                    logger.info(f"Successfully accessed existing sheet: {sheet_title}")
-                    
+                    logger.info(f"Successfully accessed existing sheet: {sheet_metadata['properties']['title']}")
+                            
                     # Check if the default Sheet1 exists and delete it if needed
                     sheets = sheet_metadata.get('sheets', [])
                     sheet1_id = None
@@ -345,7 +342,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                     return sheet_id
                 except Exception as e:
                     logger.warning(f"Error accessing saved sheet: {str(e)}")
-                    # Don't set sheet_id to None here, we'll try to use it again
+                    sheet_id = None
             
             # If we either don't have a sheet_id or had an error accessing it, try to search by title
             if not sheet_id:
@@ -482,136 +479,132 @@ class GoogleSheetsFormatterTool(BaseTool):
                 logger.warning("No manufacturing table content to update")
                 return False
             
-            # Extract and format the table data
-            formatted_data = []
+            # Get the sheet ID for the Manufacturing at a Glance tab
+            sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+            sheet_id_map = {}
+            for sheet in sheet_metadata.get('sheets', []):
+                sheet_id_map[sheet.get('properties', {}).get('title')] = sheet.get('properties', {}).get('sheetId')
             
-            # Parse the table content
-            # Extract the indices and their values from the table
-            indices = ["PMI", "New Orders", "Production", "Employment", "Supplier Deliveries",
-                    "Inventories", "Customers' Inventories", "Prices", "Backlog of Orders",
-                    "New Export Orders", "Imports", "OVERALL ECONOMY", "Manufacturing Sector"]
+            mfg_sheet_id = sheet_id_map.get('Manufacturing at a Glance')
+            if not mfg_sheet_id:
+                logger.warning("Manufacturing at a Glance tab not found")
+                return False
             
-            values = {}
-            for index in indices:
-                # Look for patterns like "Index 50.3 50.9 -0.6 Growing Slower 2"
-                pattern = rf"{index}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([+-]\d+\.\d+)\s+(\w+)\s+(\w+)\s+(\d+)"
-                match = re.search(pattern, table_content, re.IGNORECASE)
-                
-                if match:
-                    values[index] = {
-                        "current": match.group(1),
-                        "previous": match.group(2),
-                        "change": match.group(3),
-                        "direction": match.group(4),
-                        "rate": match.group(5),
-                        "months": match.group(6)
-                    }
-            
-            # Get the existing content
-            result = service.spreadsheets().values().get(
+            # Clear the existing content
+            service.spreadsheets().values().clear(
                 spreadsheetId=sheet_id,
                 range="'Manufacturing at a Glance'!A:Z"
             ).execute()
             
-            existing_values = result.get('values', [])
+            # Parse the table content to extract structured data
+            # Extract index names, values, and directions from the table content
+            indices = []
             
-            # Check if we need to create headers
-            if not existing_values:
-                # Create headers
-                headers = [
-                    ["Manufacturing at a Glance - " + month_year],
-                    ["Index", "Current", "Previous", "Change", "Direction", "Rate of Change", "Trend (Months)"]
+            # Try to parse the table using regex
+            table_rows = []
+            
+            # Initialize with a title row
+            title_row = [f"Manufacturing at a Glance - {month_year}"]
+            table_rows.append(title_row)
+            
+            # Add header row
+            header_row = ["Index", "Current", "Previous", "Change", "Direction", "Rate of Change", "Trend (Months)"]
+            table_rows.append(header_row)
+            
+            # Extract rows for main indices
+            main_indices = [
+                "PMI", "New Orders", "Production", "Employment", "Supplier Deliveries",
+                "Inventories", "Customers' Inventories", "Prices", "Backlog of Orders",
+                "New Export Orders", "Imports"
+            ]
+            
+            # Extract data for overall sections
+            overall_indices = [
+                "OVERALL ECONOMY", "Manufacturing Sector"
+            ]
+            
+            # Function to extract values for an index
+            def extract_index_values(index_name):
+                # Match patterns like "PMI 50.3 50.9 -0.6 Growing Slower 2"
+                # or different variations of the pattern
+                patterns = [
+                    rf"{re.escape(index_name)}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([+-]\d+\.\d+)\s+(\w+)\s+(\w+)\s+(\d+)",
+                    rf"{re.escape(index_name)}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([+-]\d+\.\d+)\s+(\w+)\s+(\w+)",
                 ]
                 
-                # Update headers
-                service.spreadsheets().values().update(
-                    spreadsheetId=sheet_id,
-                    range="'Manufacturing at a Glance'!A1",
-                    valueInputOption="RAW",
-                    body={"values": headers}
-                ).execute()
-                
-                # Start row for data will be after headers
-                start_row = 3
-            else:
-                # Find a section for this month or create a new one
-                month_row_index = None
-                for i, row in enumerate(existing_values):
-                    if len(row) > 0 and row[0] == month_year:
-                        month_row_index = i + 1  # 1-indexed
-                        break
-                
-                if month_row_index is None:
-                    # Add a blank row and then the month header
-                    start_row = len(existing_values) + 2  # Leave a blank row
-                    
-                    # Add month header
-                    service.spreadsheets().values().update(
-                        spreadsheetId=sheet_id,
-                        range=f"'Manufacturing at a Glance'!A{start_row-1}",
-                        valueInputOption="RAW",
-                        body={"values": [[month_year]]}
-                    ).execute()
-                    
-                    # Add column headers
-                    service.spreadsheets().values().update(
-                        spreadsheetId=sheet_id,
-                        range=f"'Manufacturing at a Glance'!A{start_row}",
-                        valueInputOption="RAW",
-                        body={"values": [["Index", "Current", "Previous", "Change", "Direction", "Rate of Change", "Trend (Months)"]]}
-                    ).execute()
-                    
-                    start_row += 1  # Start after headers
-                else:
-                    # We found this month, clear its data and reuse the rows
-                    start_row = month_row_index + 2  # Skip month and header rows
-                    
-                    # Clear existing data for this month
-                    range_to_clear = f"'Manufacturing at a Glance'!A{start_row}:G{start_row + len(indices)}"
-                    service.spreadsheets().values().clear(
-                        spreadsheetId=sheet_id,
-                        range=range_to_clear,
-                        body={}
-                    ).execute()
+                for pattern in patterns:
+                    match = re.search(pattern, table_content, re.IGNORECASE)
+                    if match:
+                        if len(match.groups()) >= 5:
+                            return [
+                                index_name,
+                                match.group(1),
+                                match.group(2),
+                                match.group(3),
+                                match.group(4),
+                                match.group(5),
+                                match.group(6) if len(match.groups()) >= 6 else ""
+                            ]
+                return None
             
-            # Prepare data rows
-            data_rows = []
-            for index in indices:
-                if index in values:
-                    data_rows.append([
-                        index,
-                        values[index]["current"],
-                        values[index]["previous"],
-                        values[index]["change"],
-                        values[index]["direction"],
-                        values[index]["rate"],
-                        values[index]["months"]
-                    ])
+            # Extract data for main indices
+            for index in main_indices:
+                row_data = extract_index_values(index)
+                if row_data:
+                    table_rows.append(row_data)
                 else:
-                    # If we don't have data for this index, add a placeholder row
-                    data_rows.append([index, "", "", "", "", "", ""])
+                    # Add empty row if data couldn't be extracted
+                    table_rows.append([index, "", "", "", "", "", ""])
             
-            # Update the sheet with the data rows
-            if data_rows:
-                service.spreadsheets().values().update(
-                    spreadsheetId=sheet_id,
-                    range=f"'Manufacturing at a Glance'!A{start_row}",
-                    valueInputOption="RAW",
-                    body={"values": data_rows}
-                ).execute()
-                
-                logger.info(f"Updated Manufacturing at a Glance tab with {len(data_rows)} indices")
-                
-                # Apply formatting (make it more readable)
-                requests = []
-                
+            # Add a blank row
+            table_rows.append([""])
+            
+            # Extract data for overall sections
+            for index in overall_indices:
+                row_data = extract_index_values(index)
+                if row_data:
+                    table_rows.append(row_data)
+                else:
+                    # Add empty row if data couldn't be extracted
+                    table_rows.append([index, "", "", "", "", "", ""])
+            
+            # Update the sheet with the table data
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range="'Manufacturing at a Glance'!A1",
+                valueInputOption="RAW",
+                body={"values": table_rows}
+            ).execute()
+            
+            # Apply formatting (bold headers, borders, etc.)
+            requests = [
+                # Bold the title and header rows
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": mfg_sheet_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": 2,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 7
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold"
+                    }
+                },
                 # Add borders
-                requests.append({
+                {
                     "updateBorders": {
                         "range": {
-                            "sheetId": self._get_sheet_id_by_name(service, sheet_id, "Manufacturing at a Glance"),
-                            "startRowIndex": start_row - 1,
-                            "endRowIndex": start_row + len(data_rows) - 1,
+                            "sheetId": mfg_sheet_id,
+                            "startRowIndex": 1,
+                            "endRowIndex": len(table_rows),
                             "startColumnIndex": 0,
                             "endColumnIndex": 7
                         },
@@ -622,24 +615,39 @@ class GoogleSheetsFormatterTool(BaseTool):
                         "innerHorizontal": {"style": "SOLID"},
                         "innerVertical": {"style": "SOLID"}
                     }
-                })
-                
-                # Apply formatting
-                if requests:
-                    try:
-                        service.spreadsheets().batchUpdate(
-                            spreadsheetId=sheet_id,
-                            body={"requests": requests}
-                        ).execute()
-                    except Exception as e:
-                        logger.warning(f"Error applying formatting: {str(e)}")
-                
+                }
+            ]
+            
+            # Execute formatting requests
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={"requests": requests}
+            ).execute()
+            
+            # Auto-resize columns to fit content
+            auto_resize_request = {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": mfg_sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": 7
+                    }
+                }
+            }
+            
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={"requests": [auto_resize_request]}
+            ).execute()
+            
+            logger.info("Successfully updated Manufacturing at a Glance tab")
             return True
         except Exception as e:
             logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-
+    
     def _get_sheet_id_by_name(self, service, spreadsheet_id, sheet_name):
         """Get the sheet ID from its name."""
         try:

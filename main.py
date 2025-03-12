@@ -402,6 +402,17 @@ def process_single_pdf(pdf_path):
     logger.info(f"Processing PDF: {pdf_path}")
     
     try:
+        # First check if sheet_id.txt exists
+        if os.path.exists("sheet_id.txt"):
+            with open("sheet_id.txt", "r") as f:
+                sheet_id = f.read().strip()
+                if sheet_id:
+                    logger.info(f"Found sheet_id.txt file with ID: {sheet_id}")
+                else:
+                    logger.warning("sheet_id.txt file exists but is empty")
+        else:
+            logger.warning("sheet_id.txt not found. A new Google Sheet will be created.")
+        
         # Create agents
         extractor_agent = create_extractor_agent()
         data_correction_agent = create_data_correction_agent()
