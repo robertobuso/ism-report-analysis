@@ -765,7 +765,18 @@ class GoogleSheetsFormatterTool(BaseTool):
                 raise
 
     def _update_manufacturing_tab(self, service, sheet_id, month_year, table_content):
-        """Update the Manufacturing at a Glance table with the table content."""
+        """
+        Update the Manufacturing at a Glance tab using LLM to extract data from poorly formatted table.
+        
+        Args:
+            service: Google Sheets service instance
+            sheet_id: ID of the Google Sheet
+            month_year: Month and year of the report
+            table_content: The extracted text from the PDF
+            
+        Returns:
+            Boolean indicating success or failure
+        """
         try:
             if not table_content:
                 logger.warning("No manufacturing table content to update")
@@ -782,112 +793,340 @@ class GoogleSheetsFormatterTool(BaseTool):
                 logger.warning("Manufacturing at a Glance tab not found")
                 return False
             
-            # Clear the existing content
-            service.spreadsheets().values().clear(
+            # Format the month/year as MM/YY for the sheet
+            formatted_month_year = self._format_month_year(month_year)
+            logger.info(f"Processing data for {formatted_month_year}")
+            
+            # Use OpenAI to extract structured data from the table
+            parsed_data = self._extract_manufacturing_data_with_llm(table_content, month_year)
+            
+            # Check if we got valid data
+            if not parsed_data or not parsed_data.get("indices"):
+                logger.warning("Failed to extract manufacturing data with LLM")
+                row_data = [formatted_month_year] + ["N/A"] * 13  # Month + 13 columns of N/A
+            else:
+                # Prepare row data from parsed data
+                indices_data = parsed_data.get("indices", {})
+                
+                # Order of columns in the sheet
+                ordered_columns = [
+                    "Manufacturing PMI", "New Orders", "Production", "Employment", 
+                    "Supplier Deliveries", "Inventories", "Customers' Inventories", 
+                    "Prices", "Backlog of Orders", "New Export Orders", "Imports",
+                    "OVERALL ECONOMY", "Manufacturing Sector"
+                ]
+                
+                # Start with the month/year
+                row_data = [formatted_month_year]
+                
+                # Add data for each column
+                for index in ordered_columns:
+                    if index in indices_data:
+                        data = indices_data[index]
+                        
+                        if index not in ["OVERALL ECONOMY", "Manufacturing Sector"]:
+                            # For numeric indices, use the current value plus status
+                            value = data.get("current", "N/A")
+                            direction = data.get("direction", "")
+                            
+                            if value and direction:
+                                # Format: "50.4 (Growing)" or "48.7 (Contracting)"
+                                row_data.append(f"{value} ({direction})")
+                            else:
+                                row_data.append(value if value else "N/A")
+                        else:
+                            # For overall sections, just use the direction (status)
+                            row_data.append(data.get("direction", "N/A"))
+                    else:
+                        # If data is missing for this index
+                        row_data.append("N/A")
+            
+            # Check if this month already exists in the sheet
+            existing_data = service.spreadsheets().values().get(
                 spreadsheetId=sheet_id,
                 range="'Manufacturing at a Glance'!A:Z"
             ).execute()
             
-            # Parse the table content to extract structured data
-            # Extract index names, values, and directions from the table content
-            indices = []
+            existing_values = existing_data.get('values', [])
             
-            # Try to parse the table using regex
-            table_rows = []
+            # Find if this month already has a row
+            row_to_update = None
+            if existing_values:
+                for i, row in enumerate(existing_values):
+                    if len(row) > 0 and row[0] == formatted_month_year:
+                        row_to_update = i + 1  # +1 because Sheets API is 1-indexed
+                        break
             
-            # Initialize with a title row
-            title_row = [f"Manufacturing at a Glance - {month_year}"]
-            table_rows.append(title_row)
-            
-            # Add header row
-            header_row = ["Index", "Current", "Previous", "Change", "Direction", "Rate of Change", "Trend (Months)"]
-            table_rows.append(header_row)
-            
-            # Extract rows for main indices
-            main_indices = [
-                "PMI", "New Orders", "Production", "Employment", "Supplier Deliveries",
-                "Inventories", "Customers' Inventories", "Prices", "Backlog of Orders",
-                "New Export Orders", "Imports"
-            ]
-            
-            # Extract data for overall sections
-            overall_indices = [
-                "OVERALL ECONOMY", "Manufacturing Sector"
-            ]
-            
-            # Function to extract values for an index
-            def extract_index_values(index_name):
-                # Match patterns like "PMI 50.3 50.9 -0.6 Growing Slower 2"
-                # or different variations of the pattern
-                patterns = [
-                    rf"{re.escape(index_name)}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([+-]\d+\.\d+)\s+(\w+)\s+(\w+)\s+(\d+)",
-                    rf"{re.escape(index_name)}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([+-]\d+\.\d+)\s+(\w+)\s+(\w+)",
+            # Update or append the data
+            if not existing_values or len(existing_values) == 0:
+                # Sheet is empty, create header row first
+                headers = [
+                    "Month & Year", "Manufacturing PMI", "New Orders", "Production", 
+                    "Employment", "Supplier Deliveries", "Inventories", 
+                    "Customers' Inventories", "Prices", "Backlog of Orders",
+                    "New Export Orders", "Imports", "Overall Economy", "Manufacturing Sector"
                 ]
                 
-                for pattern in patterns:
-                    match = re.search(pattern, table_content, re.IGNORECASE)
-                    if match:
-                        if len(match.groups()) >= 5:
-                            return [
-                                index_name,
-                                match.group(1),
-                                match.group(2),
-                                match.group(3),
-                                match.group(4),
-                                match.group(5),
-                                match.group(6) if len(match.groups()) >= 6 else ""
-                            ]
-                return None
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range="'Manufacturing at a Glance'!A1",
+                    valueInputOption="RAW",
+                    body={"values": [headers]}
+                ).execute()
+                
+                # Add our data row
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range="'Manufacturing at a Glance'!A2",
+                    valueInputOption="RAW",
+                    body={"values": [row_data]}
+                ).execute()
+                
+                logger.info(f"Created new table with headers and data for {formatted_month_year}")
+            elif row_to_update:
+                # Update existing row
+                update_range = f"'Manufacturing at a Glance'!A{row_to_update}"
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=update_range,
+                    valueInputOption="RAW",
+                    body={"values": [row_data]}
+                ).execute()
+                
+                logger.info(f"Updated existing row for {formatted_month_year} at row {row_to_update}")
+            else:
+                # Append new row
+                append_range = f"'Manufacturing at a Glance'!A{len(existing_values) + 1}"
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=append_range,
+                    valueInputOption="RAW",
+                    body={"values": [row_data]}
+                ).execute()
+                
+                logger.info(f"Appended new row for {formatted_month_year}")
             
-            # Extract data for main indices
-            for index in main_indices:
-                row_data = extract_index_values(index)
-                if row_data:
-                    table_rows.append(row_data)
+            # Apply formatting
+            self._format_manufacturing_table(service, sheet_id, mfg_sheet_id)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+
+    def _extract_manufacturing_data_with_llm(self, table_content, month_year):
+        """
+        Use OpenAI to extract structured data from the Manufacturing at a Glance table.
+        
+        Args:
+            table_content: The raw text content from the PDF
+            month_year: The month and year for reference
+            
+        Returns:
+            Dictionary with parsed data
+        """
+        try:
+            import os
+            import openai  # You'll need to have openai installed
+            import json
+            import re
+            
+            # Get API key from environment
+            openai.api_key = os.environ.get("OPENAI_API_KEY")
+            
+            if not openai.api_key:
+                logger.error("OpenAI API key not found in environment variables")
+                return {"month_year": month_year, "indices": {}}
+            
+            # Prepare the prompt for OpenAI
+            prompt = f"""
+            I have already extracted text from the "Manufacturing at a Glance" table in an ISM Manufacturing Report. The text is poorly formatted and I need you to parse it into structured data.
+            
+            Here is the extracted text:
+            ```
+            {table_content}
+            ```
+            
+            Based solely on the text above, please extract the following data points and return them in JSON format:
+            - Month and Year of the report (should be {month_year})
+            - Manufacturing PMI value and status (Growing/Contracting)
+            - New Orders value and status
+            - Production value and status
+            - Employment value and status
+            - Supplier Deliveries value and status (Faster/Slower)
+            - Inventories value and status
+            - Customers' Inventories value and status (Too High/Too Low)
+            - Prices value and status (Increasing/Decreasing)
+            - Backlog of Orders value and status
+            - New Export Orders value and status
+            - Imports value and status
+            - Overall Economy status (Growing/Contracting)
+            - Manufacturing Sector status (Growing/Contracting)
+            
+            The values should be present in the text, but they might be hard to find because of poor text formatting. Look for numbers and statuses like "Growing", "Contracting", etc.
+            
+            Return only a valid JSON object in this format:
+            {{
+                "month_year": "{month_year}",
+                "indices": {{
+                    "Manufacturing PMI": {{"current": "48.4", "direction": "Contracting"}},
+                    "New Orders": {{"current": "50.4", "direction": "Growing"}},
+                    ...and so on for all indices,
+                    "OVERALL ECONOMY": {{"direction": "Growing"}},
+                    "Manufacturing Sector": {{"direction": "Contracting"}}
+                }}
+            }}
+            
+            If you can't find a specific value, use "N/A" rather than making up values.
+            
+            IMPORTANT: DO NOT include any explanations, qualifications, or text outside the JSON. Return ONLY the JSON object wrapped in ```json and ``` markers.
+            """
+            
+            # Call the OpenAI API
+            client = openai.OpenAI()  # For v1.0.0 and above
+            response = client.chat.completions.create(
+                model="gpt-4",  # or your preferred model
+                messages=[
+                    {"role": "system", "content": "You are a data extraction assistant. When given text from a document, you extract structured data in JSON format. You ONLY output valid JSON with no additional text, wrapped in ```json and ``` markers."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.0  # Low temperature for more deterministic results
+                # Removed response_format parameter
+            )
+            
+            # Extract the response text
+            response_text = response.choices[0].message.content
+            
+            # Extract the JSON part from the response
+            # The LLM might return explanatory text before or after the JSON
+            json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group(1)
+            else:
+                # Try to find JSON directly
+                json_pattern = r'{\s*"month_year":\s*"[^"]*",\s*"indices":\s*{.*?}\s*}'
+                json_match = re.search(json_pattern, response_text, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group(0)
                 else:
-                    # Add empty row if data couldn't be extracted
-                    table_rows.append([index, "", "", "", "", "", ""])
+                    # If no JSON found, use the whole response
+                    json_text = response_text
             
-            # Add a blank row
-            table_rows.append([""])
-            
-            # Extract data for overall sections
-            for index in overall_indices:
-                row_data = extract_index_values(index)
-                if row_data:
-                    table_rows.append(row_data)
+            # Parse the JSON
+            try:
+                parsed_data = json.loads(json_text)
+                logger.info(f"Successfully extracted data for {parsed_data.get('month_year', 'Unknown')}")
+                
+                # Add some validation - check if we actually got some data
+                indices = parsed_data.get("indices", {})
+                if len(indices) > 0:
+                    return parsed_data
                 else:
-                    # Add empty row if data couldn't be extracted
-                    table_rows.append([index, "", "", "", "", "", ""])
+                    logger.warning("No indices found in parsed data")
+                    return {"month_year": month_year, "indices": {}}
+                    
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON from LLM response: {response_text[:200]}...")
+                return {"month_year": month_year, "indices": {}}
             
-            # Update the sheet with the table data
-            service.spreadsheets().values().update(
+        except Exception as e:
+            logger.error(f"Error extracting data with LLM: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"month_year": month_year, "indices": {}}
+    
+    def _format_month_year(self, month_year):
+        """Convert month and year to MM/YY format."""
+        try:
+            # Handle variations in month format
+            month_map = {
+                'january': '01', 'jan': '01',
+                'february': '02', 'feb': '02',
+                'march': '03', 'mar': '03',
+                'april': '04', 'apr': '04',
+                'may': '05',
+                'june': '06', 'jun': '06',
+                'july': '07', 'jul': '07',
+                'august': '08', 'aug': '08',
+                'september': '09', 'sep': '09',
+                'october': '10', 'oct': '10',
+                'november': '11', 'nov': '11',
+                'december': '12', 'dec': '12'
+            }
+            
+            # Normalize case
+            month_year_lower = month_year.lower()
+            
+            # Extract month
+            found_month = None
+            for key, value in month_map.items():
+                if key in month_year_lower:
+                    found_month = value
+                    break
+            
+            if not found_month:
+                logger.warning(f"Could not extract month from '{month_year}'")
+                from datetime import datetime
+                found_month = datetime.now().strftime("%m")
+            
+            # Extract year
+            import re
+            year_match = re.search(r'(20\d{2})', month_year)
+            if not year_match:
+                from datetime import datetime
+                current_year = datetime.now().year
+                logger.warning(f"Could not extract year from '{month_year}', using current year {current_year}")
+                found_year = str(current_year)[-2:]  # Last two digits
+            else:
+                found_year = year_match.group(1)[-2:]  # Last two digits
+            
+            # Return in MM/YY format
+            return f"{found_month}/{found_year}"
+        
+        except Exception as e:
+            logger.error(f"Error formatting month_year '{month_year}': {str(e)}")
+            from datetime import datetime
+            return datetime.now().strftime("%m/%y")
+
+    def _format_manufacturing_table(self, service, sheet_id, mfg_sheet_id):
+        """Apply formatting to the Manufacturing at a Glance table."""
+        try:
+            # Get the dimensions of the sheet
+            result = service.spreadsheets().values().get(
                 spreadsheetId=sheet_id,
-                range="'Manufacturing at a Glance'!A1",
-                valueInputOption="RAW",
-                body={"values": table_rows}
+                range="'Manufacturing at a Glance'!A:Z"
             ).execute()
             
-            # Apply formatting (bold headers, borders, etc.)
+            values = result.get('values', [])
+            max_rows = len(values) if values else 1
+            max_cols = max([len(row) for row in values]) if values else 14  # Default to 14 columns
+            
+            # Formatting requests
             requests = [
-                # Bold the title and header rows
+                # Format header row
                 {
                     "repeatCell": {
                         "range": {
                             "sheetId": mfg_sheet_id,
                             "startRowIndex": 0,
-                            "endRowIndex": 2,
+                            "endRowIndex": 1,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 7
+                            "endColumnIndex": max_cols
                         },
                         "cell": {
                             "userEnteredFormat": {
                                 "textFormat": {
                                     "bold": True
+                                },
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.9,
+                                    "blue": 0.9
                                 }
                             }
                         },
-                        "fields": "userEnteredFormat.textFormat.bold"
+                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
                     }
                 },
                 # Add borders
@@ -895,10 +1134,10 @@ class GoogleSheetsFormatterTool(BaseTool):
                     "updateBorders": {
                         "range": {
                             "sheetId": mfg_sheet_id,
-                            "startRowIndex": 1,
-                            "endRowIndex": len(table_rows),
+                            "startRowIndex": 0,
+                            "endRowIndex": max_rows,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 7
+                            "endColumnIndex": max_cols
                         },
                         "top": {"style": "SOLID"},
                         "bottom": {"style": "SOLID"},
@@ -907,8 +1146,134 @@ class GoogleSheetsFormatterTool(BaseTool):
                         "innerHorizontal": {"style": "SOLID"},
                         "innerVertical": {"style": "SOLID"}
                     }
+                },
+                # Auto-resize columns
+                {
+                    "autoResizeDimensions": {
+                        "dimensions": {
+                            "sheetId": mfg_sheet_id,
+                            "dimension": "COLUMNS",
+                            "startIndex": 0,
+                            "endIndex": max_cols
+                        }
+                    }
+                },
+                # Freeze header row
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": mfg_sheet_id,
+                            "gridProperties": {
+                                "frozenRowCount": 1
+                            }
+                        },
+                        "fields": "gridProperties.frozenRowCount"
+                    }
                 }
             ]
+            
+            # Add conditional formatting for cell colors
+            color_formats = [
+                # Growing/Increasing = green text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Growing)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.0,
+                                            "green": 0.6,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 0
+                    }
+                },
+                # Increasing = green text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Increasing)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.0,
+                                            "green": 0.6,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 1
+                    }
+                },
+                # Contracting = red text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Contracting)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.8,
+                                            "green": 0.0,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 2
+                    }
+                }
+            ]
+            
+            # Add color formats to requests
+            requests.extend(color_formats)
             
             # Execute formatting requests
             service.spreadsheets().batchUpdate(
@@ -916,30 +1281,440 @@ class GoogleSheetsFormatterTool(BaseTool):
                 body={"requests": requests}
             ).execute()
             
-            # Auto-resize columns to fit content
-            auto_resize_request = {
-                "autoResizeDimensions": {
-                    "dimensions": {
-                        "sheetId": mfg_sheet_id,
-                        "dimension": "COLUMNS",
-                        "startIndex": 0,
-                        "endIndex": 7
-                    }
-                }
+            logger.info("Applied formatting to Manufacturing at a Glance tab")
+            
+        except Exception as e:
+            logger.error(f"Error formatting manufacturing table: {str(e)}")
+
+    def _format_month_year_for_sheet(self, month_year):
+        """
+        Format the month and year as MM/YY for the sheet.
+        
+        Args:
+            month_year: Original month and year string
+            
+        Returns:
+            Formatted month and year as MM/YY
+        """
+        try:
+            # Handle variations in month format
+            month_map = {
+                'january': '01', 'jan': '01',
+                'february': '02', 'feb': '02',
+                'march': '03', 'mar': '03',
+                'april': '04', 'apr': '04',
+                'may': '05',
+                'june': '06', 'jun': '06',
+                'july': '07', 'jul': '07',
+                'august': '08', 'aug': '08',
+                'september': '09', 'sep': '09',
+                'october': '10', 'oct': '10',
+                'november': '11', 'nov': '11',
+                'december': '12', 'dec': '12'
             }
             
-            service.spreadsheets().batchUpdate(
+            # Normalize case
+            month_year_lower = month_year.lower()
+            
+            # Extract month
+            found_month = None
+            for key, value in month_map.items():
+                if key in month_year_lower:
+                    found_month = value
+                    break
+            
+            if not found_month:
+                logger.warning(f"Could not extract month from '{month_year}'")
+                # Default to current month
+                from datetime import datetime
+                found_month = datetime.now().strftime("%m")
+            
+            # Extract year
+            import re
+            year_match = re.search(r'(20\d{2})', month_year)
+            if not year_match:
+                from datetime import datetime
+                current_year = datetime.now().year
+                logger.warning(f"Could not extract year from '{month_year}', using current year {current_year}")
+                found_year = str(current_year)[-2:]  # Last two digits
+            else:
+                found_year = year_match.group(1)[-2:]  # Last two digits
+            
+            # Return in MM/YY format
+            return f"{found_month}/{found_year}"
+        
+        except Exception as e:
+            logger.error(f"Error formatting month_year '{month_year}': {str(e)}")
+            # Return a default if parsing fails
+            from datetime import datetime
+            return datetime.now().strftime("%m/%y")
+
+    def _prepare_horizontal_row(self, parsed_data, formatted_month_year):
+        """
+        Prepare a single horizontal row for the Manufacturing at a Glance table.
+        
+        Args:
+            parsed_data: Dictionary with parsed table data
+            formatted_month_year: Formatted month/year string (MM/YY)
+            
+        Returns:
+            List representing a single row of data
+        """
+        indices_data = parsed_data.get("indices", {})
+        
+        # Order of columns in the sheet
+        ordered_columns = [
+            "Manufacturing PMI", "New Orders", "Production", "Employment", 
+            "Supplier Deliveries", "Inventories", "Customers' Inventories", 
+            "Prices", "Backlog of Orders", "New Export Orders", "Imports",
+            "OVERALL ECONOMY", "Manufacturing Sector"
+        ]
+        
+        # Start with the month/year
+        row = [formatted_month_year]
+        
+        # Add data for each column
+        for index in ordered_columns:
+            if index in indices_data:
+                data = indices_data[index]
+                
+                if index not in ["OVERALL ECONOMY", "Manufacturing Sector"]:
+                    # For numeric indices, use the current value plus status
+                    value = data.get("current", "N/A")
+                    direction = data.get("direction", "")
+                    
+                    if value and direction:
+                        # Format: "50.4 (Growing)" or "48.7 (Contracting)"
+                        row.append(f"{value} ({direction})")
+                    else:
+                        row.append(value if value else "N/A")
+                else:
+                    # For overall sections, just use the direction (status)
+                    row.append(data.get("direction", "N/A"))
+            else:
+                # If data is missing for this index
+                row.append("N/A")
+        
+        return row
+
+    def _apply_manufacturing_table_formatting(self, service, sheet_id, mfg_sheet_id):
+        """
+        Apply formatting to the Manufacturing at a Glance table.
+        
+        Args:
+            service: Google Sheets service instance
+            sheet_id: ID of the Google Sheet
+            mfg_sheet_id: ID of the Manufacturing at a Glance tab
+        """
+        try:
+            # Get the current sheet dimensions
+            sheet_metadata = service.spreadsheets().get(
                 spreadsheetId=sheet_id,
-                body={"requests": [auto_resize_request]}
+                ranges=["'Manufacturing at a Glance'!A:Z"],
+                includeGridData=False
             ).execute()
             
-            logger.info("Successfully updated Manufacturing at a Glance tab")
-            return True
+            sheet_props = None
+            for sheet in sheet_metadata.get('sheets', []):
+                if sheet.get('properties', {}).get('sheetId') == mfg_sheet_id:
+                    sheet_props = sheet.get('properties', {})
+                    break
+            
+            if not sheet_props:
+                logger.warning("Could not find sheet properties for formatting")
+                return
+            
+            # Get the number of rows and columns of data
+            result = service.spreadsheets().values().get(
+                spreadsheetId=sheet_id,
+                range="'Manufacturing at a Glance'!A:Z"
+            ).execute()
+            
+            values = result.get('values', [])
+            max_rows = len(values) if values else 1
+            max_cols = max([len(row) for row in values]) if values else 14  # Default to 14 columns
+            
+            # Formatting requests
+            requests = [
+                # Format header row (bold font)
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": mfg_sheet_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": max_cols
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                },
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.9,
+                                    "blue": 0.9
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                    }
+                },
+                # Add borders
+                {
+                    "updateBorders": {
+                        "range": {
+                            "sheetId": mfg_sheet_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": max_rows,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": max_cols
+                        },
+                        "top": {"style": "SOLID"},
+                        "bottom": {"style": "SOLID"},
+                        "left": {"style": "SOLID"},
+                        "right": {"style": "SOLID"},
+                        "innerHorizontal": {"style": "SOLID"},
+                        "innerVertical": {"style": "SOLID"}
+                    }
+                },
+                # Auto-resize columns
+                {
+                    "autoResizeDimensions": {
+                        "dimensions": {
+                            "sheetId": mfg_sheet_id,
+                            "dimension": "COLUMNS",
+                            "startIndex": 0,
+                            "endIndex": max_cols
+                        }
+                    }
+                },
+                # Freeze header row
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": mfg_sheet_id,
+                            "gridProperties": {
+                                "frozenRowCount": 1
+                            }
+                        },
+                        "fields": "gridProperties.frozenRowCount"
+                    }
+                }
+            ]
+            
+            # Add conditional formatting for status indicators
+            status_formats = [
+                # Growing/Increasing = green text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Growing)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.0,
+                                            "green": 0.6,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 0
+                    }
+                },
+                # Increasing = green text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Increasing)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.0,
+                                            "green": 0.6,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 1
+                    }
+                },
+                # Contracting = red text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Contracting)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.8,
+                                            "green": 0.0,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 2
+                    }
+                },
+                # Decreasing = red text
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 1,  # Skip month column
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_CONTAINS",
+                                    "values": [{"userEnteredValue": "(Decreasing)"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.8,
+                                            "green": 0.0,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 3
+                    }
+                },
+                # Growing (standalone) = green text for Overall Economy and Manufacturing Sector
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 11,  # For Overall Economy and Manufacturing Sector columns
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_EQ",
+                                    "values": [{"userEnteredValue": "Growing"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.0,
+                                            "green": 0.6,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 4
+                    }
+                },
+                # Contracting (standalone) = red text for Overall Economy and Manufacturing Sector
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": mfg_sheet_id,
+                                    "startRowIndex": 1,  # Skip header
+                                    "endRowIndex": max_rows,
+                                    "startColumnIndex": 11,  # For Overall Economy and Manufacturing Sector columns
+                                    "endColumnIndex": max_cols
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_EQ",
+                                    "values": [{"userEnteredValue": "Contracting"}]
+                                },
+                                "format": {
+                                    "textFormat": {
+                                        "foregroundColor": {
+                                            "red": 0.8,
+                                            "green": 0.0,
+                                            "blue": 0.0
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "index": 5
+                    }
+                }
+            ]
+            
+            # Add all conditional formatting rules
+            requests.extend(status_formats)
+            
+            # Execute formatting requests
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={"requests": requests}
+            ).execute()
+            
+            logger.info("Applied formatting to Manufacturing at a Glance table")
+            
         except Exception as e:
-            logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
+            logger.error(f"Error applying formatting: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
-    
+
     def _get_sheet_id_by_name(self, service, spreadsheet_id, sheet_name):
         """Get the sheet ID from its name."""
         try:
