@@ -529,10 +529,10 @@ def process_single_pdf(pdf_path):
             description=f"""
             CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
             
-            The extracted data is: {extraction_data.get('industry_data', {})}
+            The extracted data is: {json.dumps(extraction_data.get('industry_data', {}))}
             
             STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
-            {extraction_data.get('index_summaries', {})}
+            {json.dumps(extraction_data.get('index_summaries', {}))}
             
             STEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:
             - GROWING vs DECLINING for most indices
