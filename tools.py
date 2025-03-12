@@ -65,7 +65,7 @@ class SimpleDataStructurerTool(BaseTool):
             A dictionary containing structured data for each index
         """
     )
-    
+
     def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Implementation of the required abstract _run method.
@@ -85,6 +85,19 @@ class SimpleDataStructurerTool(BaseTool):
             if not industry_data and "corrected_industry_data" in extracted_data:
                 industry_data = extracted_data["corrected_industry_data"]
                 logger.info("Using corrected_industry_data instead of empty industry_data")
+            
+            # Validate industry_data has content
+            if not industry_data:
+                logger.warning("Industry data is empty, attempting to re-extract from summaries")
+                
+                if "index_summaries" in extracted_data and extracted_data["index_summaries"]:
+                    try:
+                        from pdf_utils import extract_industry_mentions
+                        # Try to re-extract industry data from the summaries
+                        industry_data = extract_industry_mentions("", extracted_data["index_summaries"])
+                        logger.info("Re-extracted industry data from summaries")
+                    except Exception as e:
+                        logger.error(f"Error re-extracting industry data: {str(e)}")
             
             # Structure data for each index
             structured_data = {}
@@ -106,7 +119,7 @@ class SimpleDataStructurerTool(BaseTool):
                     "categories": categories
                 }
                 
-                # Log the number of industries found for this index
+                # Count industries to log
                 total_industries = sum(len(industries) for industries in categories.values())
                 logger.info(f"Structured {index}: {total_industries} industries across {len(categories)} categories")
             
@@ -126,7 +139,7 @@ class SimpleDataStructurerTool(BaseTool):
                     "categories": categories
                 }
             return structured_data
-        
+    
 class DataValidatorTool(BaseTool):
     name: str = Field(default="validate_data")
     description: str = Field(
@@ -169,31 +182,49 @@ class DataValidatorTool(BaseTool):
                         expected_lower = [c.lower() for c in expected_categories]
                         
                         # Check if all expected categories exist (case insensitive)
-                        validation_results[index] = all(ec in actual_categories for ec in expected_lower)
-                    else:
-                        # For indices without predefined categories, check if any categories exist
-                        validation_results[index] = len(categories) > 0
-                    
-                    if not validation_results[index]:
-                        logger.warning(f"Missing or invalid categories for {index}")
-                    
-                    # Additional validation: check if industries were found
-                    if validation_results[index]:
+                        categories_valid = all(ec in actual_categories for ec in expected_lower)
+                        
+                        # Check if any industries exist in any category
                         has_industries = False
                         for category, industries in categories.items():
                             if industries:  # If there's at least one industry
                                 has_industries = True
                                 break
                         
-                        if not has_industries:
-                            validation_results[index] = False
-                            logger.warning(f"No industries found for any category in {index}")
+                        validation_results[index] = categories_valid and has_industries
+                    else:
+                        # For indices without predefined categories, check if any categories exist
+                        validation_results[index] = len(categories) > 0
+                    
+                    if not validation_results[index]:
+                        reason = ""
+                        if not categories:
+                            reason = "no categories found"
+                        elif index in INDEX_CATEGORIES and not all(ec in actual_categories for ec in expected_lower):
+                            missing = [ec for ec in expected_lower if ec not in actual_categories]
+                            reason = f"missing categories: {', '.join(missing)}"
+                        elif not has_industries:
+                            reason = "no industries found in any category"
+                        
+                        logger.warning(f"Validation failed for {index}: {reason}")
             
             # Force at least one index to be valid to continue processing
             if not any(validation_results.values()) and structured_data:
-                first_index = next(iter(structured_data.keys()))
-                validation_results[first_index] = True
-                logger.info(f"Forcing {first_index} to be valid to continue processing")
+                # Look for an index that has at least some data
+                for index in structured_data:
+                    categories = structured_data[index].get("categories", {})
+                    has_industries = any(industries for category, industries in categories.items() if industries)
+                    
+                    if has_industries:
+                        validation_results[index] = True
+                        logger.info(f"Forcing {index} to be valid because it has industries")
+                        break
+                
+                # If still no valid index, just pick the first one
+                if not any(validation_results.values()):
+                    first_index = next(iter(structured_data.keys()))
+                    validation_results[first_index] = True
+                    logger.info(f"Forcing {first_index} to be valid to continue processing")
             
             return validation_results
         except Exception as e:
@@ -205,7 +236,7 @@ class DataValidatorTool(BaseTool):
                 validation_results[index] = True  # Default to True for all indices
             
             return validation_results
-
+    
 class GoogleSheetsFormatterTool(BaseTool):
     name: str = Field(default="format_for_sheets")
     description: str = Field(
@@ -243,18 +274,54 @@ class GoogleSheetsFormatterTool(BaseTool):
             validation_results = data['validation_results']
             extraction_data = data.get('extraction_data', {})
             
+            # Validate the data has actual industries before proceeding
+            def count_industries(data_dict):
+                if not isinstance(data_dict, dict):
+                    return 0
+                count = 0
+                for index in data_dict:
+                    if isinstance(data_dict[index], dict) and 'categories' in data_dict[index]:
+                        categories = data_dict[index]['categories']
+                        for category in categories:
+                            if isinstance(categories[category], list):
+                                count += len(categories[category])
+                return count
+            
+            industry_count = count_industries(structured_data)
+            logger.info(f"Found {industry_count} industries in structured data")
+            
+            # If no industries in structured data, try direct extraction if available
+            if industry_count == 0 and extraction_data and 'industry_data' in extraction_data:
+                logger.info("No industries found in structured data, trying to create from extraction_data")
+                structured_data = {}
+                month_year = extraction_data.get('month_year', 'Unknown')
+                
+                for index, categories in extraction_data['industry_data'].items():
+                    structured_data[index] = {
+                        'month_year': month_year,
+                        'categories': categories
+                    }
+                
+                industry_count = count_industries(structured_data)
+                logger.info(f"Created structured data with {industry_count} industries from extraction_data")
+            
+            # If still no valid data, log warning and return failure
+            if industry_count == 0:
+                logger.warning("No valid industry data found for Google Sheets update")
+                return False
+                
             # If no validation results, create some basic ones for continuing
             if not validation_results:
                 for index in ISM_INDICES:
                     validation_results[index] = index in structured_data
-                
+                    
             # Check if validation passed for at least some indices
             if not any(validation_results.values()):
                 # Force at least one index to be valid so we can continue
                 logger.warning("All validations failed. Forcing New Orders to be valid to continue.")
                 if ISM_INDICES:
                     validation_results[ISM_INDICES[0]] = True
-    
+        
             # Get the month and year from the first validated index
             month_year = None
             for index, valid in validation_results.items():
@@ -267,8 +334,9 @@ class GoogleSheetsFormatterTool(BaseTool):
                 month_year = extraction_data.get("month_year", "Unknown")
             
             if not month_year:
-                logger.warning("Could not determine month and year. Not updating Google Sheets.")
-                return False
+                logger.warning("Could not determine month and year. Using current date for Google Sheets.")
+                from datetime import datetime
+                month_year = datetime.now().strftime("%B %Y")
             
             # Get Google Sheets service
             service = get_google_sheets_service()
@@ -291,8 +359,18 @@ class GoogleSheetsFormatterTool(BaseTool):
                     # Format data for this index
                     formatted_data = self._format_index_data(index, structured_data[index])
                     
-                    # Update the sheet
-                    self._update_sheet_tab(service, sheet_id, index, formatted_data, month_year)
+                    # Check if there are actually any industries in this formatted data
+                    has_industries = False
+                    for category, industries in formatted_data.items():
+                        if industries:
+                            has_industries = True
+                            break
+                    
+                    if has_industries:
+                        # Update the sheet
+                        self._update_sheet_tab(service, sheet_id, index, formatted_data, month_year)
+                    else:
+                        logger.warning(f"No industries found for {index}, skipping tab update")
             
             logger.info(f"Successfully updated Google Sheets for {month_year}")
             return True
@@ -764,6 +842,17 @@ class GoogleSheetsFormatterTool(BaseTool):
                     logger.error(f"Failed to create tab {index}: {str(e2)}")
                     return False
                 
+            # Verify data has actual content
+            has_data = False
+            for category, industries in formatted_data.items():
+                if industries:
+                    has_data = True
+                    break
+            
+            if not has_data:
+                logger.warning(f"No industries found for {index}, skipping tab creation")
+                return False
+                
             # Get the sheet data
             result = service.spreadsheets().values().get(
                 spreadsheetId=sheet_id,
@@ -879,7 +968,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error updating sheet tab {index}: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-        
+    
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")
     description: str = Field(

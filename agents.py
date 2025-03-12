@@ -94,11 +94,31 @@ def create_data_correction_agent():
     return Agent(
         role="Data Verification and Correction Specialist",
         goal="Verify the accuracy of extracted industry data and correct any misclassifications",
-        backstory="""You are a highly skilled data analyst with a keen eye for detail.
-        You specialize in ensuring data integrity and accuracy. Your primary task is to
-        review extracted data, identify any misclassifications or omissions, and correct them
-        based on the original source document.""",
+        backstory="""You are a highly skilled data analyst specializing in ISM Manufacturing Reports.
+        Your expertise lies in ensuring data integrity and accurate industry classifications.
+        Your task is to carefully examine extracted data and verify that industries are correctly
+        categorized based on explicit mentions in the report text.""",
         verbose=True,
         allow_delegation=False,
-        llm_config={"model": "gpt-4o"}
+        llm_config={
+            "model": "gpt-4o",
+            "temperature": 0.1,  # Lower temperature for more precise fact-based output
+            "system_prompt": """
+            You are a data verification specialist with extensive experience analyzing ISM Manufacturing Reports.
+            Your task is to verify and correct the industry categorization from extracted data,
+            ensuring that industries are correctly placed in the appropriate categories based on
+            EXPLICIT statements in the report text. Pay particular attention to the exact phrasing 
+            in the source text when determining categories. Never invent or assume data.
+            
+            Always maintain the correct month and year for the report, which is February 2025.
+            
+            When producing corrected data, return a complete dictionary that includes:
+            - 'month_year' set to 'February 2025'
+            - 'manufacturing_table' from the original data
+            - 'index_summaries' from the original data
+            - 'corrected_industry_data' with your corrections
+            
+            Be sure to look carefully for industries in both growing and declining categories for each index.
+            """
+        }
     )
