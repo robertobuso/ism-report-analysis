@@ -491,6 +491,67 @@ def extract_industry_mentions(text, indices):
             logger.error(f"Traceback: {traceback.format_exc()}")
             industry_data[index] = {}
     
+    # Extra validation for the data
+    for index, categories in industry_data.items():
+        # Ensure there are no duplicate industries across categories in the same index
+        all_industries = []
+        industries_seen = {}
+        
+        for category, industries_list in categories.items():
+            for i, industry in enumerate(industries_list[:]):
+                # Skip invalid entries
+                if not industry or not isinstance(industry, str):
+                    continue
+                    
+                # Skip parsing artifacts
+                if ("following order" in industry.lower() or 
+                    "are:" in industry.lower() or
+                    industry.startswith(',') or 
+                    industry.startswith(':') or
+                    len(industry.strip()) < 3):
+                    continue
+                    
+                industry = industry.strip()
+                
+                # Check if this industry is already in another category within this index
+                if industry in all_industries:
+                    # Remove from the less likely category based on context
+                    current_category = category
+                    other_category = industries_seen[industry]
+                    
+                    # Keep in primary category based on index type
+                    primary_categories = {
+                        "New Orders": "Growing",
+                        "Production": "Growing",
+                        "Employment": "Growing",
+                        "Supplier Deliveries": "Slower",
+                        "Inventories": "Higher",
+                        "Customers' Inventories": "Too High",
+                        "Prices": "Increasing",
+                        "Backlog of Orders": "Growing",
+                        "New Export Orders": "Growing",
+                        "Imports": "Growing"
+                    }
+                    
+                    # If the current category is the primary category, keep it here and remove from the other
+                    if current_category == primary_categories.get(index, current_category):
+                        # Find and remove from the other category
+                        if industry in categories[other_category]:
+                            categories[other_category].remove(industry)
+                            logger.info(f"Removed duplicate industry '{industry}' from {index} - {other_category}")
+                    else:
+                        # Remove from current category
+                        categories[current_category][i] = None
+                        logger.info(f"Removed duplicate industry '{industry}' from {index} - {current_category}")
+                else:
+                    all_industries.append(industry)
+                    industries_seen[industry] = category
+        
+        # Remove None values that were marked for deletion
+        for category in categories:
+            categories[category] = [ind for ind in categories[category] if ind is not None]
+
+    # Return the cleaned up industry data
     return industry_data
 
 def preserve_order_industry_list(text):

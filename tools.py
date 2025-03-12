@@ -32,26 +32,122 @@ class SimplePDFExtractionTool(BaseTool):
         """
     )
     
-    def _run(self, pdf_path: str) -> Dict[str, Any]:
+    def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Implementation of the required abstract _run method.
-        This extracts data from the ISM Manufacturing Report PDF.
+        This structures the extracted ISM data.
         """
         try:
-            logger.info(f"PDF Extraction Tool using pdf_path: {pdf_path}")
+            logger.info("Data Structurer Tool received input")
             
-            # Parse the ISM report
-            extracted_data = parse_ism_report(pdf_path)
-            if not extracted_data:
-                raise Exception(f"Failed to extract data from {pdf_path}")
+            # Get month and year
+            month_year = extracted_data.get("month_year", "Unknown")
+            logger.info(f"Structuring data for {month_year}")
             
-            logger.info(f"Successfully extracted data from {pdf_path}")
-            return extracted_data
+            # Check different possible locations for industry data
+            industry_data = None
+            
+            # First try getting industry_data directly
+            if "industry_data" in extracted_data and extracted_data["industry_data"]:
+                industry_data = extracted_data["industry_data"]
+                logger.info("Using industry_data from extraction")
+                
+            # If not available, check for corrected_industry_data
+            elif "corrected_industry_data" in extracted_data and extracted_data["corrected_industry_data"]:
+                industry_data = extracted_data["corrected_industry_data"]
+                logger.info("Using corrected_industry_data")
+                
+            # If still not available, look inside 'manufacturing_table'
+            elif "manufacturing_table" in extracted_data and isinstance(extracted_data["manufacturing_table"], dict):
+                if any(k in extracted_data["manufacturing_table"] for k in ISM_INDICES):
+                    industry_data = extracted_data["manufacturing_table"]
+                    logger.info("Using industry data from manufacturing_table")
+            
+            # Validate industry_data has content
+            if not industry_data:
+                logger.warning("Industry data is empty, attempting to re-extract from summaries")
+                
+                if "index_summaries" in extracted_data and extracted_data["index_summaries"]:
+                    try:
+                        from pdf_utils import extract_industry_mentions
+                        # Try to re-extract industry data from the summaries
+                        industry_data = extract_industry_mentions("", extracted_data["index_summaries"])
+                        logger.info("Re-extracted industry data from summaries")
+                    except Exception as e:
+                        logger.error(f"Error re-extracting industry data: {str(e)}")
+            
+            # Structure data for each index
+            structured_data = {}
+            
+            # Ensure we have entries for all expected indices
+            for index in ISM_INDICES:
+                # Get categories for this index if available
+                categories = {}
+                if industry_data and index in industry_data:
+                    categories = industry_data[index]
+                
+                # Clean up the categories but preserve order
+                cleaned_categories = {}
+                
+                # Process each category
+                for category_name, industries in categories.items():
+                    cleaned_industries = []
+                    
+                    # Clean up each industry name in the list
+                    for industry in industries:
+                        if not industry or not isinstance(industry, str):
+                            continue
+                            
+                        # Skip parsing artifacts and invalid entries
+                        if ("following order" in industry.lower() or 
+                            "are:" in industry.lower() or 
+                            industry.startswith(',') or 
+                            industry.startswith(':') or 
+                            len(industry.strip()) < 3):
+                            continue
+                            
+                        # Clean up the industry name
+                        industry = industry.strip()
+                        
+                        # Add to cleaned list if not already there
+                        if industry not in cleaned_industries:
+                            cleaned_industries.append(industry)
+                    
+                    # Only add categories that actually have industries
+                    if cleaned_industries:
+                        cleaned_categories[category_name] = cleaned_industries
+                
+                # If no data for this index, create empty categories
+                if not cleaned_categories and index in INDEX_CATEGORIES:
+                    cleaned_categories = {category: [] for category in INDEX_CATEGORIES[index]}
+                
+                # Add to structured_data
+                structured_data[index] = {
+                    "month_year": month_year,
+                    "categories": cleaned_categories
+                }
+                
+                # Count industries to log
+                total_industries = sum(len(industries) for industries in cleaned_categories.values())
+                logger.info(f"Structured {index}: {total_industries} industries across {len(cleaned_categories)} categories")
+            
+            return structured_data
         except Exception as e:
-            logger.error(f"Error in PDF extraction: {str(e)}")
+            logger.error(f"Error in data structuring: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            raise
-
+            # Return minimal valid structure as fallback
+            structured_data = {}
+            for index in ISM_INDICES:
+                categories = {}
+                if index in INDEX_CATEGORIES:
+                    for category in INDEX_CATEGORIES[index]:
+                        categories[category] = []
+                structured_data[index] = {
+                    "month_year": month_year if 'month_year' in locals() else "Unknown",
+                    "categories": categories
+                }
+            return structured_data
+    
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")
     description: str = Field(
@@ -972,23 +1068,23 @@ class GoogleSheetsFormatterTool(BaseTool):
                     spreadsheetId=sheet_id,
                     range=f"'{index}'!A1",
                     valueInputOption="RAW",
-                    body={"values": [[month_year]]}
+                    body={"values": [[formatted_month_year]]}
                 ).execute()
                 
                 # Reset values to just the header
-                values = [[month_year]]
+                values = [[formatted_month_year]]
             
             # Get the header row
             header_row = values[0] if values else []
             
             # Find the column index for the month, or add it if it doesn't exist
-            if month_year in header_row:
-                month_col_idx = header_row.index(month_year)
-                logger.info(f"Month {month_year} found in column {month_col_idx + 1}")
+            if formatted_month_year in header_row:
+                month_col_idx = header_row.index(formatted_month_year)
+                logger.info(f"Month {formatted_month_year} found in column {month_col_idx + 1}")
             else:
                 # Add the new month to the right of the existing columns
                 month_col_idx = len(header_row)
-                header_row.append(month_year)
+                header_row.append(formatted_month_year)
                 
                 # Update the header row
                 service.spreadsheets().values().update(
@@ -997,53 +1093,60 @@ class GoogleSheetsFormatterTool(BaseTool):
                     valueInputOption="RAW",
                     body={"values": [header_row]}
                 ).execute()
-                logger.info(f"Added month {month_year} in column {month_col_idx + 1}")
+                logger.info(f"Added month {formatted_month_year} in column {month_col_idx + 1}")
             
-            # Collect all category data with industry info
-            all_entries = []
+            # Collect all entries for the column - sort by category and preserve original order
+            all_industry_entries = []
             
-            # Get all unique industries with their categories
+            # First process Growing/Increasing/Slower/Higher/Too High categories
+            primary_category = self._get_primary_category(index)
+            secondary_category = self._get_secondary_category(index)
+            
+            # Add primary category entries
+            if primary_category in formatted_data:
+                for industry in formatted_data[primary_category]:
+                    if self._is_valid_industry(industry):
+                        all_industry_entries.append(f"{industry} - {primary_category}")
+            
+            # Add secondary category entries
+            if secondary_category in formatted_data:
+                for industry in formatted_data[secondary_category]:
+                    if self._is_valid_industry(industry):
+                        all_industry_entries.append(f"{industry} - {secondary_category}")
+            
+            # Add any other categories that might exist
             for category, industries in formatted_data.items():
-                for industry in industries:
-                    if not industry or not isinstance(industry, str):
-                        continue
-                        
-                    # Skip invalid entries that might be parsing artifacts
-                    if ("following order" in industry.lower() or 
-                        "are:" in industry.lower() or
-                        industry.startswith(',') or 
-                        industry.startswith(':') or
-                        len(industry.strip()) < 3):
-                        continue
-                        
-                    # Clean up the industry name
-                    industry = industry.strip()
-                    
-                    # Add industry with its category
-                    all_entries.append({
-                        "industry": industry,
-                        "status": f"{industry} - {category}"
-                    })
-                    
-            # Build a list for each industry that will go into the cell
-            industry_status_list = []
-            for entry in all_entries:
-                industry_status_list.append(entry["status"])
+                if category not in [primary_category, secondary_category]:
+                    for industry in industries:
+                        if self._is_valid_industry(industry):
+                            all_industry_entries.append(f"{industry} - {category}")
             
-            # Join with newline characters
-            cell_content = "\n".join(industry_status_list)
+            # Build column data - each cell contains a single industry + status
+            column_data = []
+            for entry in all_industry_entries:
+                column_data.append([entry])
             
-            # Update the cell for this month
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=f"'{index}'!{chr(65 + month_col_idx)}2",  # Update cell at row 2
-                valueInputOption="RAW",
-                body={"values": [[cell_content]]}
-            ).execute()
+            # Update the column for this month
+            if column_data:
+                # First, clear any existing data in the column to ensure clean update
+                clear_range = f"'{index}'!{chr(65 + month_col_idx)}2:{chr(65 + month_col_idx)}1000"  # Assuming max 1000 rows
+                service.spreadsheets().values().clear(
+                    spreadsheetId=sheet_id,
+                    range=clear_range
+                ).execute()
+                
+                # Then update with new data
+                range_to_update = f"'{index}'!{chr(65 + month_col_idx)}2"
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=range_to_update,
+                    valueInputOption="RAW",
+                    body={"values": column_data}
+                ).execute()
+                
+            logger.info(f"Updated {index} sheet with data for {formatted_month_year} with {len(all_industry_entries)} industries")
             
-            logger.info(f"Updated {index} sheet with data for {month_year} with {len(industry_status_list)} industries")
-            
-            # Format the cell to wrap text and fit content
+            # Format the column to wrap text and fit content
             sheet_id_num = self._get_sheet_id_by_name(service, sheet_id, index)
             
             if sheet_id_num:
@@ -1054,7 +1157,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                             "range": {
                                 "sheetId": sheet_id_num,
                                 "startRowIndex": 1,  # Row 2 (0-indexed)
-                                "endRowIndex": 2,
+                                "endRowIndex": len(column_data) + 1,
                                 "startColumnIndex": month_col_idx,
                                 "endColumnIndex": month_col_idx + 1
                             },
@@ -1065,17 +1168,6 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 }
                             },
                             "fields": "userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment"
-                        }
-                    },
-                    # Auto-resize row height
-                    {
-                        "autoResizeDimensions": {
-                            "dimensions": {
-                                "sheetId": sheet_id_num,
-                                "dimension": "ROWS",
-                                "startIndex": 1,
-                                "endIndex": 2
-                            }
                         }
                     },
                     # Auto-resize column width
@@ -1096,14 +1188,61 @@ class GoogleSheetsFormatterTool(BaseTool):
                     body={"requests": requests}
                 ).execute()
                 
-                logger.info(f"Applied formatting to cell for {month_year} in {index} tab")
+                logger.info(f"Applied formatting to cell for {formatted_month_year} in {index} tab")
             
             return True
         except Exception as e:
             logger.error(f"Error updating sheet tab {index}: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
+
+    def _get_primary_category(self, index):
+        """Get the primary category for an index based on its type."""
+        index_category_map = {
+            "New Orders": "Growing",
+            "Production": "Growing",
+            "Employment": "Growing",
+            "Supplier Deliveries": "Slower",
+            "Inventories": "Higher",
+            "Customers' Inventories": "Too High",
+            "Prices": "Increasing",
+            "Backlog of Orders": "Growing",
+            "New Export Orders": "Growing",
+            "Imports": "Growing"
+        }
+        return index_category_map.get(index, "Growing")
+
+    def _get_secondary_category(self, index):
+        """Get the secondary category for an index based on its type."""
+        index_category_map = {
+            "New Orders": "Declining",
+            "Production": "Declining",
+            "Employment": "Declining",
+            "Supplier Deliveries": "Faster",
+            "Inventories": "Lower",
+            "Customers' Inventories": "Too Low",
+            "Prices": "Decreasing",
+            "Backlog of Orders": "Declining",
+            "New Export Orders": "Declining",
+            "Imports": "Declining"
+        }
+        return index_category_map.get(index, "Declining")
+
+    def _is_valid_industry(self, industry):
+        """Check if an industry name is valid and not a parsing artifact."""
+        if not industry or not isinstance(industry, str):
+            return False
             
+        # Skip parsing artifacts and invalid entries
+        if ("following order" in industry.lower() or 
+            "are:" in industry.lower() or
+            industry.startswith(',') or 
+            industry.startswith(':') or
+            len(industry.strip()) < 3):
+            return False
+            
+        return True
+
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")
     description: str = Field(

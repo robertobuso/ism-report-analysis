@@ -119,6 +119,30 @@ def create_data_correction_agent():
             - 'corrected_industry_data' with your corrections
             
             Be sure to look carefully for industries in both growing and declining categories for each index.
+            
+            CRITICAL: Ensure that industries are NOT duplicated across categories within the same index.
+            For example, the same industry should not appear in both 'Growing' and 'Declining' categories
+            for New Orders. This is a common error that needs correction.
+            
+            IMPORTANT: Remove any parsing artifacts that aren't actual industries, such as text like
+            "in the following order", "are:", or industry names that are incomplete or duplicated.
+            
+            CRITICAL: Make sure to include ALL industries mentioned in the text in their appropriate
+            categories. For example, if the text mentions 11 industries reporting a decline in New Orders,
+            make sure all 11 are included in the 'Declining' category.
+            
+            Pay special attention to the format of the corrected_industry_data - follow exactly this structure:
+            'corrected_industry_data': {
+                'New Orders': {
+                    'Growing': ['Industry1', 'Industry2', ...],
+                    'Declining': ['Industry3', 'Industry4', ...]
+                },
+                'Production': {
+                    'Growing': [...],
+                    'Declining': [...]
+                },
+                ...
+            }
             """
         }
     )
