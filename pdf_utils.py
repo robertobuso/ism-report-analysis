@@ -153,7 +153,10 @@ def extract_index_summaries(text):
     return summaries
 
 def extract_industry_mentions(text, indices):
-    """Extract industries mentioned for each index."""
+    """
+    Extract industries mentioned for each index, using improved parsing to handle 
+    composite industry names correctly while preserving the exact order as listed in the report.
+    """
     industry_data = {}
     
     # Loop through each index and its summary text
@@ -195,12 +198,12 @@ def extract_industry_mentions(text, indices):
                 slower = []
                 if slower_match:
                     slower_text = slower_match.group(1).strip()
-                    slower = [i.strip() for i in re.split(r';|and|,', slower_text) if i.strip()]
+                    slower = preserve_order_industry_list(slower_text)
                 
                 faster = []
                 if faster_match:
                     faster_text = faster_match.group(1).strip()
-                    faster = [i.strip() for i in re.split(r';|and|,', faster_text) if i.strip()]
+                    faster = preserve_order_industry_list(faster_text)
                 
                 industry_data[index] = {
                     "Slower": slower,
@@ -230,12 +233,12 @@ def extract_industry_mentions(text, indices):
                 higher = []
                 if higher_match:
                     higher_text = higher_match.group(1).strip()
-                    higher = [i.strip() for i in re.split(r';|and|,', higher_text) if i.strip()]
+                    higher = preserve_order_industry_list(higher_text)
                 
                 lower = []
                 if lower_match:
                     lower_text = lower_match.group(1).strip()
-                    lower = [i.strip() for i in re.split(r';|and|,', lower_text) if i.strip()]
+                    lower = preserve_order_industry_list(lower_text)
                 
                 industry_data[index] = {
                     "Higher": higher,
@@ -265,12 +268,12 @@ def extract_industry_mentions(text, indices):
                 too_high = []
                 if too_high_match:
                     too_high_text = too_high_match.group(1).strip()
-                    too_high = [i.strip() for i in re.split(r';|and|,', too_high_text) if i.strip()]
+                    too_high = preserve_order_industry_list(too_high_text)
                 
                 too_low = []
                 if too_low_match:
                     too_low_text = too_low_match.group(1).strip()
-                    too_low = [i.strip() for i in re.split(r';|and|,', too_low_text) if i.strip()]
+                    too_low = preserve_order_industry_list(too_low_text)
                 
                 industry_data[index] = {
                     "Too High": too_high,
@@ -306,12 +309,12 @@ def extract_industry_mentions(text, indices):
                 increasing = []
                 if increasing_match:
                     increasing_text = increasing_match.group(1).strip()
-                    increasing = [i.strip() for i in re.split(r';|and|,', increasing_text) if i.strip()]
+                    increasing = preserve_order_industry_list(increasing_text)
                 
                 decreasing = []
                 if decreasing_match:
                     decreasing_text = decreasing_match.group(1).strip()
-                    decreasing = [i.strip() for i in re.split(r';|and|,', decreasing_text) if i.strip()]
+                    decreasing = preserve_order_industry_list(decreasing_text)
                 
                 industry_data[index] = {
                     "Increasing": increasing,
@@ -341,12 +344,12 @@ def extract_industry_mentions(text, indices):
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
+                    growing = preserve_order_industry_list(growing_text)
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
+                    declining = preserve_order_industry_list(declining_text)
                 
                 industry_data[index] = {
                     "Growing": growing,
@@ -376,12 +379,12 @@ def extract_industry_mentions(text, indices):
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
+                    growing = preserve_order_industry_list(growing_text)
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
+                    declining = preserve_order_industry_list(declining_text)
                 
                 industry_data[index] = {
                     "Growing": growing,
@@ -411,22 +414,29 @@ def extract_industry_mentions(text, indices):
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
+                    growing = preserve_order_industry_list(growing_text)
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
+                    declining = preserve_order_industry_list(declining_text)
                 
                 industry_data[index] = {
                     "Growing": growing,
                     "Declining": declining
                 }
                 
-            else:  # Default pattern for growth/decline
+            else:  # Default pattern for growth/decline - including "New Orders"
                 # Extract industries reporting growth
                 growth_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) (?:growth|expansion|increase|growing|increased|an increase|higher|growth in)(?: in| of)? (?:[\w\s&]+)?(?:[^:]*?)(?:are|—|:|in|-|,)(?:.+?)?(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Specific pattern for New Orders growth
+                if index == "New Orders":
+                    new_orders_growth = r"The (?:[\w\s]+) (?:industries|manufacturing industries) that reported growth in new orders in February,(?:[^:]*?)(?:are|in order|:|-)(?:[^:]*?)(?:order|:)[^:]*?([^\.]+)"
+                    new_orders_match = re.search(new_orders_growth, summary, re.IGNORECASE | re.DOTALL)
+                    if new_orders_match:
+                        growth_match = new_orders_match
                 
                 # Fallback pattern if first one doesn't match
                 if not growth_match:
@@ -437,6 +447,13 @@ def extract_industry_mentions(text, indices):
                 decline_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) (?:a |an |)(?:decline|contraction|decrease|declining|decreased|lower)(?: in| of)? (?:[\w\s&]+)?(?:[^:]*?)(?:are|—|:|in|-|,)(?:.+?)?(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
+                # Specific pattern for New Orders decline
+                if index == "New Orders":
+                    new_orders_decline = r"The (?:[\w\s]+) industries reporting a decline in new orders in February,(?:[^:]*?)(?:are|in order|:|-)(?:[^:]*?)(?:order|:)[^:]*?([^\.]+)"
+                    new_orders_decline_match = re.search(new_orders_decline, summary, re.IGNORECASE | re.DOTALL)
+                    if new_orders_decline_match:
+                        decline_match = new_orders_decline_match
+                
                 # Fallback pattern if first one doesn't match
                 if not decline_match:
                     decline_fallback = r"(?:[\w\s]+) industries (?:that |)(?:reporting|reported|report) (?:a |)(?:decline|decrease|contraction)(?:[^:]*?)(?:are|:|-)([^\.]+)"
@@ -446,12 +463,12 @@ def extract_industry_mentions(text, indices):
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
+                    growing = preserve_order_industry_list(growing_text)
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
+                    declining = preserve_order_industry_list(declining_text)
                 
                 industry_data[index] = {
                     "Growing": growing,
@@ -475,6 +492,55 @@ def extract_industry_mentions(text, indices):
             industry_data[index] = {}
     
     return industry_data
+
+def preserve_order_industry_list(text):
+    """
+    Clean and intelligently split a list of industries into separate items
+    while preserving the exact order as listed in the original report.
+    """
+    if not text:
+        return []
+    
+    # First, standardize the text by removing formatting and special characters
+    cleaned_text = text.strip()
+    
+    # Replace special control characters
+    cleaned_text = re.sub(r'[\n\r\t]+', ' ', cleaned_text)
+    
+    # Primary split: Use semicolons as the main delimiter
+    # This is safer than using commas since semicolons are more likely to separate distinct industries
+    items = []
+    if ';' in cleaned_text:
+        # Split by semicolons, which are the primary delimiter between industries
+        raw_items = [part.strip() for part in cleaned_text.split(';')]
+    else:
+        # If no semicolons, comma splitting is a fallback but riskier
+        raw_items = [part.strip() for part in cleaned_text.split(',')]
+    
+    # Process the last item which might have "and" prefixing the last industry
+    if raw_items and len(raw_items) > 0:
+        last_item = raw_items[-1]
+        if last_item.lower().startswith('and '):
+            raw_items[-1] = last_item[4:].strip()
+    
+    # Process each item to ensure proper formatting
+    for item in raw_items:
+        item = item.strip()
+        
+        # Skip empty items
+        if not item:
+            continue
+            
+        # Clean up the item
+        item = re.sub(r'\s*\(\d+\)\s*$', '', item)  # Remove footnote numbers
+        item = re.sub(r'\s*\*+\s*$', '', item)      # Remove trailing asterisks
+        item = re.sub(r'^\s*-\s*', '', item)        # Remove leading dashes
+        
+        # Only add non-empty, meaningful items
+        if item and len(item) > 1:
+            items.append(item)
+    
+    return items
 
 def parse_ism_report(pdf_path):
     """Parse an ISM manufacturing report and extract key data."""
@@ -547,48 +613,3 @@ def parse_ism_report(pdf_path):
         logger.error(f"Error parsing ISM report: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
-
-def clean_and_split_industry_list(text):
-    """Clean and split a list of industries into separate items."""
-    if not text:
-        return []
-    
-    # First, standardize the text by removing formatting and special characters
-    cleaned_text = text.strip()
-    
-    # Replace special control characters
-    cleaned_text = re.sub(r'[\n\r\t]+', ' ', cleaned_text)
-    
-    # Replace semicolons with commas
-    cleaned_text = re.sub(r';\s*', ', ', cleaned_text)
-    
-    # Replace "and" at the end of a list with a comma
-    cleaned_text = re.sub(r'\s+and\s+(?=\S+$)', ', ', cleaned_text, flags=re.IGNORECASE)
-    
-    # Split by commas and clean up each item
-    industries = []
-    for item in cleaned_text.split(','):
-        item = item.strip()
-        if not item:
-            continue
-            
-        # Clean up the item
-        item = re.sub(r'\s*\(\d+\)\s*$', '', item)  # Remove footnote numbers like (1)
-        item = re.sub(r'\s*\*+\s*$', '', item)      # Remove trailing asterisks
-        item = re.sub(r'^\s*-\s*', '', item)        # Remove leading dashes
-        
-        # Remove any other special characters
-        item = re.sub(r'[^\w\s&;,\'()-]', '', item)
-        
-        if item and len(item) > 1:  # Only include non-empty, meaningful items
-            industries.append(item)
-    
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_industries = []
-    for industry in industries:
-        if industry not in seen:
-            seen.add(industry)
-            unique_industries.append(industry)
-    
-    return unique_industries

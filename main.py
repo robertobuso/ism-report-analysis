@@ -618,7 +618,6 @@ def process_single_pdf(pdf_path):
             ESPECIALLY IMPORTANT: Make sure to include all parts of the original extraction (month_year, manufacturing_table, 
             index_summaries, AND the corrected industry_data).
             
-            IMPORTANT: The document is from February 2025, make sure to preserve this date.
             """,
             expected_output="A complete dictionary containing the verified data with month_year, manufacturing_table, index_summaries, and corrected industry_data",
             agent=data_correction_agent
@@ -640,10 +639,6 @@ def process_single_pdf(pdf_path):
         
         # Ensure we're working with the correct data
         if verified_data:
-            # Ensure month_year is correct (should be February 2025)
-            if verified_data.get('month_year') != 'February 2025':
-                verified_data['month_year'] = 'February 2025'
-                logger.warning("Corrected month_year to February 2025")
                 
             # Use the verified data if it was successfully parsed
             if 'industry_data' in verified_data:
@@ -652,7 +647,6 @@ def process_single_pdf(pdf_path):
             elif 'corrected_industry_data' in verified_data:
                 # Use the corrected industry data
                 extraction_data['industry_data'] = verified_data['corrected_industry_data']
-                extraction_data['month_year'] = 'February 2025'  # Ensure correct date
                 logger.info("Successfully applied corrected industry data")
             else:
                 logger.warning("Verification didn't return expected structure, using original data")
@@ -673,7 +667,7 @@ def process_single_pdf(pdf_path):
         for key in required_keys:
             if key not in extraction_data:
                 if key == "month_year":
-                    extraction_data[key] = "February 2025"  # Hardcode correct date
+                    extraction_data[key] = "" 
                 elif key == "manufacturing_table":
                     extraction_data[key] = ""
                 else:
@@ -682,9 +676,6 @@ def process_single_pdf(pdf_path):
         # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
         if "corrected_industry_data" in extraction_data and not extraction_data.get("industry_data"):
             extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
-        
-        # Ensure month_year is correct
-        extraction_data["month_year"] = "February 2025"
         
         # Structure the data
         structured_data = structurer_tool._run(extraction_data)
@@ -698,7 +689,7 @@ def process_single_pdf(pdf_path):
             from config import ISM_INDICES, INDEX_CATEGORIES
             for index in ISM_INDICES:
                 structured_data[index] = {
-                    "month_year": "February 2025",
+                    "month_year": "",
                     "categories": {}
                 }
                 if index in INDEX_CATEGORIES:
