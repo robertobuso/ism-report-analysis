@@ -159,440 +159,315 @@ def extract_industry_mentions(text, indices):
     # Loop through each index and its summary text
     for index, summary in indices.items():
         try:
-            # Initialize categories dictionary for this index
-            categories = {}
+            # Initialize all pattern matches as None at the beginning
+            growth_match = None
+            decline_match = None
+            slower_match = None
+            faster_match = None
+            higher_match = None
+            lower_match = None
+            too_high_match = None
+            too_low_match = None
+            increasing_match = None
+            decreasing_match = None
             
             # Process based on index type
-            if index == "New Orders":
-                # Look for growing industries
-                growth_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) (?:manufacturing )?industries (?:that )?reported growth in new orders in February,? in order,? are:([^\.]+)"
-                growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
-                
-                # Look for declining industries
-                decline_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting a decline in new orders in February,? in order,? are:([^\.]+)"
-                decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
-                
-                # Process matches
-                growing = []
-                if growth_match:
-                    growing_text = growth_match.group(1).strip()
-                    growing = clean_and_split_industry_list(growing_text)
-                
-                declining = []
-                if decline_match:
-                    declining_text = decline_match.group(1).strip()
-                    declining = clean_and_split_industry_list(declining_text)
-                
-                # Check if we found any industries
-                if not growing and not declining:
-                    # Try another pattern for growing
-                    alt_growth = r"(?:nine|eight|seven|six|five|four|three|two|one|\d+) (?:manufacturing )?industries that reported growth in new orders[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        growing = clean_and_split_industry_list(alt_match.group(1).strip())
-                    
-                    # Try another pattern for declining
-                    alt_decline = r"(?:nine|eight|seven|six|five|four|three|two|one|\d+) industries (?:reporting|that reported) a (?:decline|decrease|contraction) in new orders[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
-                    "Growing": growing,
-                    "Declining": declining
-                }
-                
-            elif index == "Production":
-                # Look for growing industries
-                growth_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting growth in production (?:during the month of February|in February),? in order,? are:([^\.]+)"
-                growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
-                
-                # Look for declining industries
-                decline_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting a decrease in production in February[^:]*:([^\.]+)"
-                decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
-                
-                # Process matches
-                growing = []
-                if growth_match:
-                    growing_text = growth_match.group(1).strip()
-                    growing = clean_and_split_industry_list(growing_text)
-                
-                declining = []
-                if decline_match:
-                    declining_text = decline_match.group(1).strip()
-                    declining = clean_and_split_industry_list(declining_text)
-                
-                # Check if we found any industries
-                if not growing:
-                    # Try more general pattern
-                    alt_growth = r"(?:seven|six|five|four|three|two|one|\d+) industries reporting growth in production[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        growing = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not declining:
-                    # Try more general pattern for industries reporting a decrease
-                    alt_decline = r"(?:four|three|two|one|\d+) industries reporting a decrease in production[^:]*are:([^\.]+)"
-                    alt_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                    
-                    # Try for "The industries reporting a decrease in production"
-                    if not declining:
-                        alt_decline2 = r"industries reporting a decrease in production[^:]*are:([^\.]+)"
-                        alt_match = re.search(alt_decline2, summary, re.IGNORECASE | re.DOTALL)
-                        if alt_match:
-                            declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
-                    "Growing": growing,
-                    "Declining": declining
-                }
-                
-            elif index == "Employment":
-                # Look for growing industries
-                growth_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting employment growth in February[^:]*:([^\.]+)"
-                growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
-                
-                # Look for declining industries
-                decline_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting a decrease in employment in February,? in the following order,? are:([^\.]+)"
-                decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
-                
-                # Process matches
-                growing = []
-                if growth_match:
-                    growing_text = growth_match.group(1).strip()
-                    growing = clean_and_split_industry_list(growing_text)
-                
-                declining = []
-                if decline_match:
-                    declining_text = decline_match.group(1).strip()
-                    declining = clean_and_split_industry_list(declining_text)
-                
-                # Check if we found any industries
-                if not growing:
-                    # Try more general patterns
-                    alt_growth = r"(?:manufacturing )?industries reporting employment growth[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        growing = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not declining:
-                    # Try more general pattern
-                    alt_decline = r"industries reporting a decrease in employment[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
-                    "Growing": growing,
-                    "Declining": declining
-                }
-                
-            elif index == "Supplier Deliveries":
-                # Look for slower deliveries
-                slower_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) (?:manufacturing )?industries reporting slower supplier deliveries in February[^:]*:([^\.]+)"
+            if index == "Supplier Deliveries":
+                # Extract industries reporting slower deliveries
+                slower_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:reporting|that reported) slower(?: supplier)? deliveries(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
                 slower_match = re.search(slower_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for faster deliveries
-                faster_pattern = r"The (?:nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting faster supplier deliveries in February[^:]*:([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not slower_match:
+                    slower_fallback = r"industries reporting slower supplier deliveries(?:[^:]*?)(?:are|—|in|:|-)([^\.]+)"
+                    slower_match = re.search(slower_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting faster deliveries
+                faster_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:reporting|that reported) faster(?: supplier)? deliveries(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
                 faster_match = re.search(faster_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not faster_match:
+                    faster_fallback = r"industries reporting faster supplier deliveries(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    faster_match = re.search(faster_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 slower = []
                 if slower_match:
                     slower_text = slower_match.group(1).strip()
-                    slower = clean_and_split_industry_list(slower_text)
+                    slower = [i.strip() for i in re.split(r';|and|,', slower_text) if i.strip()]
                 
                 faster = []
                 if faster_match:
                     faster_text = faster_match.group(1).strip()
-                    faster = clean_and_split_industry_list(faster_text)
+                    faster = [i.strip() for i in re.split(r';|and|,', faster_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not slower:
-                    # Try more general pattern
-                    alt_slower = r"industries reporting slower supplier deliveries[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_slower, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        slower = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not faster:
-                    # Try more general pattern
-                    alt_faster = r"industries reporting faster supplier deliveries[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_faster, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        faster = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Slower": slower,
                     "Faster": faster
                 }
                 
             elif index == "Inventories":
-                # Look for higher inventories
-                higher_pattern = r"The (?:seven|six|five|four|three|two|one|\d+) industries reporting higher inventories in February[^:]*:([^\.]+)"
+                # Extract industries reporting higher inventories
+                higher_pattern = r"The (?:[\w\s]+) industries reporting (?:higher|increased|increasing|growing|growth in) inventories(?:[^:]*?)(?:listed in|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)[^:]*?([^\.]+)"
                 higher_match = re.search(higher_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for lower inventories
-                lower_pattern = r"The (?:six|five|four|three|two|one|\d+) industries reporting lower inventories in February[^:]*:([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not higher_match:
+                    higher_fallback = r"industries reporting (?:higher|increased|increasing) inventories(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    higher_match = re.search(higher_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting lower inventories
+                lower_pattern = r"The (?:[\w\s]+) industries reporting (?:lower|decreased|declining|lower or decreased) inventories(?:[^:]*?)(?:in the following|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)[^:]*?([^\.]+)"
                 lower_match = re.search(lower_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not lower_match:
+                    lower_fallback = r"industries reporting (?:lower|decreased|declining) inventories(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    lower_match = re.search(lower_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 higher = []
                 if higher_match:
                     higher_text = higher_match.group(1).strip()
-                    higher = clean_and_split_industry_list(higher_text)
+                    higher = [i.strip() for i in re.split(r';|and|,', higher_text) if i.strip()]
                 
                 lower = []
                 if lower_match:
                     lower_text = lower_match.group(1).strip()
-                    lower = clean_and_split_industry_list(lower_text)
+                    lower = [i.strip() for i in re.split(r';|and|,', lower_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not higher:
-                    # Try more general pattern
-                    alt_higher = r"industries reporting higher inventories[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_higher, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        higher = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not lower:
-                    # Try more general pattern
-                    alt_lower = r"industries reporting lower inventories[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_lower, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        lower = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Higher": higher,
                     "Lower": lower
                 }
                 
             elif index == "Customers' Inventories":
-                # Look for too high inventories
-                too_high_pattern = r"The (?:two|three|four|five|\d+) industries reporting customers[\''] inventories as too high in February[^:]*:([^\.]+)"
+                # Extract industries reporting customers' inventories as too high
+                too_high_pattern = r"The (?:[\w\s]+) industries reporting customers['''] inventories as too high(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
                 too_high_match = re.search(too_high_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for too low inventories
-                too_low_pattern = r"The (?:ten|nine|eight|seven|six|five|four|three|two|one|\d+) industries reporting customers[\''] inventories as too low in February[^:]*:([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not too_high_match:
+                    too_high_fallback = r"industries reporting customers['''] inventories as too high(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    too_high_match = re.search(too_high_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting customers' inventories as too low
+                too_low_pattern = r"The (?:[\w\s]+) industries reporting customers['''] inventories as too low(?:[^:]*?)(?:are|—|in|:|-)(?:[^:]*?)(?:order|the following order|:)?[^:]*?([^\.]+)"
                 too_low_match = re.search(too_low_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not too_low_match:
+                    too_low_fallback = r"industries reporting customers['''] inventories as too low(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    too_low_match = re.search(too_low_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 too_high = []
                 if too_high_match:
                     too_high_text = too_high_match.group(1).strip()
-                    too_high = clean_and_split_industry_list(too_high_text)
+                    too_high = [i.strip() for i in re.split(r';|and|,', too_high_text) if i.strip()]
                 
                 too_low = []
                 if too_low_match:
                     too_low_text = too_low_match.group(1).strip()
-                    too_low = clean_and_split_industry_list(too_low_text)
+                    too_low = [i.strip() for i in re.split(r';|and|,', too_low_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not too_high:
-                    # Try more general pattern
-                    alt_too_high = r"industries reporting customers[\''] inventories as too high[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_too_high, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        too_high = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not too_low:
-                    # Try more general pattern
-                    alt_too_low = r"industries reporting customers[\''] inventories as too low[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_too_low, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        too_low = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Too High": too_high,
                     "Too Low": too_low
                 }
                 
             elif index == "Prices":
-                # Look for increasing prices
-                increasing_pattern = r"In February, the (?:fourteen|thirteen|twelve|eleven|ten|nine|eight|seven|six|five|four|three|two|one|\d+) industries that reported paying increased prices for raw materials[^:]*:([^\.]+)"
+                # Extract industries reporting price increases
+                increasing_pattern = r"(?:In (?:[\w\s]+), |The |)(?:[\w\s]+) industries (?:that |)(?:reported|reporting) (?:paying |higher |increased |increasing |price increases)(?:prices|price|prices for raw materials)?(?:[^:]*?)(?:in order|order|:|—|-)(?:[^:]*?)(?:are|:)([^\.]+)"
                 increasing_match = re.search(increasing_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for decreasing prices
-                decreasing_pattern = r"The only industry that reported paying decreased prices for raw materials in February is ([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not increasing_match:
+                    increasing_fallback = r"industries (?:that |)(?:reported|reporting) (?:paying |higher |increased |increasing) prices(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    increasing_match = re.search(increasing_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting price decreases
+                decreasing_pattern = r"(?:The only industry|The [\w\s]+ industries) (?:that |)(?:reported|reporting) (?:paying |lower |decreased |decreasing |price decreases)(?:prices|price|prices for raw materials)?(?:[^:]*?)(?:in order|order|:|—|-)(?:[^:]*?)(?:are|is):?([^\.]+)"
                 decreasing_match = re.search(decreasing_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Special case for "only industry" pattern
+                only_industry = r"The only industry that reported paying decreased prices(?:[^:]*?)is ([^\.]+)"
+                only_match = re.search(only_industry, summary, re.IGNORECASE | re.DOTALL)
+                if only_match:
+                    decreasing_match = only_match
+                
+                # Fallback pattern if first one doesn't match
+                if not decreasing_match:
+                    decreasing_fallback = r"industries (?:that |)(?:reported|reporting) (?:paying |lower |decreased |decreasing) prices(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decreasing_match = re.search(decreasing_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 increasing = []
                 if increasing_match:
                     increasing_text = increasing_match.group(1).strip()
-                    increasing = clean_and_split_industry_list(increasing_text)
+                    increasing = [i.strip() for i in re.split(r';|and|,', increasing_text) if i.strip()]
                 
                 decreasing = []
                 if decreasing_match:
                     decreasing_text = decreasing_match.group(1).strip()
-                    decreasing = [decreasing_text.strip()]  # For single industry, don't split
+                    decreasing = [i.strip() for i in re.split(r';|and|,', decreasing_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not increasing:
-                    # Try more general pattern
-                    alt_increasing = r"industries that reported paying increased prices for raw materials[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_increasing, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        increasing = clean_and_split_industry_list(alt_match.group(1).strip())
-                    
-                    # Try the specific "five" pattern from the summary
-                    if not increasing:
-                        five_pattern = r"five — ([^—]+)(?:—| — | reported price increases)"
-                        five_match = re.search(five_pattern, summary, re.IGNORECASE | re.DOTALL)
-                        if five_match:
-                            increasing = clean_and_split_industry_list(five_match.group(1).strip())
-                
-                if not decreasing:
-                    # Try more general pattern for "only industry"
-                    alt_decreasing = r"only industry that reported paying decreased prices[^:]*is ([^\.]+)"
-                    alt_match = re.search(alt_decreasing, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        decreasing = [alt_match.group(1).strip()]
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Increasing": increasing,
                     "Decreasing": decreasing
                 }
                 
-            elif index == "Backlog of Orders":
-                # Look for growing backlogs
-                growth_pattern = r"(?:five|four|three|two|one|\d+) reported growth in order backlogs in February:([^\.]+)"
+            elif index == "Imports":
+                # Extract industries reporting increased imports
+                growth_pattern = r"The (?:[\w\s]+) industries reporting (?:an |a |)(?:increase|increase in|higher|growth in) (?:import volumes|imports)(?:[^:]*?)(?:in order|order|:|—|-)(?:[^:]*?)(?:are|:)([^\.]+)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for declining backlogs
-                decline_pattern = r"(?:eight|seven|six|five|four|three|two|one|\d+) industries reporting lower backlogs in February[^:]*:([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not growth_match:
+                    growth_fallback = r"industries reporting (?:an |a |)(?:increase|higher|growth) in imports(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting decreased imports
+                decline_pattern = r"The (?:[\w\s]+) (?:industries|industry) (?:that |)(?:reported|reporting) (?:lower|decreased|a decrease in|lower volumes of) (?:import volumes|imports)(?:[^:]*?)(?:in order|order|:|—|-)(?:[^:]*?)(?:are|:)([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not decline_match:
+                    decline_fallback = r"industries (?:that |)(?:reported|reporting) (?:lower|decreased|a decrease) in imports(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = clean_and_split_industry_list(growing_text)
+                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = clean_and_split_industry_list(declining_text)
+                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not growing:
-                    # Try more general pattern
-                    alt_growth = r"reported growth in order backlogs[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        growing = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not declining:
-                    # Try more general pattern
-                    alt_decline = r"industries reporting lower backlogs[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Growing": growing,
                     "Declining": declining
                 }
                 
             elif index == "New Export Orders":
-                # Look for growing export orders
-                growth_pattern = r"The (?:four|three|two|one|\d+) industries reporting growth in new export orders in February are:([^\.]+)"
+                # Extract industries reporting increased export orders
+                growth_pattern = r"The (?:[\w\s]+) industries reporting growth in new export orders(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for declining export orders
-                decline_pattern = r"The (?:four|three|two|one|\d+) industries reporting a decrease in new export orders in February are:([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not growth_match:
+                    growth_fallback = r"industries reporting (?:an |a |)(?:increase|growth) in (?:new |)export orders(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting decreased export orders
+                decline_pattern = r"The (?:[\w\s]+) industries reporting a decrease in new export orders(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not decline_match:
+                    decline_fallback = r"industries reporting (?:a |)(?:decline|decrease|contraction) in (?:new |)export orders(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = clean_and_split_industry_list(growing_text)
+                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = clean_and_split_industry_list(declining_text)
+                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not growing:
-                    # Try more general pattern
-                    alt_growth = r"industries reporting growth in new export orders[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        growing = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not declining:
-                    # Try more general pattern
-                    alt_decline = r"industries reporting a decrease in new export orders[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Growing": growing,
                     "Declining": declining
                 }
                 
-            elif index == "Imports":
-                # Look for increasing imports
-                growth_pattern = r"The (?:seven|six|five|four|three|two|one|\d+) industries reporting an increase in import volumes in February[^:]*:([^\.]+)"
+            elif index == "Backlog of Orders":
+                # Extract industries reporting increased backlogs
+                growth_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries) reported growth in order backlogs(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # Look for decreasing imports
-                decline_pattern = r"The (?:three|two|one|\d+) industries that reported lower volumes of imports in February are:([^\.]+)"
+                # Fallback pattern if first one doesn't match
+                if not growth_match:
+                    growth_fallback = r"industries reporting growth in (?:order |)backlogs(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting decreased backlogs
+                decline_pattern = r"(?:[\w\s]+) (?:industries|manufacturing industries) reporting lower backlogs(?:[^:]*?)(?:are|—|:|-)([^\.]+)"
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not decline_match:
+                    decline_fallback = r"industries reporting (?:lower|decreased|a decrease in) (?:order |)backlogs(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = clean_and_split_industry_list(growing_text)
+                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
                 
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
-                    declining = clean_and_split_industry_list(declining_text)
+                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
                 
-                # Check if we found any industries
-                if not growing:
-                    # Try more general pattern
-                    alt_growth = r"industries reporting an increase in import volumes[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        growing = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                if not declining:
-                    # Try more general pattern
-                    alt_decline = r"industries that reported lower volumes of imports[^:]*:([^\.]+)"
-                    alt_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
-                    if alt_match:
-                        declining = clean_and_split_industry_list(alt_match.group(1).strip())
-                
-                # Store the categories
-                categories = {
+                industry_data[index] = {
                     "Growing": growing,
                     "Declining": declining
                 }
                 
-            # Store the categories for this index
-            industry_data[index] = categories
+            else:  # Default pattern for growth/decline
+                # Extract industries reporting growth
+                growth_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) (?:growth|expansion|increase|growing|increased|an increase|higher|growth in)(?: in| of)? (?:[\w\s&]+)?(?:[^:]*?)(?:are|—|:|in|-|,)(?:.+?)?(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
+                growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not growth_match:
+                    growth_fallback = r"(?:[\w\s]+) industries (?:that |)(?:reporting|reported|report) growth(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    growth_match = re.search(growth_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting decline
+                decline_pattern = r"The (?:[\w\s]+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) (?:a |an |)(?:decline|contraction|decrease|declining|decreased|lower)(?: in| of)? (?:[\w\s&]+)?(?:[^:]*?)(?:are|—|:|in|-|,)(?:.+?)?(?:order|the following order|listed in order|:)[^:]*?([^\.]+)"
+                decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Fallback pattern if first one doesn't match
+                if not decline_match:
+                    decline_fallback = r"(?:[\w\s]+) industries (?:that |)(?:reporting|reported|report) (?:a |)(?:decline|decrease|contraction)(?:[^:]*?)(?:are|:|-)([^\.]+)"
+                    decline_match = re.search(decline_fallback, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Process matches
+                growing = []
+                if growth_match:
+                    growing_text = growth_match.group(1).strip()
+                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
+                
+                declining = []
+                if decline_match:
+                    declining_text = decline_match.group(1).strip()
+                    declining = [i.strip() for i in re.split(r';|and|,', declining_text) if i.strip()]
+                
+                industry_data[index] = {
+                    "Growing": growing,
+                    "Declining": declining
+                }
             
-            # Log warning if no industries found for a category
-            for category, industries in categories.items():
-                if not industries:
-                    logger.warning(f"No industries found for {index} - {category}")
+            # Clean up any duplicates in the categories    
+            if index in industry_data:
+                for category, industries in industry_data[index].items():
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    industry_data[index][category] = [x for x in industries if not (x in seen or seen.add(x))]
+                    
+                    # Log warning if no industries found for a category
+                    if not industry_data[index][category]:
+                        logger.warning(f"No industries found for {index} - {category}")
                         
         except Exception as e:
             logger.error(f"Error extracting industry mentions for {index}: {str(e)}")
