@@ -317,8 +317,15 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Verify the sheet exists and is accessible
                 try:
                     sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                    logger.info(f"Successfully accessed existing sheet: {sheet_metadata['properties']['title']}")
-                            
+                    sheet_title = sheet_metadata['properties']['title']
+                    
+                    # If the title doesn't match what we want, <u>set sheet_id to None to force creation of a new sheet</u>
+                    if sheet_title != title:
+                        logger.info(f"Saved sheet has title '{sheet_title}' but we need '{title}'. Will create new sheet.")
+                        sheet_id = None
+                    else:
+                        logger.info(f"Successfully accessed existing sheet: {sheet_metadata['properties']['title']}")
+                
                     # Check if the default Sheet1 exists and delete it if needed
                     sheets = sheet_metadata.get('sheets', [])
                     sheet1_id = None
