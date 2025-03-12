@@ -173,6 +173,18 @@ def extract_industry_mentions(text, indices):
             too_low_match = None
             increasing_match = None
             decreasing_match = None
+
+            # Initialize categories based on index type
+            if index == "Supplier Deliveries":
+                industry_data[index] = {"Slower": [], "Faster": []}
+            elif index == "Inventories":
+                industry_data[index] = {"Higher": [], "Lower": []}
+            elif index == "Customers' Inventories":
+                industry_data[index] = {"Too High": [], "Too Low": []}
+            elif index == "Prices":
+                industry_data[index] = {"Increasing": [], "Decreasing": []}
+            else:
+                industry_data[index] = {"Growing": [], "Declining": []}
             
             # Process based on index type
             if index == "Supplier Deliveries":
@@ -489,7 +501,18 @@ def extract_industry_mentions(text, indices):
         except Exception as e:
             logger.error(f"Error extracting industry mentions for {index}: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            industry_data[index] = {}
+             # Initialize with empty categories if an error occurs
+            if index not in industry_data:
+                if index == "Supplier Deliveries":
+                    industry_data[index] = {"Slower": [], "Faster": []}
+                elif index == "Inventories":
+                    industry_data[index] = {"Higher": [], "Lower": []}
+                elif index == "Customers' Inventories":
+                    industry_data[index] = {"Too High": [], "Too Low": []}
+                elif index == "Prices":
+                    industry_data[index] = {"Increasing": [], "Decreasing": []}
+                else:
+                    industry_data[index] = {"Growing": [], "Declining": []}
     
     # Extra validation for the data
     for index, categories in industry_data.items():

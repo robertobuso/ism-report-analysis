@@ -38,8 +38,23 @@ class SimplePDFExtractionTool(BaseTool):
         This structures the extracted ISM data.
         """
         try:
+            # Check if input is already a dictionary with pdf_path
+            if isinstance(extracted_data, dict) and 'pdf_path' in extracted_data and not any(k for k in extracted_data if k != 'pdf_path'):
+                # Wrap it in the expected format
+                extracted_data = {'extracted_data': extracted_data}
+                
+            # Now extract from the correct field
+            if 'extracted_data' in extracted_data and isinstance(extracted_data['extracted_data'], dict) and 'pdf_path' in extracted_data['extracted_data']:
+                pdf_path = extracted_data['extracted_data']['pdf_path']
+                logger.info(f"Extracting data from PDF (nested structure): {pdf_path}")
+                # Parse the PDF directly
+                from pdf_utils import parse_ism_report
+                parsed_data = parse_ism_report(pdf_path)
+                if parsed_data:
+                    return parsed_data
+            
             # Check if this is just a direct pdf_path request
-            if 'pdf_path' in extracted_data and isinstance(extracted_data['pdf_path'], str):
+            elif 'pdf_path' in extracted_data and isinstance(extracted_data['pdf_path'], str):
                 pdf_path = extracted_data['pdf_path']
                 logger.info(f"Extracting data from PDF: {pdf_path}")
                 # Parse the PDF directly
@@ -525,9 +540,9 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # Try to find year
             import re
-            year_match = re.search(r'20(\d{2})', month_year)
+            year_match = re.search(r'(20\d{2})', month_year)
             if year_match:
-                year = year_match.group(1)
+                year = year_match.group(1)[-2:]  # Extract last 2 digits
             
             # If month or year not found, use current date
             if not month or not year:
@@ -540,7 +555,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Return a default in case of error
             from datetime import datetime
             return datetime.now().strftime("%m/%y")
-    
+        
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
         try:
@@ -1011,16 +1026,16 @@ class GoogleSheetsFormatterTool(BaseTool):
                 return {category: [] for category in INDEX_CATEGORIES[index]}
             return {}
     
-    def _update_sheet_tab_columnar(self, service, sheet_id, index, formatted_data, month_year):
+    def _update_sheet_tab_columnar(self, service, sheet_id, index, formatted_data, formatted_month_year):
         """Update a specific tab in the Google Sheet with a columnar time-series format."""
         try:
             if not formatted_data:
                 logger.warning(f"No formatted data for {index}, skipping tab update")
                 return False
             
-            if not month_year:
+            if not formatted_month_year:
                 logger.warning(f"No month_year for {index}, using 'Unknown'")
-                month_year = "Unknown"
+                formatted_month_year = "Unknown"
 
             # Ensure index exists in the sheet
             try:

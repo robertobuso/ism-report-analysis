@@ -461,8 +461,12 @@ def process_single_pdf(pdf_path):
             Extract all relevant data from the ISM Manufacturing Report PDF.
             The PDF path is: {pdf_path}
             
-            When using the PDF Extraction Tool, pass the path directly:
-            "{pdf_path}"
+            When using the PDF Extraction Tool, pass the path in this format:
+            {{
+                "extracted_data": {{
+                    "pdf_path": "{pdf_path}"
+                }}
+            }}
             
             You must extract:
             1. The month and year of the report
