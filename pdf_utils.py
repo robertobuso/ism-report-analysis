@@ -163,21 +163,37 @@ def extract_industry_mentions(text, indices):
                 slower_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported)(?:.+?)slower(?:.+?)(?:supplier )?deliveries[^:]*:(.+?)(?:\.|The|$)"
                 faster_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported)(?:.+?)faster(?:.+?)(?:supplier )?deliveries[^:]*:(.+?)(?:\.|The|$)"
                 
-                # Alternative pattern that looks for lists that follow "in order" or "in the following order"
-                alt_slower_pattern = r"(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                # Specific pattern for ISM reports
+                specific_slower = r"industries reporting slower supplier deliveries in February(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                specific_faster = r"industries reporting faster supplier deliveries in February(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
                 
                 # Try to match the patterns
                 slower_match = re.search(slower_pattern, summary, re.IGNORECASE | re.DOTALL)
                 faster_match = re.search(faster_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # If primary patterns fail, check for mentions after "slower" or "faster"
+                # Try specific patterns if general ones fail
+                if not slower_match:
+                    slower_match = re.search(specific_slower, summary, re.IGNORECASE | re.DOTALL)
+                
+                if not faster_match:
+                    faster_match = re.search(specific_faster, summary, re.IGNORECASE | re.DOTALL)
+                
+                # If specific patterns fail, check for mentions after "slower" or "faster"
                 if not slower_match and "slower" in summary.lower():
-                    slower_section = summary[summary.lower().find("slower"):]
-                    slower_match = re.search(alt_slower_pattern, slower_section, re.IGNORECASE | re.DOTALL)
+                    slower_parts = summary.split("slower")
+                    for part in slower_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            slower_match = re.search(r"(.+)", industry_list)
+                            break
                 
                 if not faster_match and "faster" in summary.lower():
-                    faster_section = summary[summary.lower().find("faster"):]
-                    faster_match = re.search(alt_slower_pattern, faster_section, re.IGNORECASE | re.DOTALL)
+                    faster_parts = summary.split("faster")
+                    for part in faster_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            faster_match = re.search(r"(.+)", industry_list)
+                            break
                 
                 # Process matches
                 slower = []
@@ -190,6 +206,36 @@ def extract_industry_mentions(text, indices):
                     faster_text = faster_match.group(1).strip()
                     faster = [i.strip() for i in re.split(r';|and|,', faster_text) if i.strip()]
                 
+                # If not found through regex, try to extract from the whole summary
+                if not slower and "following order" in summary.lower() and "slower" in summary.lower():
+                    parts = summary.lower().split("following order")
+                    for part in parts[1:]:
+                        if ":" in part and "slower" in part.split(":")[0]:
+                            slower_text = part.split(":")[1].split(".")[0]
+                            slower = [i.strip() for i in re.split(r';|and|,', slower_text) if i.strip()]
+                            break
+                
+                if not faster and "following order" in summary.lower() and "faster" in summary.lower():
+                    parts = summary.lower().split("following order")
+                    for part in parts[1:]:
+                        if ":" in part and "faster" in part.split(":")[0]:
+                            faster_text = part.split(":")[1].split(".")[0]
+                            faster = [i.strip() for i in re.split(r';|and|,', faster_text) if i.strip()]
+                            break
+                
+                # Final extraction attempt using key phrases
+                if not slower and "reporting slower supplier deliveries" in summary.lower():
+                    parts = summary.lower().split("reporting slower supplier deliveries")
+                    if len(parts) > 1 and "are:" in parts[1]:
+                        industry_list = parts[1].split("are:")[1].split(".")[0]
+                        slower = [i.strip() for i in re.split(r';|and|,', industry_list) if i.strip()]
+                
+                if not faster and "reporting faster supplier deliveries" in summary.lower():
+                    parts = summary.lower().split("reporting faster supplier deliveries")
+                    if len(parts) > 1 and "are:" in parts[1]:
+                        industry_list = parts[1].split("are:")[1].split(".")[0]
+                        faster = [i.strip() for i in re.split(r';|and|,', industry_list) if i.strip()]
+                
                 industry_data[index] = {
                     "Slower": slower,
                     "Faster": faster
@@ -200,31 +246,37 @@ def extract_industry_mentions(text, indices):
                 higher_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:higher|increased|increasing|growing|growth in) (?:inventories|inventory)[^:]*:(.+?)(?:\.|The|$)"
                 lower_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:lower|decreased|decreasing|decline|declining in) (?:inventories|inventory)[^:]*:(.+?)(?:\.|The|$)"
                 
-                # Alternative pattern
-                alt_higher_pattern = r"(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                # Specific pattern for ISM reports
+                specific_higher = r"industries reporting higher inventories in February(?:.+?)(?:listed in|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                specific_lower = r"industries reporting lower inventories in February(?:.+?)(?:in the following|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
                 
                 # Try to match the patterns
                 higher_match = re.search(higher_pattern, summary, re.IGNORECASE | re.DOTALL)
                 lower_match = re.search(lower_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # If primary patterns fail, try alternatives based on context
+                # Try specific patterns if general ones fail
                 if not higher_match:
-                    # Look for a section that mentions "higher" or "increased"
-                    for term in ["higher", "increased", "increasing", "growth in", "growing"]:
-                        if term in summary.lower():
-                            higher_section = summary[summary.lower().find(term):]
-                            higher_match = re.search(alt_higher_pattern, higher_section, re.IGNORECASE | re.DOTALL)
-                            if higher_match:
-                                break
+                    higher_match = re.search(specific_higher, summary, re.IGNORECASE | re.DOTALL)
                 
                 if not lower_match:
-                    # Look for a section that mentions "lower" or "decreased"
-                    for term in ["lower", "decreased", "decreasing", "decline", "declining"]:
-                        if term in summary.lower():
-                            lower_section = summary[summary.lower().find(term):]
-                            lower_match = re.search(alt_higher_pattern, lower_section, re.IGNORECASE | re.DOTALL)
-                            if lower_match:
-                                break
+                    lower_match = re.search(specific_lower, summary, re.IGNORECASE | re.DOTALL)
+                
+                # If specific patterns fail, try extraction from general text
+                if not higher_match and "higher inventories" in summary.lower():
+                    higher_parts = summary.split("higher inventories")
+                    for part in higher_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            higher_match = re.search(r"(.+)", industry_list)
+                            break
+                
+                if not lower_match and "lower inventories" in summary.lower():
+                    lower_parts = summary.split("lower inventories")
+                    for part in lower_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            lower_match = re.search(r"(.+)", industry_list)
+                            break
                 
                 # Process the matches
                 higher = []
@@ -237,6 +289,20 @@ def extract_industry_mentions(text, indices):
                     lower_text = lower_match.group(1).strip()
                     lower = [i.strip() for i in re.split(r';|and|,', lower_text) if i.strip()]
                 
+                # Final extraction attempt for higher inventories
+                if not higher and "reporting higher inventories" in summary.lower():
+                    parts = summary.lower().split("reporting higher inventories")
+                    if len(parts) > 1 and "are:" in parts[1]:
+                        industry_list = parts[1].split("are:")[1].split(".")[0]
+                        higher = [i.strip() for i in re.split(r';|and|,', industry_list) if i.strip()]
+                
+                # Final extraction attempt for lower inventories
+                if not lower and "reporting lower inventories" in summary.lower():
+                    parts = summary.lower().split("reporting lower inventories")
+                    if len(parts) > 1 and "are:" in parts[1]:
+                        industry_list = parts[1].split("are:")[1].split(".")[0]
+                        lower = [i.strip() for i in re.split(r';|and|,', industry_list) if i.strip()]
+                
                 industry_data[index] = {
                     "Higher": higher,
                     "Lower": lower
@@ -247,21 +313,37 @@ def extract_industry_mentions(text, indices):
                 too_high_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:customers'|customer) (?:inventories|inventory) as too high[^:]*:(.+?)(?:\.|The|$)"
                 too_low_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:customers'|customer) (?:inventories|inventory) as too low[^:]*:(.+?)(?:\.|The|$)"
                 
-                # Alternative pattern
-                alt_too_high_pattern = r"(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                # Specific patterns for finding "in order" lists
+                specific_too_high = r"industries reporting customers' inventories as too high in February(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                specific_too_low = r"industries reporting customers' inventories as too low in February(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
                 
                 # Try to match the patterns
                 too_high_match = re.search(too_high_pattern, summary, re.IGNORECASE | re.DOTALL)
                 too_low_match = re.search(too_low_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # If primary patterns fail, try alternatives
+                # Try specific patterns if general ones fail
+                if not too_high_match:
+                    too_high_match = re.search(specific_too_high, summary, re.IGNORECASE | re.DOTALL)
+                
+                if not too_low_match:
+                    too_low_match = re.search(specific_too_low, summary, re.IGNORECASE | re.DOTALL)
+                
+                # If specific patterns fail, try extraction from general text
                 if not too_high_match and "too high" in summary.lower():
-                    too_high_section = summary[summary.lower().find("too high"):]
-                    too_high_match = re.search(alt_too_high_pattern, too_high_section, re.IGNORECASE | re.DOTALL)
+                    too_high_parts = summary.split("too high")
+                    for part in too_high_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            too_high_match = re.search(r"(.+)", industry_list)
+                            break
                 
                 if not too_low_match and "too low" in summary.lower():
-                    too_low_section = summary[summary.lower().find("too low"):]
-                    too_low_match = re.search(alt_too_high_pattern, too_low_section, re.IGNORECASE | re.DOTALL)
+                    too_low_parts = summary.split("too low")
+                    for part in too_low_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            too_low_match = re.search(r"(.+)", industry_list)
+                            break
                 
                 # Process the matches
                 too_high = []
@@ -274,6 +356,20 @@ def extract_industry_mentions(text, indices):
                     too_low_text = too_low_match.group(1).strip()
                     too_low = [i.strip() for i in re.split(r';|and|,', too_low_text) if i.strip()]
                 
+                # Final extraction attempt for too high
+                if not too_high and "reporting customers' inventories as too high" in summary.lower():
+                    parts = summary.lower().split("reporting customers' inventories as too high")
+                    if len(parts) > 1 and "are:" in parts[1]:
+                        industry_list = parts[1].split("are:")[1].split(".")[0]
+                        too_high = [i.strip() for i in re.split(r';|and|,', industry_list) if i.strip()]
+                
+                # Final extraction attempt for too low
+                if not too_low and "reporting customers' inventories as too low" in summary.lower():
+                    parts = summary.lower().split("reporting customers' inventories as too low")
+                    if len(parts) > 1 and "are:" in parts[1]:
+                        industry_list = parts[1].split("are:")[1].split(".")[0]
+                        too_low = [i.strip() for i in re.split(r';|and|,', industry_list) if i.strip()]
+                
                 industry_data[index] = {
                     "Too High": too_high,
                     "Too Low": too_low
@@ -284,42 +380,49 @@ def extract_industry_mentions(text, indices):
                 increasing_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:paying |higher |increased |increasing |price increases)[^:]*:(.+?)(?:\.|The|$)"
                 decreasing_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:paying |lower |decreased |decreasing |price decreases)[^:]*:(.+?)(?:\.|The|$)"
                 
-                # Alternative pattern
-                alt_pattern = r"(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                # Specific patterns for this report format
+                specific_increasing = r"industries that reported paying increased prices for raw materials(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                specific_decreasing = r"industries? that reported paying decreased prices for raw materials(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                
+                # Additional specific patterns
+                alt_increasing = r"in February, the (\d+) industries that reported paying increased prices for raw materials, in order, are:([^\.]+)"
+                alt_decreasing = r"The only industry that reported paying decreased prices for raw materials in February is ([^\.]+)"
                 
                 # Try to match the patterns
                 increasing_match = re.search(increasing_pattern, summary, re.IGNORECASE | re.DOTALL)
                 decreasing_match = re.search(decreasing_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # If primary patterns fail, try alternatives
+                # Try specific patterns if general ones fail
                 if not increasing_match:
-                    # Look for sections mentioning increases
-                    for term in ["higher prices", "increased prices", "increasing prices", "paying increased", "reporting higher"]:
-                        if term in summary.lower():
-                            increasing_section = summary[summary.lower().find(term):]
-                            increasing_match = re.search(alt_pattern, increasing_section, re.IGNORECASE | re.DOTALL)
-                            if increasing_match:
-                                break
+                    increasing_match = re.search(specific_increasing, summary, re.IGNORECASE | re.DOTALL)
+                    if not increasing_match:
+                        increasing_match = re.search(alt_increasing, summary, re.IGNORECASE | re.DOTALL)
                 
                 if not decreasing_match:
-                    # Look for sections mentioning decreases
-                    for term in ["lower prices", "decreased prices", "decreasing prices", "paying decreased", "reporting lower"]:
-                        if term in summary.lower():
-                            decreasing_section = summary[summary.lower().find(term):]
-                            decreasing_match = re.search(alt_pattern, decreasing_section, re.IGNORECASE | re.DOTALL)
-                            if decreasing_match:
-                                break
+                    decreasing_match = re.search(specific_decreasing, summary, re.IGNORECASE | re.DOTALL)
+                    if not decreasing_match:
+                        decreasing_match = re.search(alt_decreasing, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process the matches
                 increasing = []
                 if increasing_match:
                     increasing_text = increasing_match.group(1).strip()
+                    if increasing_match.group(0).lower().startswith("in february"):
+                        # This is from the alt_increasing pattern
+                        increasing_text = increasing_match.group(2).strip()
                     increasing = [i.strip() for i in re.split(r';|and|,', increasing_text) if i.strip()]
                 
                 decreasing = []
                 if decreasing_match:
                     decreasing_text = decreasing_match.group(1).strip()
                     decreasing = [i.strip() for i in re.split(r';|and|,', decreasing_text) if i.strip()]
+                
+                # Extract from sentence "The only industry that reported paying decreased prices for raw materials in February is X"
+                if not decreasing and "only industry" in summary and "decreased prices" in summary:
+                    only_pattern = r"The only industry that reported paying decreased prices[^:]*is ([^\.]+)"
+                    only_match = re.search(only_pattern, summary, re.IGNORECASE | re.DOTALL)
+                    if only_match:
+                        decreasing = [only_match.group(1).strip()]
                 
                 industry_data[index] = {
                     "Increasing": increasing,
@@ -331,29 +434,48 @@ def extract_industry_mentions(text, indices):
                 growth_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:growth|expansion|increase|growing|increased)[^:]*:(.+?)(?:\.|The|$)"
                 decline_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:contraction|decline|decrease|declining|decreased)[^:]*:(.+?)(?:\.|The|$)"
                 
-                # Alternative patterns
-                alt_pattern = r"(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                # Specific patterns for this report format
+                specific_growth = r"industries? (?:reporting|that reported) growth in (?:new orders|production|employment|order backlogs|new export orders|imports) in February(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                specific_decline = r"industries? (?:reporting|that reported) (?:a |) (?:decline|decrease|contraction) in (?:new orders|production|employment|order backlogs|new export orders|imports) in February(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                
+                # Alterative pattern for format like "The nine manufacturing industries that reported growth in new orders in February, in order, are: X, Y, Z"
+                alt_growth = r"The (?:\w+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported) growth in[^:]*:([^\.]+)"
+                alt_decline = r"The (?:\w+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported) (?:a |)(?:decline|decrease|contraction) in[^:]*:([^\.]+)"
                 
                 # Try to match the patterns
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
                 decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
                 
-                # If primary patterns fail, try alternatives based on context
+                # Try specific patterns if general ones fail
                 if not growth_match:
-                    # Look for sections mentioning growth
-                    for term in ["growth", "expansion", "increased", "growing", "higher"]:
-                        if term in summary.lower():
-                            growth_section = summary[summary.lower().find(term):]
-                            growth_match = re.search(alt_pattern, growth_section, re.IGNORECASE | re.DOTALL)
-                            if growth_match:
-                                break
+                    growth_match = re.search(specific_growth, summary, re.IGNORECASE | re.DOTALL)
+                    if not growth_match:
+                        growth_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
                 
                 if not decline_match:
-                    # Look for sections mentioning decline
-                    for term in ["contraction", "decline", "decreased", "declining", "lower"]:
+                    decline_match = re.search(specific_decline, summary, re.IGNORECASE | re.DOTALL)
+                    if not decline_match:
+                        decline_match = re.search(alt_decline, summary, re.IGNORECASE | re.DOTALL)
+                
+                # If patterns still fail, try to find lists after "in order" or "the following order"
+                if not growth_match and ("growth in " + index.lower()) in summary.lower():
+                    growth_parts = summary.split("growth in " + index.lower())
+                    for part in growth_parts[1:]:
+                        if ":" in part:
+                            industry_list = part.split(":")[1].split(".")[0]
+                            growth_match = re.search(r"(.+)", industry_list)
+                            break
+                
+                if not decline_match and any(term in summary.lower() for term in ["decline in " + index.lower(), "decrease in " + index.lower(), "contraction in " + index.lower()]):
+                    for term in ["decline in " + index.lower(), "decrease in " + index.lower(), "contraction in " + index.lower()]:
                         if term in summary.lower():
-                            decline_section = summary[summary.lower().find(term):]
-                            decline_match = re.search(alt_pattern, decline_section, re.IGNORECASE | re.DOTALL)
+                            decline_parts = summary.split(term)
+                            for part in decline_parts[1:]:
+                                if ":" in part:
+                                    industry_list = part.split(":")[1].split(".")[0]
+                                    decline_match = re.search(r"(.+)", industry_list)
+                                    if decline_match:
+                                        break
                             if decline_match:
                                 break
                 

@@ -404,10 +404,9 @@ def process_single_pdf(pdf_path):
     try:
         # Create agents
         extractor_agent = create_extractor_agent()
-        structurer_agent = create_structurer_agent()
+        data_correction_agent = create_data_correction_agent()
         validator_agent = create_validator_agent()
         formatter_agent = create_formatter_agent()
-        data_correction_agent = create_data_correction_agent()
         
         # Execute extraction
         logger.info("Starting data extraction...")
@@ -496,8 +495,12 @@ def process_single_pdf(pdf_path):
                 extraction_data = parse_ism_report(pdf_path)
                 if extraction_data:
                     logger.info("Successfully extracted data using direct PDF parsing")
+                else:
+                    logger.error("Direct PDF parsing failed to return data")
+                    return False
             except Exception as e:
                 logger.error(f"Direct PDF parsing failed: {str(e)}")
+                return False
             
             if not extraction_data:
                 logger.error("All extraction methods failed")
@@ -517,7 +520,8 @@ def process_single_pdf(pdf_path):
             
             The extracted data is: {extraction_data.get('industry_data', {})}
             
-            STEP 1: Directly examine the textual summaries in index_summaries to find industry mentions.
+            STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
+            {extraction_data.get('index_summaries', {})}
             
             STEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:
             - GROWING vs DECLINING for most indices
@@ -573,10 +577,24 @@ def process_single_pdf(pdf_path):
             logger.info("Successfully applied corrected industry data")
         else:
             logger.warning("Verification failed, continuing with unverified data")
+        # Try direct parsing again
+            try:
+                from pdf_utils import parse_ism_report
+                direct_data = parse_ism_report(pdf_path)
+                if direct_data and direct_data.get('industry_data'):
+                    extraction_data['industry_data'] = direct_data['industry_data']
+                    logger.info("Successfully applied industry data from direct PDF parsing")
+                else:
+                    logger.warning("Direct parsing didn't provide better industry data")
+            except Exception as e:
+                logger.error(f"Error in direct parsing fallback: {str(e)}")
             
         # Execute structuring - ensure we have valid data for structuring
         logger.info("Starting data structuring...")
+        from tools import SimpleDataStructurerTool
         structurer_tool = SimpleDataStructurerTool()
+        structured_data = structurer_tool._run(extraction_data)
+        logger.info("Data structuring completed")
         
         # Ensure extraction_data has required keys
         if not isinstance(extraction_data, dict):
@@ -665,29 +683,29 @@ def process_single_pdf(pdf_path):
         # Execute formatting
         logger.info("Starting Google Sheets formatting...")
         formatting_task = Task(
-            description=f"""
-            Format the validated ISM Manufacturing Report data for Google Sheets and update the sheet.
-            
-            Requirements:
-            1. Check if the Google Sheet exists, create it if it doesn't
-            2. Each index should have its own tab
-            3. Industries should be rows, months should be columns
-            4. Append new data without overwriting previous months
-            5. Maintain consistent formatting across all tabs
-            6. Handle any existing data gracefully
-            7. Include a dedicated tab for the Manufacturing at a Glance table
-            
-            Remember that each index may have different numbers of industries and they may
-            be in different orders.
-            
-            The input for the Google Sheets Formatter Tool should be a dictionary with:
-            'structured_data': {structured_data}
-            'validation_results': {validation_dict}
-            'extraction_data': {extraction_data}  # Added this to include manufacturing_table
-            """,
-            expected_output="A boolean indicating whether the Google Sheets update was successful",
-            agent=formatter_agent
-        )
+                    description=f"""
+                    Format the validated ISM Manufacturing Report data for Google Sheets and update the sheet.
+                    
+                    Requirements:
+                    1. Check if the Google Sheet exists, create it if it doesn't
+                    2. Each index should have its own tab
+                    3. Industries should be rows, months should be columns
+                    4. Append new data without overwriting previous months
+                    5. Maintain consistent formatting across all tabs
+                    6. Handle any existing data gracefully
+                    7. Format the Manufacturing at a Glance table properly in its own dedicated tab
+                    
+                    Remember that each index may have different numbers of industries and they may
+                    be in different orders.
+                    
+                    The input for the Google Sheets Formatter Tool should be a dictionary with:
+                    'structured_data': {structured_data}
+                    'validation_results': {validation_dict}
+                    'extraction_data': {extraction_data}
+                    """,
+                    expected_output="A boolean indicating whether the Google Sheets update was successful",
+                    agent=formatter_agent
+                )
         
         formatting_crew = Crew(
             agents=[formatter_agent],

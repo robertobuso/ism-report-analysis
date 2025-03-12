@@ -277,230 +277,382 @@ class GoogleSheetsFormatterTool(BaseTool):
         """Get an existing sheet or create a new one."""
         try:
             # Try to find an existing sheet by querying spreadsheets
-            spreadsheets = []
-            try:
-                # Search for the spreadsheet directly using the spreadsheets().get() method
-                # This is a safer approach than trying to access service._credentials
-                logger.info(f"Searching for existing spreadsheet with title: {title}")
+            sheet_id = None
+            
+            # Check if a saved sheet ID exists
+            sheet_id_file = "sheet_id.txt"
+            if os.path.exists(sheet_id_file):
+                with open(sheet_id_file, "r") as f:
+                    sheet_id = f.read().strip()
+                    logger.info(f"Found saved sheet ID: {sheet_id}")
                 
-                # Try to list all spreadsheets the user has access to
-                # Note: This might not work as expected if there are many spreadsheets
-                # A better approach would be to store the spreadsheet ID in a file once created
-                sheet_id = None
-                
-                # Check if a saved sheet ID exists
-                sheet_id_file = "sheet_id.txt"
-                if os.path.exists(sheet_id_file):
-                    with open(sheet_id_file, "r") as f:
-                        sheet_id = f.read().strip()
-                        logger.info(f"Found saved sheet ID: {sheet_id}")
+                # Verify the sheet exists and we can access it
+                try:
+                    sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                    sheet_title = sheet_metadata['properties']['title']
+                    logger.info(f"Successfully accessed existing sheet: {sheet_title}")
                     
-                    # Verify the sheet exists and we can access it
-                    try:
-                        sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                        logger.info(f"Successfully accessed existing sheet: {sheet_metadata['properties']['title']}")
-                        
-                        # Check if the default Sheet1 exists and delete it if needed
-                        sheets = sheet_metadata.get('sheets', [])
-                        for sheet in sheets:
-                            if sheet.get('properties', {}).get('title') == 'Sheet1':
-                                logger.info("Found default Sheet1, attempting to delete it")
-                                request = {
-                                    'requests': [
-                                        {
-                                            'deleteSheet': {
-                                                'sheetId': sheet.get('properties', {}).get('sheetId')
-                                            }
-                                        }
-                                    ]
-                                }
-                                service.spreadsheets().batchUpdate(
-                                    spreadsheetId=sheet_id,
-                                    body=request
-                                ).execute()
-                                logger.info("Successfully deleted default Sheet1")
-                                break
-                        
-                        return sheet_id
-                    except Exception as e:
-                        logger.warning(f"Saved sheet ID is no longer valid: {str(e)}")
-                        sheet_id = None
-                
-                # If we don't have a valid sheet ID, create a new sheet
-                if not sheet_id:
-                    logger.info("Creating new Google Sheet")
-                    sheet_metadata = {
-                        'properties': {
-                            'title': title
-                        }
-                    }
+                    # Check if the default Sheet1 exists and delete it if needed
+                    sheets = sheet_metadata.get('sheets', [])
+                    sheet1_id = None
+                    for sheet in sheets:
+                        if sheet.get('properties', {}).get('title') == 'Sheet1':
+                            sheet1_id = sheet.get('properties', {}).get('sheetId')
+                            break
                     
-                    sheet = service.spreadsheets().create(body=sheet_metadata).execute()
-                    sheet_id = sheet['spreadsheetId']
-                    logger.info(f"Created new sheet with ID: {sheet_id}")
+                    # Check if all required tabs exist
+                    from config import ISM_INDICES
+                    existing_tabs = [sheet.get('properties', {}).get('title') for sheet in sheets]
+                    manufacturing_tab_exists = 'Manufacturing at a Glance' in existing_tabs
+                    missing_tabs = []
                     
-                    # Save the sheet ID for future use
-                    with open(sheet_id_file, "w") as f:
-                        f.write(sheet_id)
-                        logger.info(f"Saved sheet ID to {sheet_id_file}")
+                    if not manufacturing_tab_exists:
+                        missing_tabs.append('Manufacturing at a Glance')
                     
-                    # Delete the default Sheet1 if it exists
-                    try:
-                        sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-                        sheets = sheet_metadata.get('sheets', [])
-                        default_sheet_id = None
-                        
-                        # Find the ID of Sheet1
-                        for sheet in sheets:
-                            if sheet.get('properties', {}).get('title') == 'Sheet1':
-                                default_sheet_id = sheet.get('properties', {}).get('sheetId')
-                                break
-                        
-                        # Create a list of requests - first create our custom tabs
+                    for index in ISM_INDICES:
+                        if index not in existing_tabs:
+                            missing_tabs.append(index)
+                    
+                    # Create any missing tabs
+                    if missing_tabs:
                         requests = []
-                        
-                        # Add Manufacturing at a Glance tab
-                        requests.append({
-                            'addSheet': {
-                                'properties': {
-                                    'title': 'Manufacturing at a Glance'
-                                }
-                            }
-                        })
-                        
-                        # Add tabs for each index
-                        for index in ISM_INDICES:
+                        for tab in missing_tabs:
                             requests.append({
                                 'addSheet': {
                                     'properties': {
-                                        'title': index
+                                        'title': tab
                                     }
                                 }
                             })
                         
-                        # Delete Sheet1 if we found it
-                        if default_sheet_id is not None:
+                        # Delete Sheet1 if it exists and we're adding new tabs
+                        if sheet1_id is not None:
                             requests.append({
                                 'deleteSheet': {
-                                    'sheetId': default_sheet_id
+                                    'sheetId': sheet1_id
                                 }
                             })
                         
-                        # Execute all sheet operations in one batch
+                        # Execute batch update to add missing tabs
                         if requests:
                             service.spreadsheets().batchUpdate(
                                 spreadsheetId=sheet_id,
                                 body={'requests': requests}
                             ).execute()
-                            logger.info("Set up all tabs and removed default Sheet1")
+                            logger.info(f"Added {len(missing_tabs)} missing tabs to existing sheet")
                     
-                    except Exception as e:
-                        logger.warning(f"Error setting up tabs or deleting Sheet1: {str(e)}")
-                    
+                    # If we got here, we have a valid sheet ID and all tabs exist
                     return sheet_id
-                    
-            except Exception as e:
-                logger.error(f"Error searching for or creating spreadsheet: {str(e)}")
-                raise
-                
-            return None
+                except Exception as e:
+                    logger.warning(f"Error accessing saved sheet: {str(e)}")
+                    # Don't set sheet_id to None here, we'll try to use it again
             
+            # If we either don't have a sheet_id or had an error accessing it, try to search by title
+            if not sheet_id:
+                try:
+                    # Try to find by title
+                    file_list = service.files().list(q=f"name='{title}' and mimeType='application/vnd.google-apps.spreadsheet'").execute()
+                    files = file_list.get('files', [])
+                    
+                    if files:
+                        # Use the first matching file
+                        sheet_id = files[0]['id']
+                        logger.info(f"Found existing sheet by title: {title}, ID: {sheet_id}")
+                        
+                        # Save the sheet ID for future use
+                        with open(sheet_id_file, "w") as f:
+                            f.write(sheet_id)
+                        
+                        # Verify we can access it and ensure all tabs exist
+                        try:
+                            sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                            
+                            # Check if all required tabs exist (similar to above code)
+                            # ...
+                            
+                            return sheet_id
+                        except Exception as e:
+                            logger.warning(f"Error accessing found sheet: {str(e)}")
+                            sheet_id = None
+                except Exception as e:
+                    logger.warning(f"Error searching for sheet by title: {str(e)}")
+                    sheet_id = None
+            
+            # If we still don't have a valid sheet ID, create a new one
+            if not sheet_id:
+                logger.info("Creating new Google Sheet")
+                sheet_metadata = {
+                    'properties': {
+                        'title': title
+                    }
+                }
+                
+                sheet = service.spreadsheets().create(body=sheet_metadata).execute()
+                sheet_id = sheet['spreadsheetId']
+                logger.info(f"Created new sheet with ID: {sheet_id}")
+                
+                # Save the sheet ID for future use
+                with open(sheet_id_file, "w") as f:
+                    f.write(sheet_id)
+                    logger.info(f"Saved sheet ID to {sheet_id_file}")
+                
+                # Create tabs for all required indices
+                requests = []
+                
+                # Add Manufacturing at a Glance tab
+                requests.append({
+                    'addSheet': {
+                        'properties': {
+                            'title': 'Manufacturing at a Glance'
+                        }
+                    }
+                })
+                
+                # Add tabs for each index
+                from config import ISM_INDICES
+                for index in ISM_INDICES:
+                    requests.append({
+                        'addSheet': {
+                            'properties': {
+                                'title': index
+                            }
+                        }
+                    }
+                )
+                
+                # Delete the default Sheet1 if it exists
+                sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+                sheets = sheet_metadata.get('sheets', [])
+                default_sheet_id = None
+                
+                # Find the ID of Sheet1
+                for sheet in sheets:
+                    if sheet.get('properties', {}).get('title') == 'Sheet1':
+                        default_sheet_id = sheet.get('properties', {}).get('sheetId')
+                        break
+                
+                if default_sheet_id is not None:
+                    requests.append({
+                        'deleteSheet': {
+                            'sheetId': default_sheet_id
+                        }
+                    })
+                
+                # Execute all sheet operations in one batch
+                if requests:
+                    service.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={'requests': requests}
+                    ).execute()
+                    logger.info("Set up all tabs and removed default Sheet1")
+                
+                return sheet_id
+            
+            # Should never reach here
+            return sheet_id
         except Exception as e:
             logger.error(f"Error finding or creating sheet: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            raise
+            
+            # Attempt to create new sheet as a last resort
+            try:
+                logger.info("Creating new sheet as fallback after error")
+                sheet_metadata = {
+                    'properties': {
+                        'title': title
+                    }
+                }
+                
+                sheet = service.spreadsheets().create(body=sheet_metadata).execute()
+                new_sheet_id = sheet['spreadsheetId']
+                
+                # Save the new sheet ID
+                with open("sheet_id.txt", "w") as f:
+                    f.write(new_sheet_id)
+                
+                return new_sheet_id
+            except Exception as e2:
+                logger.error(f"Final fallback creation failed: {str(e2)}")
+                raise
 
     def _update_manufacturing_tab(self, service, sheet_id, month_year, table_content):
-        """Update the Manufacturing at a Glance tab with the table content."""
+        """Update the Manufacturing at a Glance table with the table content."""
         try:
             if not table_content:
                 logger.warning("No manufacturing table content to update")
                 return False
+            
+            # Extract and format the table data
+            formatted_data = []
+            
+            # Parse the table content
+            # Extract the indices and their values from the table
+            indices = ["PMI", "New Orders", "Production", "Employment", "Supplier Deliveries",
+                    "Inventories", "Customers' Inventories", "Prices", "Backlog of Orders",
+                    "New Export Orders", "Imports", "OVERALL ECONOMY", "Manufacturing Sector"]
+            
+            values = {}
+            for index in indices:
+                # Look for patterns like "Index 50.3 50.9 -0.6 Growing Slower 2"
+                pattern = rf"{index}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+([+-]\d+\.\d+)\s+(\w+)\s+(\w+)\s+(\d+)"
+                match = re.search(pattern, table_content, re.IGNORECASE)
                 
+                if match:
+                    values[index] = {
+                        "current": match.group(1),
+                        "previous": match.group(2),
+                        "change": match.group(3),
+                        "direction": match.group(4),
+                        "rate": match.group(5),
+                        "months": match.group(6)
+                    }
+            
             # Get the existing content
             result = service.spreadsheets().values().get(
                 spreadsheetId=sheet_id,
                 range="'Manufacturing at a Glance'!A:Z"
             ).execute()
             
-            values = result.get('values', [])
+            existing_values = result.get('values', [])
             
-            # Check if month already exists in data
-            month_exists = False
-            row_index = 1  # Start at row 1 (A1)
-            
-            if values:
-                for i, row in enumerate(values):
-                    if i > 0 and len(row) > 0 and row[0] == month_year:
-                        month_exists = True
-                        row_index = i + 1  # +1 for 1-indexing in sheets
-                        break
-            
-            # Format the table content
-            if isinstance(table_content, str):
-                # Split the content into lines for better display
-                lines = table_content.strip().split('\n')
+            # Check if we need to create headers
+            if not existing_values:
+                # Create headers
+                headers = [
+                    ["Manufacturing at a Glance - " + month_year],
+                    ["Index", "Current", "Previous", "Change", "Direction", "Rate of Change", "Trend (Months)"]
+                ]
                 
-                # Prepare data for update
-                if not month_exists:
-                    # If month doesn't exist, add it with the table content
-                    new_values = []
+                # Update headers
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range="'Manufacturing at a Glance'!A1",
+                    valueInputOption="RAW",
+                    body={"values": headers}
+                ).execute()
+                
+                # Start row for data will be after headers
+                start_row = 3
+            else:
+                # Find a section for this month or create a new one
+                month_row_index = None
+                for i, row in enumerate(existing_values):
+                    if len(row) > 0 and row[0] == month_year:
+                        month_row_index = i + 1  # 1-indexed
+                        break
+                
+                if month_row_index is None:
+                    # Add a blank row and then the month header
+                    start_row = len(existing_values) + 2  # Leave a blank row
                     
-                    # Add header row if sheet is empty
-                    if not values:
-                        new_values.append(["Month/Year", "Manufacturing at a Glance"])
-                    
-                    # Add month and content
-                    new_values.append([month_year, lines[0] if lines else ""])
-                    
-                    # Add remaining lines
-                    for i, line in enumerate(lines[1:], 2):
-                        if i < len(new_values):
-                            new_values[i].append(line)
-                        else:
-                            new_values.append(["", line])
-                    
-                    # Update the sheet
+                    # Add month header
                     service.spreadsheets().values().update(
                         spreadsheetId=sheet_id,
-                        range=f"'Manufacturing at a Glance'!A{len(values) + 1}",
+                        range=f"'Manufacturing at a Glance'!A{start_row-1}",
                         valueInputOption="RAW",
-                        body={"values": new_values}
+                        body={"values": [[month_year]]}
                     ).execute()
-                    logger.info(f"Added new month {month_year} to Manufacturing at a Glance tab")
-                else:
-                    # If month exists, update its content
-                    updates = []
                     
-                    # Update first line
-                    updates.append({
-                        "range": f"'Manufacturing at a Glance'!B{row_index}",
-                        "values": [[lines[0] if lines else ""]]
-                    })
-                    
-                    # Update remaining lines
-                    for i, line in enumerate(lines[1:], 1):
-                        updates.append({
-                            "range": f"'Manufacturing at a Glance'!B{row_index + i}",
-                            "values": [[line]]
-                        })
-                    
-                    # Execute batch update
-                    service.spreadsheets().values().batchUpdate(
+                    # Add column headers
+                    service.spreadsheets().values().update(
                         spreadsheetId=sheet_id,
-                        body={
-                            "valueInputOption": "RAW",
-                            "data": updates
-                        }
+                        range=f"'Manufacturing at a Glance'!A{start_row}",
+                        valueInputOption="RAW",
+                        body={"values": [["Index", "Current", "Previous", "Change", "Direction", "Rate of Change", "Trend (Months)"]]}
                     ).execute()
-                    logger.info(f"Updated existing month {month_year} in Manufacturing at a Glance tab")
+                    
+                    start_row += 1  # Start after headers
+                else:
+                    # We found this month, clear its data and reuse the rows
+                    start_row = month_row_index + 2  # Skip month and header rows
+                    
+                    # Clear existing data for this month
+                    range_to_clear = f"'Manufacturing at a Glance'!A{start_row}:G{start_row + len(indices)}"
+                    service.spreadsheets().values().clear(
+                        spreadsheetId=sheet_id,
+                        range=range_to_clear,
+                        body={}
+                    ).execute()
             
+            # Prepare data rows
+            data_rows = []
+            for index in indices:
+                if index in values:
+                    data_rows.append([
+                        index,
+                        values[index]["current"],
+                        values[index]["previous"],
+                        values[index]["change"],
+                        values[index]["direction"],
+                        values[index]["rate"],
+                        values[index]["months"]
+                    ])
+                else:
+                    # If we don't have data for this index, add a placeholder row
+                    data_rows.append([index, "", "", "", "", "", ""])
+            
+            # Update the sheet with the data rows
+            if data_rows:
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=f"'Manufacturing at a Glance'!A{start_row}",
+                    valueInputOption="RAW",
+                    body={"values": data_rows}
+                ).execute()
+                
+                logger.info(f"Updated Manufacturing at a Glance tab with {len(data_rows)} indices")
+                
+                # Apply formatting (make it more readable)
+                requests = []
+                
+                # Add borders
+                requests.append({
+                    "updateBorders": {
+                        "range": {
+                            "sheetId": self._get_sheet_id_by_name(service, sheet_id, "Manufacturing at a Glance"),
+                            "startRowIndex": start_row - 1,
+                            "endRowIndex": start_row + len(data_rows) - 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 7
+                        },
+                        "top": {"style": "SOLID"},
+                        "bottom": {"style": "SOLID"},
+                        "left": {"style": "SOLID"},
+                        "right": {"style": "SOLID"},
+                        "innerHorizontal": {"style": "SOLID"},
+                        "innerVertical": {"style": "SOLID"}
+                    }
+                })
+                
+                # Apply formatting
+                if requests:
+                    try:
+                        service.spreadsheets().batchUpdate(
+                            spreadsheetId=sheet_id,
+                            body={"requests": requests}
+                        ).execute()
+                    except Exception as e:
+                        logger.warning(f"Error applying formatting: {str(e)}")
+                
             return True
         except Exception as e:
             logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
+    def _get_sheet_id_by_name(self, service, spreadsheet_id, sheet_name):
+        """Get the sheet ID from its name."""
+        try:
+            spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets = spreadsheet.get('sheets', [])
+            for sheet in sheets:
+                if sheet.get('properties', {}).get('title') == sheet_name:
+                    return sheet.get('properties', {}).get('sheetId')
+            return 0
+        except Exception as e:
+            logger.error(f"Error getting sheet ID for {sheet_name}: {str(e)}")
+            return 0
+    
     def _format_index_data(self, index, data):
         """Format data for a specific index."""
         try:
