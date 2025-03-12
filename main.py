@@ -672,7 +672,7 @@ def process_single_pdf(pdf_path):
         )
         
         validation_results = validation_crew.kickoff()
-        
+
         # Safely parse validation results
         validation_dict = safely_parse_agent_output(validation_results)
         if not validation_dict:
@@ -681,7 +681,7 @@ def process_single_pdf(pdf_path):
             validation_dict = {}
             for index in structured_data.keys():
                 validation_dict[index] = True  # Default to True for all indices
-        
+
         # Check if any validations passed
         if not any(validation_dict.values()):
             logger.warning(f"All validations failed for {pdf_path}")
@@ -691,65 +691,37 @@ def process_single_pdf(pdf_path):
                 validation_dict[first_key] = True
                 logger.info(f"Setting {first_key} validation to True to continue processing")
         
-        # Execute formatting
-        logger.info("Starting Google Sheets formatting...")
+        # Fix the formatting task to ensure proper data structure
         formatting_task = Task(
-                    description=f"""
-                    Format the validated ISM Manufacturing Report data for Google Sheets and update the sheet.
-                    
-                    Requirements:
-                    1. Check if the Google Sheet exists, create it if it doesn't
-                    2. Each index should have its own tab
-                    3. Industries should be rows, months should be columns
-                    4. Append new data without overwriting previous months
-                    5. Maintain consistent formatting across all tabs
-                    6. Handle any existing data gracefully
-                    7. Format the Manufacturing at a Glance table properly in its own dedicated tab
-                    
-                    Remember that each index may have different numbers of industries and they may
-                    be in different orders.
-                    
-                    The input for the Google Sheets Formatter Tool should be a dictionary with:
-                    'structured_data': {structured_data}
-                    'validation_results': {validation_dict}
-                    'extraction_data': {extraction_data}
-                    """,
-                    expected_output="A boolean indicating whether the Google Sheets update was successful",
-                    agent=formatter_agent
-                )
-        
-        formatting_crew = Crew(
-            agents=[formatter_agent],
-            tasks=[formatting_task],
-            verbose=True,
-            process=Process.sequential
+            description=f"""
+            Format the validated ISM Manufacturing Report data for Google Sheets and update the sheet.
+            
+            Requirements:
+            1. Check if the Google Sheet exists, create it if it doesn't
+            2. Each index should have its own tab
+            3. Industries should be rows, months should be columns
+            4. Append new data without overwriting previous months
+            5. Maintain consistent formatting across all tabs
+            6. Handle any existing data gracefully
+            7. Format the Manufacturing at a Glance table properly in its own dedicated tab
+            
+            Remember that each index may have different numbers of industries and they may
+            be in different orders.
+            """,
+            expected_output="A boolean indicating whether the Google Sheets update was successful",
+            agent=formatter_agent
         )
-        
-        formatting_result = formatting_crew.kickoff()
 
-        # Check if formatting was successful
-        if hasattr(formatting_result, '__class__') and formatting_result.__class__.__name__ == 'CrewOutput':
-            logger.info("Google Sheets formatting completed")
-            
-            # If we see evidence that the formatting succeeded in the logs
-            if hasattr(formatting_result, 'content'):
-                content = formatting_result.content
-                if isinstance(content, bool):
-                    return content
-                elif isinstance(content, str) and ('true' in content.lower() or 'success' in content.lower()):
-                    return True
-            
-            # Since we saw a success message in the log, assume success
-            if "Successfully updated Google Sheets" in str(formatting_result):
-                return True
-            
-            # Default to a successful result since we got this far
-            return True
-        else:
-            # Regular parsing for other types
-            format_success = safely_parse_agent_output(formatting_result)
-            logger.info("Google Sheets formatting completed")
-            return format_success if format_success is not None else False
+        from tools import GoogleSheetsFormatterTool
+        formatter_tool = GoogleSheetsFormatterTool()
+        formatting_result = formatter_tool._run({
+            'structured_data': structured_data,
+            'validation_results': validation_dict,  # Note: using validation_dict instead of validation_results
+            'extraction_data': extraction_data
+        })
+
+        logger.info("Google Sheets formatting completed")
+        return formatting_result
         
     except Exception as e:
         logger.error(f"Error processing PDF {pdf_path}: {str(e)}")

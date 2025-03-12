@@ -159,18 +159,19 @@ def extract_industry_mentions(text, indices):
     # Loop through each index and its summary text
     for index, summary in indices.items():
         try:
+            growth_match = None
+            decline_match = None
+            slower_match = None
+            faster_match = None
+            higher_match = None
+            lower_match = None
+            too_high_match = None
+            too_low_match = None
+            increasing_match = None
+            decreasing_match = None
+            lower_pattern = None
+            
             if index == "Supplier Deliveries":
-                growth_match = None
-                decline_match = None
-                slower_match = None
-                faster_match = None
-                higher_match = None
-                lower_match = None
-                too_high_match = None
-                too_low_match = None
-                increasing_match = None
-                decreasing_match = None
-
                 # Extract industries reporting slower deliveries
                 slower_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported)(?:.+?)slower(?:.+?)(?:supplier )?deliveries[^:]*:(.+?)(?:\.|The|$)"
                 slower_match = re.search(slower_pattern, summary, re.IGNORECASE | re.DOTALL)
@@ -206,6 +207,7 @@ def extract_industry_mentions(text, indices):
                 }
                 
             elif index == "Inventories":
+                # Initialize all pattern matches as None at the beginning
                 growth_match = None
                 decline_match = None
                 slower_match = None
@@ -216,6 +218,7 @@ def extract_industry_mentions(text, indices):
                 too_low_match = None
                 increasing_match = None
                 decreasing_match = None
+                lower_pattern = None
 
                 # Extract industries reporting higher inventories
                 higher_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:higher|increased|increasing|growing|growth in) (?:inventories|inventory)[^:]*:(.+?)(?:\.|The|$)"
@@ -252,6 +255,7 @@ def extract_industry_mentions(text, indices):
                 }
                 
             elif index == "Customers' Inventories":
+                # Initialize all pattern matches as None at the beginning
                 growth_match = None
                 decline_match = None
                 slower_match = None
@@ -262,6 +266,7 @@ def extract_industry_mentions(text, indices):
                 too_low_match = None
                 increasing_match = None
                 decreasing_match = None
+                lower_pattern = None
 
                 # Extract industries reporting customers' inventories as too high
                 too_high_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:customers'|customer) (?:inventories|inventory) as too high[^:]*:(.+?)(?:\.|The|$)"
@@ -295,6 +300,7 @@ def extract_industry_mentions(text, indices):
                 }
                 
             elif index == "Prices":
+                # Initialize all pattern matches as None at the beginning
                 growth_match = None
                 decline_match = None
                 slower_match = None
@@ -305,7 +311,8 @@ def extract_industry_mentions(text, indices):
                 too_low_match = None
                 increasing_match = None
                 decreasing_match = None
-                
+                lower_pattern = None
+
                 # Extract industries reporting price increases
                 increasing_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:paying |higher |increased |increasing |price increases)[^:]*:(.+?)(?:\.|The|$)"
                 increasing_match = re.search(increasing_pattern, summary, re.IGNORECASE | re.DOTALL)
@@ -343,11 +350,10 @@ def extract_industry_mentions(text, indices):
                 }
                 
             else:  # Default pattern for growth/decline
-                # Extract industries reporting growth
+                # Existing patterns
                 growth_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:growth|expansion|increase|growing|increased)[^:]*:(.+?)(?:\.|The|$)"
                 growth_match = re.search(growth_pattern, summary, re.IGNORECASE | re.DOTALL)
-                specific_growth = r"industries (?:reporting|that reported) growth in (?:new orders|production|employment|order backlogs|new export orders|imports) in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
-                specific_decline = r"industries (?:reporting|that reported) (?:a |)(?:decline|decrease|contraction) in (?:new orders|production|employment|order backlogs|new export orders|imports) in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                specific_growth = r"The (?:\w+|\d+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) growth in (?:new orders|production|employment|order backlogs|new export orders|imports) in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
                 
                 # Try more specific pattern for ISM reports
                 if not growth_match:
@@ -358,16 +364,31 @@ def extract_industry_mentions(text, indices):
                     alt_growth = r"The (?:\w+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported) growth in[^:]*:([^\.]+)"
                     growth_match = re.search(alt_growth, summary, re.IGNORECASE | re.DOTALL)
                 
+                # Try the new alternative format
+                if not growth_match:
+                    alt_industry_format = r"The industries (?:reporting|that reported) (?:growth|expansion|increase) (?:in|of) (?:new orders|production|employment|supplier deliveries|inventories|backlogs)[^:]*:([^\.]+)"
+                    growth_match = re.search(alt_industry_format, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Extract industries reporting decline
+                decline_pattern = r"(?:The|The \d+) (?:industries|manufacturing industries)(?:.+?)(?:reporting|that reported) (?:decline|contraction|decrease|declining|decreased)[^:]*:(.+?)(?:\.|The|$)"
+                decline_match = re.search(decline_pattern, summary, re.IGNORECASE | re.DOTALL)
+                specific_decline = r"The (?:\w+|\d+) (?:industries|manufacturing industries) (?:that |)(?:reporting|reported|report) (?:a |)(?:decline|decrease|contraction) in (?:new orders|production|employment|order backlogs|new export orders|imports) in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:.+?)(?:are|—|in)(?:.+?)(?:order|the following order)[^:]*:([^\.]+)"
+                
                 # Try more specific pattern for ISM reports
                 if not decline_match:
                     decline_match = re.search(specific_decline, summary, re.IGNORECASE | re.DOTALL)
+                
+                # Try the new alternative format for declining
+                if not decline_match:
+                    alt_decline_format = r"The industries (?:reporting|that reported) (?:decline|contraction|decrease) (?:in|of) (?:new orders|production|employment|supplier deliveries|inventories|backlogs)[^:]*:([^\.]+)"
+                    decline_match = re.search(alt_decline_format, summary, re.IGNORECASE | re.DOTALL)
                 
                 # Process matches
                 growing = []
                 if growth_match:
                     growing_text = growth_match.group(1).strip()
-                    growing = [i.strip() for i in re.split(r';|and|,', growing_text) if i.strip()]
-                
+                    growing = [i.strip() for i in re.split(r';|\sand\s|,', growing_text) if i.strip()]
+                    
                 declining = []
                 if decline_match:
                     declining_text = decline_match.group(1).strip()
