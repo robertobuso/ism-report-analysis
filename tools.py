@@ -385,11 +385,45 @@ class GoogleSheetsFormatterTool(BaseTool):
             A boolean indicating whether the Google Sheets update was successful
         """
     )
+
+    def __init__(self):
+    super().__init__()
+    self.pdf_data_cache = {}
+
+    def _extract_pdf_with_caching(self, pdf_path):
+        """
+        Extract data from PDF with caching to avoid redundant processing.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            
+        Returns:
+            Extracted data dictionary
+        """
+        # Check if data is already in cache
+        if pdf_path in self.pdf_data_cache:
+            logger.info(f"Using cached data for {pdf_path}")
+            return self.pdf_data_cache[pdf_path]
+        
+        # Extract data from PDF
+        logger.info(f"Extracting data from {pdf_path}")
+        extracted_data = parse_ism_report(pdf_path)
+        
+        # Cache the data
+        if extracted_data:
+            self.pdf_data_cache[pdf_path] = extracted_data
+        
+        return extracted_data
     
     def _run(self, data: Dict[str, Any]) -> bool:
         """
-        Implementation of the required abstract _run method.
-        This formats and updates Google Sheets with the validated ISM data.
+        Main entry point for the Google Sheets Formatter Tool.
+        
+        Args:
+            data: Dictionary containing structured_data, validation_results, and visualization_options
+            
+        Returns:
+            Boolean indicating whether the Google Sheets update was successful
         """
         try:
             # Check if required keys exist
@@ -399,33 +433,27 @@ class GoogleSheetsFormatterTool(BaseTool):
                 
             if 'structured_data' not in data:
                 data['structured_data'] = {}
-                logger.warning("structured_data not in input. Creating empty structured_data.")
+                logger.warning("structured_data not found. Creating empty structured_data.")
                 
             if 'validation_results' not in data:
                 data['validation_results'] = {}
-                logger.warning("validation_results not in input. Creating empty validation_results.")
+                logger.warning("validation_results not found. Creating empty validation_results.")
                 
-            structured_data = data['structured_data']
-            validation_results = data['validation_results']
+            structured_data = data.get('structured_data', {})
+            validation_results = data.get('validation_results', {})
             extraction_data = data.get('extraction_data', {})
+            visualization_options = data.get('visualization_options', {
+                'basic': True,
+                'heatmap': True,
+                'timeseries': True,
+                'industry': True
+            })
 
-            # Initialize the database if needed (new functionality)
+            # Initialize the database if needed
             initialize_database()
             
             # Validate the data has actual industries before proceeding
-            def count_industries(data_dict):
-                if not isinstance(data_dict, dict):
-                    return 0
-                count = 0
-                for index in data_dict:
-                    if isinstance(data_dict[index], dict) and 'categories' in data_dict[index]:
-                        categories = data_dict[index]['categories']
-                        for category in categories:
-                            if isinstance(categories[category], list):
-                                count += len(categories[category])
-                return count
-            
-            industry_count = count_industries(structured_data)
+            industry_count = self._count_industries(structured_data)
             logger.info(f"Found {industry_count} industries in structured data")
             
             # If no industries in structured data, try direct extraction if available
@@ -440,7 +468,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                         'categories': categories
                     }
                 
-                industry_count = count_industries(structured_data)
+                industry_count = self._count_industries(structured_data)
                 logger.info(f"Created structured data with {industry_count} industries from extraction_data")
             
             # If still no valid data, log warning and return failure
@@ -452,14 +480,14 @@ class GoogleSheetsFormatterTool(BaseTool):
             if not validation_results:
                 for index in ISM_INDICES:
                     validation_results[index] = index in structured_data
-                    
+            
             # Check if validation passed for at least some indices
             if not any(validation_results.values()):
                 # Force at least one index to be valid so we can continue
-                logger.warning("All validations failed. Forcing New Orders to be valid to continue.")
+                logger.warning("All validations failed. Forcing an index to be valid to continue.")
                 if ISM_INDICES:
                     validation_results[ISM_INDICES[0]] = True
-        
+            
             # Get the month and year from the first validated index
             month_year = None
             for index, valid in validation_results.items():
@@ -481,112 +509,132 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # Get Google Sheets service
             service = get_google_sheets_service()
+            if not service:
+                logger.error("Failed to get Google Sheets service")
+                return False
             
             # Get or create the Google Sheet
             sheet_id = self._get_or_create_sheet(service, "ISM Manufacturing Report Analysis")
+            if not sheet_id:
+                logger.error("Failed to get or create Google Sheet")
+                return False
             
-            # Update Manufacturing at a Glance tab
+            # Process all visualizations with the optimized batch approach
+            # Check if manufacturing_table exists and update it
             manufacturing_table = ""
             if 'extraction_data' in data:
                 manufacturing_table = data.get('extraction_data', {}).get('manufacturing_table', '')
             
+            # Initialize the tab data collection for batch updates
+            all_tab_data = {}
+            
+            # Process Manufacturing at a Glance table if available
             if manufacturing_table:
                 logger.info(f"Updating Manufacturing at a Glance table for {month_year}")
-                self._update_manufacturing_tab(service, sheet_id, month_year, manufacturing_table)
-            
-            # Update each index tab that passed validation
-            for index, valid in validation_results.items():
-                if valid and index in structured_data:
-                    # Format data for this index
-                    formatted_data = self._format_index_data(index, structured_data[index])
-                    
-                    # Check if there are actually any industries in this formatted data
-                    has_industries = False
-                    for category, industries in formatted_data.items():
-                        if industries:
-                            has_industries = True
-                            break
-                    
-                    if has_industries:
-                        # Update the sheet with new columnar format
-                        self._update_sheet_tab_columnar(service, sheet_id, index, formatted_data, formatted_month_year)
-                    else:
-                        logger.warning(f"No industries found for {index}, skipping tab update")
-            
-            # Check if we should generate enhanced visualizations
-            visualization_options = data.get('visualization_options', {
-                'basic': True,
-                'heatmap': True,
-                'timeseries': True,
-                'industry': True
-            })
-
-            # Only run basic visualization if requested
-            if not visualization_options.get('basic', True):
-                logger.info("Basic visualization disabled by user")
-            else:
-                # Check if we should generate enhanced visualizations
-                generate_enhanced = True  # You can make this configurable via UI
+                # Use direct PDF path if available
+                pdf_path = None
+                if 'pdf_path' in data:
+                    pdf_path = data['pdf_path']
                 
-                if generate_enhanced:
-                    logger.info("Generating enhanced database-backed visualizations")
-                    
-                    # Update the monthly heatmap summary
-                    self._update_monthly_heatmap_summary(service, sheet_id)
-                    
-                    # Get all indices from the database
-                    indices = get_all_indices()
-                    
-                    if not indices:
-                        logger.warning("No indices found in database, using default list")
-                        indices = [
-                            "Manufacturing PMI", "New Orders", "Production", "Employment",
-                            "Supplier Deliveries", "Inventories", "Customers' Inventories",
-                            "Prices", "Backlog of Orders", "New Export Orders", "Imports"
-                        ]
-                    
-                    # Update time series and industry tabs for each index
-                    for index_name in indices:
-                        self._update_index_time_series(service, sheet_id, index_name)
-                        self._update_industry_growth_contraction(service, sheet_id, index_name)
+                # Prepare manufacturing table data
+                mfg_sheet_id = self._get_sheet_id_by_name(service, sheet_id, 'Manufacturing at a Glance')
+                mfg_data = self._prepare_manufacturing_table_data(month_year, manufacturing_table)
+                
+                all_tab_data['Manufacturing at a Glance'] = {
+                    'data': mfg_data['rows'],
+                    'formatting': self._prepare_manufacturing_table_formatting(mfg_sheet_id, len(mfg_data['rows']), len(mfg_data['rows'][0]))
+                }
+            
+            # Process basic visualization if enabled
+            if visualization_options.get('basic', True):
+                logger.info("Processing basic industry classification visualizations")
+                # Update each index tab that passed validation
+                for index, valid in validation_results.items():
+                    if valid and index in structured_data:
+                        # Format data for this index
+                        tab_data, formatting = self._prepare_index_tab_data(index, structured_data[index], formatted_month_year)
                         
-                    logger.info("Successfully updated all enhanced visualizations")
-
-            # Run enhanced visualizations if requested
+                        # Add to batch update
+                        if tab_data:
+                            all_tab_data[index] = {
+                                'data': tab_data,
+                                'formatting': formatting
+                            }
+            
+            # Process monthly heatmap summary if enabled
             if visualization_options.get('heatmap', True):
-                logger.info("Generating monthly heatmap summary")
-                self._update_monthly_heatmap_summary(service, sheet_id)
-
-            # Get all indices from the database
-            indices = get_all_indices()
-
-            if not indices:
-                logger.warning("No indices found in database, using default list")
-                indices = [
-                    "Manufacturing PMI", "New Orders", "Production", "Employment",
-                    "Supplier Deliveries", "Inventories", "Customers' Inventories",
-                    "Prices", "Backlog of Orders", "New Export Orders", "Imports"
-                ]
-
-            # Update time series tabs if requested
+                logger.info("Processing monthly heatmap summary visualization")
+                try:
+                    heatmap_data, heatmap_formatting = self._prepare_heatmap_summary_data(month_year)
+                    
+                    if heatmap_data:
+                        all_tab_data['PMI Heatmap Summary'] = {
+                            'data': heatmap_data,
+                            'formatting': heatmap_formatting
+                        }
+                except Exception as e:
+                    logger.error(f"Error preparing heatmap data: {str(e)}")
+            
+            # Process time series analysis if enabled
             if visualization_options.get('timeseries', True):
-                logger.info("Generating time series analysis tabs")
+                logger.info("Processing time series analysis visualizations")
+                indices = get_all_indices()
+                
+                if not indices:
+                    logger.warning("No indices found in database, using default list")
+                    indices = ISM_INDICES
+                
                 for index_name in indices:
-                    self._update_index_time_series(service, sheet_id, index_name)
-
-            # Update industry growth/contraction tabs if requested
+                    try:
+                        timeseries_data, timeseries_formatting = self._prepare_timeseries_data(index_name)
+                        
+                        if timeseries_data:
+                            all_tab_data[f"{index_name} Analysis"] = {
+                                'data': timeseries_data,
+                                'formatting': timeseries_formatting
+                            }
+                    except Exception as e:
+                        logger.error(f"Error preparing time series for {index_name}: {str(e)}")
+                    
+                    # Add a small delay between processing different indices
+                    import time
+                    time.sleep(0.1)
+            
+            # Process industry growth/contraction over time if enabled
             if visualization_options.get('industry', True):
-                logger.info("Generating industry growth/contraction tabs")
+                logger.info("Processing industry growth/contraction visualizations")
+                indices = get_all_indices()
+                
+                if not indices:
+                    indices = ISM_INDICES
+                
                 for index_name in indices:
-                    self._update_industry_growth_contraction(service, sheet_id, index_name)
+                    try:
+                        industry_data, industry_formatting = self._prepare_industry_data(index_name)
+                        
+                        if industry_data:
+                            all_tab_data[f"{index_name} Industries"] = {
+                                'data': industry_data,
+                                'formatting': industry_formatting
+                            }
+                    except Exception as e:
+                        logger.error(f"Error preparing industry data for {index_name}: {str(e)}")
+                    
+                    # Add a small delay between processing different indices
+                    import time
+                    time.sleep(0.1)
+            
+            # Update all tabs in a batch to minimize API calls
+            result = self._update_multiple_tabs_with_data(service, sheet_id, all_tab_data)
             
             logger.info(f"Successfully updated Google Sheets for {month_year}")
-            return True
+            return result
+            
         except Exception as e:
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            raise
-
+            return False
+    
     def _format_month_year(self, month_year: str) -> str:
         """Convert full month and year to MM/YY format."""
         try:
@@ -906,7 +954,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # Call the API with the PDF attachment
             response = client.chat.completions.create(
-                model="gpt-4-vision-preview",  # Use vision model
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
@@ -1065,7 +1113,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # Call the API with the images
             response = client.chat.completions.create(
-                model="gpt-4-vision-preview",  # Use vision model
+                model="gpt-4o",
                 messages=[{
                     "role": "user", 
                     "content": message_content
@@ -1259,15 +1307,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             return False
 
     def _find_pdf_by_month_year(self, month_year):
-        """
-        Find a PDF file that matches the given month and year.
-        
-        Args:
-            month_year: The month and year to search for (e.g., "JANUARY 2025")
-            
-        Returns:
-            Path to the PDF file, or None if not found
-        """
+        """Find a PDF file that matches the given month and year."""
         try:
             # Convert month_year to lowercase for case-insensitive matching
             month_year_lower = month_year.lower()
@@ -1294,9 +1334,9 @@ class GoogleSheetsFormatterTool(BaseTool):
             month_num = month_map.get(month_match.group(1))
             year_short = year_match.group(1)[-2:]  # Last two digits
             
-            # The pattern we're looking for in filenames, e.g., "1/25" for January 2025
-            file_pattern = f"{month_num}/{year_short}"
-            logger.info(f"Looking for files starting with: {file_pattern}")
+            # Instead of looking for an exact pattern with a slash, use regex for more flexible matching
+            month_year_pattern = rf".*{month_num}.*{year_short}.*\.pdf"
+            logger.info(f"Looking for files matching pattern: {month_year_pattern}")
             
             # Look in the pdfs directory and uploads directory
             directories_to_check = []
@@ -1313,19 +1353,19 @@ class GoogleSheetsFormatterTool(BaseTool):
                 logger.warning("No valid directories found to search for PDFs")
                 return None
             
-            # Search for files with the pattern
+            # Search for files with the regex pattern
             for directory in directories_to_check:
                 pdf_files = [f for f in os.listdir(directory) if f.lower().endswith('.pdf')]
                 logger.info(f"Found {len(pdf_files)} PDF files in {directory}: {pdf_files}")
                 
                 for filename in pdf_files:
-                    # Check if the file starts with our pattern
-                    if filename.startswith(file_pattern):
+                    # Use regex pattern matching instead of startswith
+                    if re.match(month_year_pattern, filename, re.IGNORECASE):
                         logger.info(f"Found matching file: {filename}")
                         return os.path.join(directory, filename)
             
-            # If we get here, no matching file was found
-            logger.warning(f"No PDF file found starting with {file_pattern}")
+            # If no matching file found, log a warning
+            logger.warning(f"No PDF file found matching pattern {month_year_pattern}")
             
             # As a fallback, use any PDF file we find
             for directory in directories_to_check:
@@ -1341,7 +1381,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
-    
+        
     def find_pdf_by_month_year(month_year):
         """
         Find a PDF file that matches the given month and year.
@@ -1398,7 +1438,6 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error finding PDF for {month_year}: {str(e)}")
             return None
 
-    # Fallback data for known reports
     def _extract_nov_2024_data(self):
         """Extract data from the November 2024 report."""
         return {
@@ -1622,203 +1661,6 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error formatting month_year '{month_year}': {str(e)}")
             from datetime import datetime
             return datetime.now().strftime("%m/%y")
-
-    def _format_manufacturing_table(self, service, sheet_id, mfg_sheet_id):
-        """Apply formatting to the Manufacturing at a Glance table."""
-        try:
-            # Get the dimensions of the sheet
-            result = service.spreadsheets().values().get(
-                spreadsheetId=sheet_id,
-                range="'Manufacturing at a Glance'!A:Z"
-            ).execute()
-            
-            values = result.get('values', [])
-            max_rows = len(values) if values else 1
-            max_cols = max([len(row) for row in values]) if values else 14  # Default to 14 columns
-            
-            # Formatting requests
-            requests = [
-                # Format header row
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": mfg_sheet_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": max_cols
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                },
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                    }
-                },
-                # Add borders
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": mfg_sheet_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": max_rows,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": max_cols
-                        },
-                        "top": {"style": "SOLID"},
-                        "bottom": {"style": "SOLID"},
-                        "left": {"style": "SOLID"},
-                        "right": {"style": "SOLID"},
-                        "innerHorizontal": {"style": "SOLID"},
-                        "innerVertical": {"style": "SOLID"}
-                    }
-                },
-                # Auto-resize columns
-                {
-                    "autoResizeDimensions": {
-                        "dimensions": {
-                            "sheetId": mfg_sheet_id,
-                            "dimension": "COLUMNS",
-                            "startIndex": 0,
-                            "endIndex": max_cols
-                        }
-                    }
-                },
-                # Freeze header row
-                {
-                    "updateSheetProperties": {
-                        "properties": {
-                            "sheetId": mfg_sheet_id,
-                            "gridProperties": {
-                                "frozenRowCount": 1
-                            }
-                        },
-                        "fields": "gridProperties.frozenRowCount"
-                    }
-                }
-            ]
-            
-            # Add conditional formatting for cell colors
-            color_formats = [
-                # Growing/Increasing = green text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": mfg_sheet_id,
-                                    "startRowIndex": 1,  # Skip header
-                                    "endRowIndex": max_rows,
-                                    "startColumnIndex": 1,  # Skip month column
-                                    "endColumnIndex": max_cols
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_CONTAINS",
-                                    "values": [{"userEnteredValue": "(Growing)"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.0,
-                                            "green": 0.6,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 0
-                    }
-                },
-                # Increasing = green text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": mfg_sheet_id,
-                                    "startRowIndex": 1,  # Skip header
-                                    "endRowIndex": max_rows,
-                                    "startColumnIndex": 1,  # Skip month column
-                                    "endColumnIndex": max_cols
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_CONTAINS",
-                                    "values": [{"userEnteredValue": "(Increasing)"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.0,
-                                            "green": 0.6,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 1
-                    }
-                },
-                # Contracting = red text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": mfg_sheet_id,
-                                    "startRowIndex": 1,  # Skip header
-                                    "endRowIndex": max_rows,
-                                    "startColumnIndex": 1,  # Skip month column
-                                    "endColumnIndex": max_cols
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_CONTAINS",
-                                    "values": [{"userEnteredValue": "(Contracting)"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.8,
-                                            "green": 0.0,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 2
-                    }
-                }
-            ]
-            
-            # Add color formats to requests
-            requests.extend(color_formats)
-            
-            # Execute formatting requests
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=sheet_id,
-                body={"requests": requests}
-            ).execute()
-            
-            logger.info("Applied formatting to Manufacturing at a Glance tab")
-            
-        except Exception as e:
-            logger.error(f"Error formatting manufacturing table: {str(e)}")
 
     def _format_month_year_for_sheet(self, month_year):
         """
@@ -2350,208 +2192,6 @@ class GoogleSheetsFormatterTool(BaseTool):
                 return {category: [] for category in INDEX_CATEGORIES[index]}
             return {}
     
-    def _update_sheet_tab_columnar(self, service, sheet_id, index, formatted_data, formatted_month_year):
-        """Update a specific tab in the Google Sheet with a columnar time-series format."""
-        try:
-            if not formatted_data:
-                logger.warning(f"No formatted data for {index}, skipping tab update")
-                return False
-            
-            if not formatted_month_year:
-                logger.warning(f"No month_year for {index}, using 'Unknown'")
-                formatted_month_year = "Unknown"
-
-            # Ensure index exists in the sheet
-            try:
-                # Try to access the sheet to verify it exists
-                test_range = f"'{index}'!A1:Z1"
-                service.spreadsheets().values().get(
-                    spreadsheetId=sheet_id,
-                    range=test_range
-                ).execute()
-            except Exception as e:
-                logger.warning(f"Error accessing tab {index}: {str(e)}")
-                
-                # Try to create the tab
-                try:
-                    create_request = {
-                        'requests': [{
-                            'addSheet': {
-                                'properties': {
-                                    'title': index
-                                }
-                            }
-                        }]
-                    }
-                    service.spreadsheets().batchUpdate(
-                        spreadsheetId=sheet_id,
-                        body=create_request
-                    ).execute()
-                    logger.info(f"Created new tab for {index}")
-                except Exception as e2:
-                    logger.error(f"Failed to create tab {index}: {str(e2)}")
-                    return False
-                
-            # Verify data has actual content
-            has_data = False
-            for category, industries in formatted_data.items():
-                if industries:
-                    has_data = True
-                    break
-            
-            if not has_data:
-                logger.warning(f"No industries found for {index}, skipping tab update")
-                return False
-                
-            # Get the sheet data
-            result = service.spreadsheets().values().get(
-                spreadsheetId=sheet_id,
-                range=f"'{index}'!A:Z"
-            ).execute()
-            
-            values = result.get('values', [])
-            
-            # Check if we need to initialize the sheet
-            need_init = False
-            if not values:
-                need_init = True
-            elif len(values) <= 1 and all(not cell for row in values for cell in row):
-                need_init = True
-                
-            if need_init:
-                # Create a single cell with month/year as header
-                service.spreadsheets().values().update(
-                    spreadsheetId=sheet_id,
-                    range=f"'{index}'!A1",
-                    valueInputOption="RAW",
-                    body={"values": [[formatted_month_year]]}
-                ).execute()
-                
-                # Reset values to just the header
-                values = [[formatted_month_year]]
-            
-            # Get the header row
-            header_row = values[0] if values else []
-            
-            # Find the column index for the month, or add it if it doesn't exist
-            if formatted_month_year in header_row:
-                month_col_idx = header_row.index(formatted_month_year)
-                logger.info(f"Month {formatted_month_year} found in column {month_col_idx + 1}")
-            else:
-                # Add the new month to the right of the existing columns
-                month_col_idx = len(header_row)
-                header_row.append(formatted_month_year)
-                
-                # Update the header row
-                service.spreadsheets().values().update(
-                    spreadsheetId=sheet_id,
-                    range=f"'{index}'!A1",
-                    valueInputOption="RAW",
-                    body={"values": [header_row]}
-                ).execute()
-                logger.info(f"Added month {formatted_month_year} in column {month_col_idx + 1}")
-            
-            # Collect all entries for the column - sort by category and preserve original order
-            all_industry_entries = []
-            
-            # First process Growing/Increasing/Slower/Higher/Too High categories
-            primary_category = self._get_primary_category(index)
-            secondary_category = self._get_secondary_category(index)
-            
-            # Add primary category entries
-            if primary_category in formatted_data:
-                for industry in formatted_data[primary_category]:
-                    if self._is_valid_industry(industry):
-                        all_industry_entries.append(f"{industry} - {primary_category}")
-            
-            # Add secondary category entries
-            if secondary_category in formatted_data:
-                for industry in formatted_data[secondary_category]:
-                    if self._is_valid_industry(industry):
-                        all_industry_entries.append(f"{industry} - {secondary_category}")
-            
-            # Add any other categories that might exist
-            for category, industries in formatted_data.items():
-                if category not in [primary_category, secondary_category]:
-                    for industry in industries:
-                        if self._is_valid_industry(industry):
-                            all_industry_entries.append(f"{industry} - {category}")
-            
-            # Build column data - each cell contains a single industry + status
-            column_data = []
-            for entry in all_industry_entries:
-                column_data.append([entry])
-            
-            # Update the column for this month
-            if column_data:
-                # First, clear any existing data in the column to ensure clean update
-                clear_range = f"'{index}'!{chr(65 + month_col_idx)}2:{chr(65 + month_col_idx)}1000"  # Assuming max 1000 rows
-                service.spreadsheets().values().clear(
-                    spreadsheetId=sheet_id,
-                    range=clear_range
-                ).execute()
-                
-                # Then update with new data
-                range_to_update = f"'{index}'!{chr(65 + month_col_idx)}2"
-                service.spreadsheets().values().update(
-                    spreadsheetId=sheet_id,
-                    range=range_to_update,
-                    valueInputOption="RAW",
-                    body={"values": column_data}
-                ).execute()
-                
-            logger.info(f"Updated {index} sheet with data for {formatted_month_year} with {len(all_industry_entries)} industries")
-            
-            # Format the column to wrap text and fit content
-            sheet_id_num = self._get_sheet_id_by_name(service, sheet_id, index)
-            
-            if sheet_id_num:
-                requests = [
-                    # Set text wrapping
-                    {
-                        "repeatCell": {
-                            "range": {
-                                "sheetId": sheet_id_num,
-                                "startRowIndex": 1,  # Row 2 (0-indexed)
-                                "endRowIndex": len(column_data) + 1,
-                                "startColumnIndex": month_col_idx,
-                                "endColumnIndex": month_col_idx + 1
-                            },
-                            "cell": {
-                                "userEnteredFormat": {
-                                    "wrapStrategy": "WRAP",
-                                    "verticalAlignment": "TOP"
-                                }
-                            },
-                            "fields": "userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment"
-                        }
-                    },
-                    # Auto-resize column width
-                    {
-                        "autoResizeDimensions": {
-                            "dimensions": {
-                                "sheetId": sheet_id_num,
-                                "dimension": "COLUMNS",
-                                "startIndex": month_col_idx,
-                                "endIndex": month_col_idx + 1
-                            }
-                        }
-                    }
-                ]
-                
-                service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={"requests": requests}
-                ).execute()
-                
-                logger.info(f"Applied formatting to cell for {formatted_month_year} in {index} tab")
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error updating sheet tab {index}: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
-
     def _get_primary_category(self, index):
         """Get the primary category for an index based on its type."""
         index_category_map = {
@@ -2599,871 +2239,27 @@ class GoogleSheetsFormatterTool(BaseTool):
             
         return True
     
-    def _update_monthly_heatmap_summary(self, service, sheet_id):
-        """
-        Update the Monthly Heatmap Summary tab showing PMI indices by month.
-        
-        Args:
-            service: Google Sheets service instance
-            sheet_id: ID of the Google Sheet
-        
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            # Get data from the database
-            monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
-            
-            if not monthly_data:
-                logger.warning("No monthly data available for heatmap summary")
-                return False
-            
-            # Ensure the tab exists
-            tab_name = "PMI Heatmap Summary"
-            sheet_id_map = self._get_all_sheet_ids(service, sheet_id)
-            
-            tab_id = sheet_id_map.get(tab_name)
-            if not tab_id:
-                # Create the tab if it doesn't exist
-                self._create_sheet_tab(service, sheet_id, tab_name)
-                sheet_id_map = self._get_all_sheet_ids(service, sheet_id)
-                tab_id = sheet_id_map.get(tab_name)
-            
-            # Get all unique index names
-            all_indices = set()
-            for data in monthly_data:
-                all_indices.update(data['indices'].keys())
-            
-            # Order indices with Manufacturing PMI first, then alphabetically
-            ordered_indices = ['Manufacturing PMI']
-            ordered_indices.extend(sorted([idx for idx in all_indices if idx != 'Manufacturing PMI']))
-            
-            # Prepare header row
-            header_row = ["Month/Year"]
-            header_row.extend(ordered_indices)
-            
-            # Prepare data rows
-            data_rows = []
-            for data in monthly_data:
-                row = [data['month_year']]
+    def _execute_with_backoff(self, request_func, max_retries=5, initial_delay=1, backoff_factor=2):
+        """Execute a request with exponential backoff for rate limit errors."""
+        delay = initial_delay
+        for retry in range(max_retries):
+            try:
+                return request_func()
+            except Exception as e:
+                if retry == max_retries - 1:
+                    # Last retry, re-raise the exception
+                    raise
                 
-                for index_name in ordered_indices:
-                    index_data = data['indices'].get(index_name, {})
-                    value = index_data.get('value', '')
-                    direction = index_data.get('direction', '')
-                    
-                    if value and direction:
-                        cell_value = f"{value} ({direction})"
-                    else:
-                        cell_value = "N/A"
-                        
-                    row.append(cell_value)
-                
-                data_rows.append(row)
-            
-            # Combine header and data rows
-            all_rows = [header_row]
-            all_rows.extend(data_rows)
-            
-            # Update the sheet
-            range_name = f"'{tab_name}'!A1"
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=range_name,
-                valueInputOption="RAW",
-                body={"values": all_rows}
-            ).execute()
-            
-            # Apply formatting
-            self._format_heatmap_summary(service, sheet_id, tab_id, len(all_rows), len(header_row))
-            
-            logger.info(f"Successfully updated Monthly Heatmap Summary with {len(data_rows)} months")
-            return True
-        
-        except Exception as e:
-            logger.error(f"Error updating monthly heatmap summary: {str(e)}")
-            logger.error(traceback.format_exc())
-            return False
-
-    def _format_heatmap_summary(self, service, sheet_id, tab_id, row_count, col_count):
-        """Apply formatting to the heatmap summary tab."""
-        try:
-            # Format requests
-            requests = [
-                # Format header row
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": col_count
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                },
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                    }
-                },
-                # Add borders
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": row_count,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": col_count
-                        },
-                        "top": {"style": "SOLID"},
-                        "bottom": {"style": "SOLID"},
-                        "left": {"style": "SOLID"},
-                        "right": {"style": "SOLID"},
-                        "innerHorizontal": {"style": "SOLID"},
-                        "innerVertical": {"style": "SOLID"}
-                    }
-                },
-                # Freeze header row and first column
-                {
-                    "updateSheetProperties": {
-                        "properties": {
-                            "sheetId": tab_id,
-                            "gridProperties": {
-                                "frozenRowCount": 1,
-                                "frozenColumnCount": 1
-                            }
-                        },
-                        "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
-                    }
-                },
-                # Auto-resize all columns
-                {
-                    "autoResizeDimensions": {
-                        "dimensions": {
-                            "sheetId": tab_id,
-                            "dimension": "COLUMNS",
-                            "startIndex": 0,
-                            "endIndex": col_count
-                        }
-                    }
-                }
-            ]
-            
-            # Add conditional formatting for status colors
-            color_formats = [
-                # Growing = green text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 1,
-                                    "endColumnIndex": col_count
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_CONTAINS",
-                                    "values": [{"userEnteredValue": "(Growing)"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.0,
-                                            "green": 0.6,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 0
-                    }
-                },
-                # Contracting = red text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 1,
-                                    "endColumnIndex": col_count
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_CONTAINS",
-                                    "values": [{"userEnteredValue": "(Contracting)"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.8,
-                                            "green": 0.0,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 1
-                    }
-                }
-            ]
-            
-            # Add heatmap color formatting based on values
-            heatmap_format = {
-                "addConditionalFormatRule": {
-                    "rule": {
-                        "ranges": [
-                            {
-                                "sheetId": tab_id,
-                                "startRowIndex": 1,
-                                "endRowIndex": row_count,
-                                "startColumnIndex": 1,
-                                "endColumnIndex": col_count
-                            }
-                        ],
-                        "gradientRule": {
-                            "minpoint": {
-                                "color": {
-                                    "red": 1.0,
-                                    "green": 0.8,
-                                    "blue": 0.8
-                                },
-                                "type": "NUMBER",
-                                "value": "42"
-                            },
-                            "midpoint": {
-                                "color": {
-                                    "red": 1.0,
-                                    "green": 1.0,
-                                    "blue": 0.8
-                                },
-                                "type": "NUMBER",
-                                "value": "50"
-                            },
-                            "maxpoint": {
-                                "color": {
-                                    "red": 0.8,
-                                    "green": 1.0,
-                                    "blue": 0.8
-                                },
-                                "type": "NUMBER",
-                                "value": "60"
-                            }
-                        }
-                    },
-                    "index": 2
-                }
-            }
-            
-            requests.extend(color_formats)
-            requests.append(heatmap_format)
-            
-            # Execute formatting requests
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=sheet_id,
-                body={"requests": requests}
-            ).execute()
-            
-            logger.info("Applied formatting to Monthly Heatmap Summary tab")
-            
-        except Exception as e:
-            logger.error(f"Error formatting heatmap summary: {str(e)}")
-
-    def _update_index_time_series(self, service, sheet_id, index_name):
-        """
-        Update the Index Time-Series Analysis tab for a specific index.
-        
-        Args:
-            service: Google Sheets service instance
-            sheet_id: ID of the Google Sheet
-            index_name: Name of the index to analyze
-            
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            # Get time series data from the database
-            time_series_data = get_index_time_series(index_name, 36)  # Get up to 3 years of data
-            
-            if not time_series_data:
-                logger.warning(f"No time series data available for {index_name}")
-                return False
-            
-            # Create a tab name based on the index
-            tab_name = f"{index_name} Analysis"
-            # Ensure tab name doesn't exceed 100 characters (Sheets limit)
-            if len(tab_name) > 100:
-                tab_name = tab_name[:97] + "..."
-                
-            # Ensure the tab exists
-            sheet_id_map = self._get_all_sheet_ids(service, sheet_id)
-            tab_id = sheet_id_map.get(tab_name)
-            
-            if not tab_id:
-                # Create the tab if it doesn't exist
-                self._create_sheet_tab(service, sheet_id, tab_name)
-                sheet_id_map = self._get_all_sheet_ids(service, sheet_id)
-                tab_id = sheet_id_map.get(tab_name)
-            
-            # Prepare header row
-            header_row = ["Date", "PMI Value", "Direction", "Change from Previous Month"]
-            
-            # Prepare data rows
-            data_rows = []
-            for entry in time_series_data:
-                row = [
-                    entry['month_year'],
-                    entry['index_value'],
-                    entry['direction'],
-                    entry.get('change', '')  # This may be None for the first entry
-                ]
-                data_rows.append(row)
-            
-            # Combine header and data rows
-            all_rows = [header_row]
-            all_rows.extend(data_rows)
-            
-            # Update the sheet
-            range_name = f"'{tab_name}'!A1"
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=range_name,
-                valueInputOption="RAW",
-                body={"values": all_rows}
-            ).execute()
-            
-            # Apply formatting
-            self._format_time_series_tab(service, sheet_id, tab_id, len(all_rows), len(header_row), index_name)
-            
-            logger.info(f"Successfully updated {index_name} Time-Series Analysis with {len(data_rows)} months")
-            return True
-        
-        except Exception as e:
-            logger.error(f"Error updating time series for {index_name}: {str(e)}")
-            logger.error(traceback.format_exc())
-            return False
-
-    def _format_time_series_tab(self, service, sheet_id, tab_id, row_count, col_count, index_name):
-        """Apply formatting to the time series analysis tab."""
-        try:
-            # Format requests
-            requests = [
-                # Format header row
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": col_count
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                },
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                    }
-                },
-                # Add borders
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": row_count,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": col_count
-                        },
-                        "top": {"style": "SOLID"},
-                        "bottom": {"style": "SOLID"},
-                        "left": {"style": "SOLID"},
-                        "right": {"style": "SOLID"},
-                        "innerHorizontal": {"style": "SOLID"},
-                        "innerVertical": {"style": "SOLID"}
-                    }
-                },
-                # Freeze header row
-                {
-                    "updateSheetProperties": {
-                        "properties": {
-                            "sheetId": tab_id,
-                            "gridProperties": {
-                                "frozenRowCount": 1
-                            }
-                        },
-                        "fields": "gridProperties.frozenRowCount"
-                    }
-                },
-                # Auto-resize all columns
-                {
-                    "autoResizeDimensions": {
-                        "dimensions": {
-                            "sheetId": tab_id,
-                            "dimension": "COLUMNS",
-                            "startIndex": 0,
-                            "endIndex": col_count
-                        }
-                    }
-                }
-            ]
-            
-            # Add conditional formatting for direction
-            direction_formats = [
-                # Growing = green text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 2,  # Direction column
-                                    "endColumnIndex": 3
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Growing"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.0,
-                                            "green": 0.6,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 0
-                    }
-                },
-                # Contracting = red text
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 2,  # Direction column
-                                    "endColumnIndex": 3
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Contracting"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.8,
-                                            "green": 0.0,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 1
-                    }
-                }
-            ]
-            
-            # Add conditional formatting for change values
-            change_formats = [
-                # Positive change = green
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 3,  # Change column
-                                    "endColumnIndex": 4
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "NUMBER_GREATER",
-                                    "values": [{"userEnteredValue": "0"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.0,
-                                            "green": 0.6,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 2
-                    }
-                },
-                # Negative change = red
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 3,  # Change column
-                                    "endColumnIndex": 4
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "NUMBER_LESS",
-                                    "values": [{"userEnteredValue": "0"}]
-                                },
-                                "format": {
-                                    "textFormat": {
-                                        "foregroundColor": {
-                                            "red": 0.8,
-                                            "green": 0.0,
-                                            "blue": 0.0
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "index": 3
-                    }
-                }
-            ]
-            
-            requests.extend(direction_formats)
-            requests.extend(change_formats)
-            
-            # Execute formatting requests
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=sheet_id,
-                body={"requests": requests}
-            ).execute()
-            
-            logger.info(f"Applied formatting to {index_name} Time-Series Analysis tab")
-            
-        except Exception as e:
-            logger.error(f"Error formatting time series tab: {str(e)}")
-
-    def _update_industry_growth_contraction(self, service, sheet_id, index_name):
-        """
-        Update the Industry Growth/Contraction Over Time tab for a specific index.
-        
-        Args:
-            service: Google Sheets service instance
-            sheet_id: ID of the Google Sheet
-            index_name: Name of the index to analyze
-            
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            # Get industry status data from the database
-            industry_data = get_industry_status_over_time(index_name, 24)  # Get up to 2 years
-            
-            if not industry_data or not industry_data.get('industries'):
-                logger.warning(f"No industry status data available for {index_name}")
-                return False
-            
-            # Create a tab name for industry growth/contraction
-            tab_name = f"{index_name} Industries"
-            # Ensure tab name doesn't exceed 100 characters (Sheets limit)
-            if len(tab_name) > 100:
-                tab_name = tab_name[:97] + "..."
-                
-            # Ensure the tab exists
-            sheet_id_map = self._get_all_sheet_ids(service, sheet_id)
-            tab_id = sheet_id_map.get(tab_name)
-            
-            if not tab_id:
-                # Create the tab if it doesn't exist
-                self._create_sheet_tab(service, sheet_id, tab_name)
-                sheet_id_map = self._get_all_sheet_ids(service, sheet_id)
-                tab_id = sheet_id_map.get(tab_name)
-            
-            # Get data for building the sheet
-            dates = industry_data['dates']  # List of month/year strings
-            industries = industry_data['industries']  # Dict with industry names as keys
-            
-            # Sort industries alphabetically
-            sorted_industries = sorted(industries.keys())
-            
-            # Prepare header row - Industry name followed by months
-            header_row = ["Industry"]
-            header_row.extend(dates)
-            
-            # Prepare data rows
-            data_rows = []
-            for industry in sorted_industries:
-                row = [industry]
-                
-                # Add status for each month
-                for date in dates:
-                    status_data = industries[industry].get(date, {'status': 'Neutral'})
-                    status = status_data.get('status', 'Neutral')
-                    row.append(status)
-                    
-                data_rows.append(row)
-            
-            # Combine header and data rows
-            all_rows = [header_row]
-            all_rows.extend(data_rows)
-            
-            # Update the sheet
-            range_name = f"'{tab_name}'!A1"
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=range_name,
-                valueInputOption="RAW",
-                body={"values": all_rows}
-            ).execute()
-            
-            # Apply formatting
-            self._format_industry_tab(service, sheet_id, tab_id, len(all_rows), len(header_row), index_name)
-            
-            logger.info(f"Successfully updated {index_name} Industry Growth/Contraction with {len(data_rows)} industries")
-            return True
-        
-        except Exception as e:
-            logger.error(f"Error updating industry growth/contraction for {index_name}: {str(e)}")
-            logger.error(traceback.format_exc())
-            return False
-
-    def _format_industry_tab(self, service, sheet_id, tab_id, row_count, col_count, index_name):
-        """Apply formatting to the industry growth/contraction tab."""
-        try:
-            # Format requests
-            requests = [
-                # Format header row
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": col_count
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                },
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                    }
-                },
-                # Add borders
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": 0,
-                            "endRowIndex": row_count,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": col_count
-                        },
-                        "top": {"style": "SOLID"},
-                        "bottom": {"style": "SOLID"},
-                        "left": {"style": "SOLID"},
-                        "right": {"style": "SOLID"},
-                        "innerHorizontal": {"style": "SOLID"},
-                        "innerVertical": {"style": "SOLID"}
-                    }
-                },
-                # Freeze header row and industry column
-                {
-                    "updateSheetProperties": {
-                        "properties": {
-                            "sheetId": tab_id,
-                            "gridProperties": {
-                                "frozenRowCount": 1,
-                                "frozenColumnCount": 1
-                            }
-                        },
-                        "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
-                    }
-                },
-                # Auto-resize industry column
-                {
-                    "autoResizeDimensions": {
-                        "dimensions": {
-                            "sheetId": tab_id,
-                            "dimension": "COLUMNS",
-                            "startIndex": 0,
-                            "endIndex": 1
-                        }
-                    }
-                },
-                # Set month columns to fixed width
-                {
-                    "updateDimensionProperties": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "dimension": "COLUMNS",
-                            "startIndex": 1,
-                            "endIndex": col_count
-                        },
-                        "properties": {
-                            "pixelSize": 100  # Fixed width for month columns
-                        },
-                        "fields": "pixelSize"
-                    }
-                }
-            ]
-            
-            # Add conditional formatting for status values
-            status_formats = [
-                # Growing/Increasing = green background
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,  # Skip header
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 1,  # Skip industry column
-                                    "endColumnIndex": col_count
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Growing"}]
-                                },
-                                "format": {
-                                    "backgroundColor": {
-                                        "red": 0.7,
-                                        "green": 0.9,
-                                        "blue": 0.7
-                                    }
-                                }
-                            }
-                        },
-                        "index": 0
-                    }
-                },
-                # Contracting = red background
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,  # Skip header
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 1,  # Skip industry column
-                                    "endColumnIndex": col_count
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Contracting"}]
-                                },
-                                "format": {
-                                    "backgroundColor": {
-                                        "red": 0.9,
-                                        "green": 0.7,
-                                        "blue": 0.7
-                                    }
-                                }
-                            }
-                        },
-                        "index": 1
-                    }
-                },
-                # Neutral = yellow background
-                {
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": 1,  # Skip header
-                                    "endRowIndex": row_count,
-                                    "startColumnIndex": 1,  # Skip industry column
-                                    "endColumnIndex": col_count
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Neutral"}]
-                                },
-                                "format": {
-                                    "backgroundColor": {
-                                        "red": 0.9,
-                                        "green": 0.9,
-                                        "blue": 0.7
-                                    }
-                                }
-                            }
-                        },
-                        "index": 2
-                    }
-                }
-            ]
-            
-            requests.extend(status_formats)
-            
-            # Execute formatting requests
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=sheet_id,
-                body={"requests": requests}
-            ).execute()
-            
-            logger.info(f"Applied formatting to {index_name} Industry Growth/Contraction tab")
-            
-        except Exception as e:
-            logger.error(f"Error formatting industry tab: {str(e)}")
+                if "429" in str(e) or "Quota exceeded" in str(e):
+                    # This is a rate limit error, apply backoff
+                    logger.warning(f"Rate limit error, retrying in {delay} seconds: {str(e)}")
+                    import time
+                    time.sleep(delay)
+                    # Increase delay for next retry
+                    delay *= backoff_factor
+                else:
+                    # Not a rate limit error, re-raise
+                    raise
 
     def _get_all_sheet_ids(self, service, sheet_id):
         """Get a mapping of sheet names to sheet IDs."""
@@ -3498,6 +2294,1372 @@ class GoogleSheetsFormatterTool(BaseTool):
         except Exception as e:
             logger.error(f"Error creating tab {tab_name}: {str(e)}")
             return False
+
+    def _batch_update_requests(self, service, sheet_id, requests, max_batch_size=100):
+        """
+        Execute batch updates with proper chunking and backoff strategy.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            requests: List of update requests
+            max_batch_size: Maximum number of requests per batch (to avoid hitting request size limits)
+            
+        Returns:
+            List of response objects
+        """
+        if not requests:
+            return []
+        
+        responses = []
+        # Split requests into manageable batches to avoid hitting request size limits
+        for i in range(0, len(requests), max_batch_size):
+            batch = requests[i:i + max_batch_size]
+            logger.info(f"Executing batch of {len(batch)} requests")
+            
+            def execute_batch():
+                return service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={"requests": batch}
+                ).execute()
+            
+            # Execute with backoff
+            response = self._execute_with_backoff(execute_batch)
+            responses.append(response)
+            
+            # Add a brief delay between batches to reduce chance of rate limiting
+            if i + max_batch_size < len(requests):
+                import time
+                time.sleep(1)
+        
+        return responses
+
+    def _update_sheet_with_data_range(self, service, sheet_id, tab_name, data, start_cell="A1"):
+        """
+        Update a sheet with a range of data in a single call.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            tab_name: Name of the tab to update
+            data: 2D array of values
+            start_cell: Starting cell (e.g., "A1")
+            
+        Returns:
+            Response from the API
+        """
+        if not data or not data[0]:
+            logger.warning(f"No data to update for {tab_name}")
+            return None
+        
+        # Calculate the range based on data dimensions
+        num_rows = len(data)
+        num_cols = max(len(row) for row in data)
+        end_col = chr(ord('A') + num_cols - 1)
+        end_row = num_rows
+        
+        range_name = f"'{tab_name}'!{start_cell}:{end_col}{end_row}"
+        
+        logger.info(f"Updating range {range_name} with {num_rows}x{num_cols} data")
+        
+        def update_request():
+            return service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=range_name,
+                valueInputOption="RAW",
+                body={"values": data}
+            ).execute()
+        
+        return self._execute_with_backoff(update_request)
+
+    def _apply_formatting(self, service, sheet_id, all_formatting_requests):
+        """
+        Apply all formatting in a single batch request.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            all_formatting_requests: List of formatting request objects
+            
+        Returns:
+            Response from the API
+        """
+        # Execute batch update with all formatting requests
+        return self._batch_update_requests(service, sheet_id, all_formatting_requests)
+
+    def _extract_pdf_with_caching(self, pdf_path):
+        """
+        Extract data from PDF with caching to avoid redundant processing.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            
+        Returns:
+            Extracted data dictionary
+        """
+        # Check if data is already in cache
+        if pdf_path in self.pdf_data_cache:
+            logger.info(f"Using cached data for {pdf_path}")
+            return self.pdf_data_cache[pdf_path]
+        
+        # Extract data from PDF
+        logger.info(f"Extracting data from {pdf_path}")
+        extracted_data = parse_ism_report(pdf_path)
+        
+        # Cache the data
+        if extracted_data:
+            self.pdf_data_cache[pdf_path] = extracted_data
+        
+        return extracted_data
+
+    def _update_multiple_tabs_with_data(self, service, sheet_id, all_tab_data):
+        """
+        Update multiple tabs in a single operation, grouping all formatting requests.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            all_tab_data: Dictionary mapping tab names to their data and formatting
+            
+        Returns:
+            Boolean indicating success
+        """
+        try:
+            # First ensure all required tabs exist (do this in one batch)
+            existing_tabs = self._get_all_sheet_ids(service, sheet_id)
+            tabs_to_create = []
+            
+            for tab_name in all_tab_data.keys():
+                if tab_name not in existing_tabs:
+                    tabs_to_create.append(tab_name)
+            
+            # Create all missing tabs in one batch
+            if tabs_to_create:
+                create_requests = [
+                    {
+                        'addSheet': {
+                            'properties': {
+                                'title': tab_name
+                            }
+                        }
+                    }
+                    for tab_name in tabs_to_create
+                ]
+                
+                self._batch_update_requests(service, sheet_id, create_requests)
+                
+                # Refresh sheet_id mapping
+                existing_tabs = self._get_all_sheet_ids(service, sheet_id)
+            
+            # Group all value updates
+            value_batch_requests = []
+            
+            for tab_name, tab_info in all_tab_data.items():
+                if 'data' in tab_info and tab_info['data']:
+                    value_batch_requests.append({
+                        'range': f"'{tab_name}'!{tab_info.get('start_cell', 'A1')}",
+                        'values': tab_info['data']
+                    })
+            
+            # Execute all value updates in one batchUpdate
+            if value_batch_requests:
+                def batch_value_update():
+                    return service.spreadsheets().values().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={
+                            "valueInputOption": "RAW",
+                            "data": value_batch_requests
+                        }
+                    ).execute()
+                
+                self._execute_with_backoff(batch_value_update)
+            
+            # Collect all formatting requests
+            all_formatting_requests = []
+            
+            for tab_name, tab_info in all_tab_data.items():
+                if 'formatting' in tab_info and tab_info['formatting']:
+                    all_formatting_requests.extend(tab_info['formatting'])
+            
+            # Apply all formatting in batches
+            if all_formatting_requests:
+                self._batch_update_requests(service, sheet_id, all_formatting_requests)
+            
+            return True
+        
+        except Exception as e:
+            logger.error(f"Error updating multiple tabs: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+        
+    def _update_all_visualization_tabs(self, service, sheet_id, extracted_data, visualization_options):
+        """
+        Update all visualization tabs in a highly optimized manner.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            extracted_data: Dictionary containing the extracted report data
+            visualization_options: Dictionary of enabled visualization types
+            
+        Returns:
+            Boolean indicating success
+        """
+        try:
+            # Parse the report date once
+            month_year = extracted_data.get('month_year', 'Unknown')
+            formatted_month_year = self._format_month_year(month_year)
+            
+            # Initialize the tab data collection
+            all_tab_data = {}
+            
+            # Manufacturing at a Glance tab (always included)
+            manufacturing_table = extracted_data.get('manufacturing_table', '')
+            if manufacturing_table:
+                # Process manufacturing table
+                mfg_data = self._prepare_manufacturing_table_data(month_year, manufacturing_table)
+                all_tab_data['Manufacturing at a Glance'] = {
+                    'data': mfg_data['rows'],
+                    'formatting': self._prepare_manufacturing_table_formatting(mfg_data['sheet_id'], len(mfg_data['rows']), len(mfg_data['rows'][0]))
+                }
+            
+            # Only build data for requested visualization types
+            
+            # Basic visualization - index tabs
+            if visualization_options.get('basic', True):
+                # Get structured data
+                structured_data = self._structure_extracted_data(extracted_data)
+                
+                # Prepare data for each index tab
+                for index_name, index_data in structured_data.items():
+                    tab_data, formatting = self._prepare_index_tab_data(index_name, index_data, formatted_month_year)
+                    
+                    if tab_data:
+                        all_tab_data[index_name] = {
+                            'data': tab_data,
+                            'formatting': formatting
+                        }
+            
+            # Monthly heatmap summary
+            if visualization_options.get('heatmap', True):
+                try:
+                    heatmap_data, heatmap_formatting = self._prepare_heatmap_summary_data(month_year)
+                    
+                    if heatmap_data:
+                        all_tab_data['PMI Heatmap Summary'] = {
+                            'data': heatmap_data,
+                            'formatting': heatmap_formatting
+                        }
+                except Exception as e:
+                    logger.error(f"Error preparing heatmap data: {str(e)}")
+            
+            # Time series analysis
+            if visualization_options.get('timeseries', True):
+                indices = get_all_indices()
+                
+                for index_name in indices:
+                    try:
+                        timeseries_data, timeseries_formatting = self._prepare_timeseries_data(index_name)
+                        
+                        if timeseries_data:
+                            all_tab_data[f"{index_name} Analysis"] = {
+                                'data': timeseries_data,
+                                'formatting': timeseries_formatting
+                            }
+                    except Exception as e:
+                        logger.error(f"Error preparing time series for {index_name}: {str(e)}")
+            
+            # Industry growth/contraction
+            if visualization_options.get('industry', True):
+                indices = get_all_indices()
+                
+                for index_name in indices:
+                    try:
+                        industry_data, industry_formatting = self._prepare_industry_data(index_name)
+                        
+                        if industry_data:
+                            all_tab_data[f"{index_name} Industries"] = {
+                                'data': industry_data,
+                                'formatting': industry_formatting
+                            }
+                    except Exception as e:
+                        logger.error(f"Error preparing industry data for {index_name}: {str(e)}")
+            
+            # Update all tabs in an optimized manner
+            result = self._update_multiple_tabs_with_data(service, sheet_id, all_tab_data)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error updating all visualization tabs: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
+    def _prepare_manufacturing_table_data(self, month_year, table_content):
+        """Prepare data for Manufacturing at a Glance table."""
+        # Get manufacturing table data
+        parsed_data = self._extract_data_with_llm(table_content, month_year)
+        
+        # Format for the sheet
+        formatted_month_year = self._format_month_year(month_year)
+        
+        # Build header
+        headers = [
+            "Month & Year", "Manufacturing PMI", "New Orders", "Production", 
+            "Employment", "Supplier Deliveries", "Inventories", 
+            "Customers' Inventories", "Prices", "Backlog of Orders",
+            "New Export Orders", "Imports", "Overall Economy", "Manufacturing Sector"
+        ]
+        
+        # Build row data
+        row_data = self._prepare_horizontal_row(parsed_data, formatted_month_year)
+        
+        return {
+            'rows': [headers, row_data],
+            'sheet_id': 'Manufacturing at a Glance'
+        }
+
+    def _prepare_manufacturing_table_formatting(self, sheet_id, row_count, col_count):
+        """Prepare formatting requests for Manufacturing at a Glance table."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Auto-resize columns
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_count
+                    }
+                }
+            },
+            # Freeze header row
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            }
+        ]
+        
+        # Add conditional formatting for cell colors
+        color_formats = [
+            # Growing/Increasing = green text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip month column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "(Growing)"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.0,
+                                        "green": 0.6,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            },
+            # Increasing = green text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip month column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "(Increasing)"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.0,
+                                        "green": 0.6,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            },
+            # Contracting = red text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip month column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "(Contracting)"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.8,
+                                        "green": 0.0,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 2
+                }
+            }
+        ]
+        
+        requests.extend(color_formats)
+        return requests
+
+    def _prepare_index_tab_data(self, index_name, index_data, formatted_month_year):
+        """Prepare data for an index tab in columnar format."""
+        formatted_data = self._format_index_data(index_name, index_data)
+        
+        if not formatted_data:
+            return None, []
+        
+        # Combine all entries sorted by category
+        all_entries = []
+        
+        # Get primary and secondary categories
+        primary_category = self._get_primary_category(index_name)
+        secondary_category = self._get_secondary_category(index_name)
+        
+        # Process categories in specified order
+        for category in [primary_category, secondary_category]:
+            if category in formatted_data:
+                for industry in formatted_data[category]:
+                    if self._is_valid_industry(industry):
+                        all_entries.append((industry, category))
+        
+        # Process any other categories
+        for category, industries in formatted_data.items():
+            if category not in [primary_category, secondary_category]:
+                for industry in industries:
+                    if self._is_valid_industry(industry):
+                        all_entries.append((industry, category))
+        
+        # Build header and data
+        header_row = ["Industry", formatted_month_year]
+        data_rows = [[industry, category] for industry, category in all_entries]
+        
+        # Prepare formatting
+        tab_id = self._get_sheet_id_by_name(None, None, index_name)  # Will be replaced later
+        formatting = self._prepare_index_tab_formatting(tab_id, len(data_rows) + 1, 2, index_name)
+        
+        return [header_row] + data_rows, formatting
+
+    def _prepare_index_tab_formatting(self, tab_id, row_count, col_count, index_name):
+        """Prepare formatting requests for an index tab."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Auto-resize columns
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_count
+                    }
+                }
+            },
+            # Freeze header row
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            }
+        ]
+        
+        return requests
+
+    def _prepare_timeseries_data(self, index_name):
+        """Prepare time series data for an index."""
+        # Get time series data from the database
+        time_series_data = get_index_time_series(index_name, 36)  # Get up to 3 years of data
+        
+        if not time_series_data:
+            return None, []
+        
+        # Prepare header and data rows
+        header_row = ["Date", "PMI Value", "Direction", "Change from Previous Month"]
+        
+        data_rows = []
+        for entry in time_series_data:
+            row = [
+                entry['month_year'],
+                entry['index_value'],
+                entry['direction'],
+                entry.get('change', '')  # This may be None for the first entry
+            ]
+            data_rows.append(row)
+        
+        # Prepare formatting requests
+        tab_id = None  # Will be replaced when tab is created/found
+        formatting = self._prepare_timeseries_formatting(tab_id, len(data_rows) + 1, len(header_row), index_name)
+        
+        return [header_row] + data_rows, formatting
+
+    def _prepare_timeseries_formatting(self, tab_id, row_count, col_count, index_name):
+        """Prepare formatting requests for time series tab."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Freeze header row
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            },
+            # Auto-resize all columns
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_count
+                    }
+                }
+            }
+        ]
+        
+        # Add conditional formatting for direction
+        direction_formats = [
+            # Growing = green text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 2,  # Direction column
+                                "endColumnIndex": 3
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Growing"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.0,
+                                        "green": 0.6,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            },
+            # Contracting = red text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 2,  # Direction column
+                                "endColumnIndex": 3
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Contracting"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.8,
+                                        "green": 0.0,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            }
+        ]
+        
+        # Add conditional formatting for change values
+        change_formats = [
+            # Positive change = green
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 3,  # Change column
+                                "endColumnIndex": 4
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_GREATER",
+                                "values": [{"userEnteredValue": "0"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.0,
+                                        "green": 0.6,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 2
+                }
+            },
+            # Negative change = red
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 3,  # Change column
+                                "endColumnIndex": 4
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_LESS",
+                                "values": [{"userEnteredValue": "0"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.8,
+                                        "green": 0.0,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 3
+                }
+            }
+        ]
+        
+        # Combine all formatting
+        requests.extend(direction_formats)
+        requests.extend(change_formats)
+        
+        return requests
+
+    def _prepare_industry_data(self, index_name):
+        """Prepare industry growth/contraction data for an index."""
+        # Get industry status data from the database
+        industry_data = get_industry_status_over_time(index_name, 24)  # Get up to 2 years
+        
+        if not industry_data or not industry_data.get('industries'):
+            return None, []
+        
+        # Get data for building the sheet
+        dates = industry_data['dates']  # List of month/year strings
+        industries = industry_data['industries']  # Dict with industry names as keys
+        
+        # Sort industries alphabetically
+        sorted_industries = sorted(industries.keys())
+        
+        # Prepare header row - Industry name followed by months
+        header_row = ["Industry"]
+        header_row.extend(dates)
+        
+        # Prepare data rows
+        data_rows = []
+        for industry in sorted_industries:
+            row = [industry]
+            
+            # Add status for each month
+            for date in dates:
+                status_data = industries[industry].get(date, {'status': 'Neutral'})
+                status = status_data.get('status', 'Neutral')
+                row.append(status)
+                
+            data_rows.append(row)
+        
+        # Prepare formatting
+        tab_id = None  # Will be replaced when tab is created/found
+        formatting = self._prepare_industry_formatting(tab_id, len(data_rows) + 1, len(header_row), index_name)
+        
+        return [header_row] + data_rows, formatting
+
+    def _prepare_industry_formatting(self, tab_id, row_count, col_count, index_name):
+        """Prepare formatting requests for industry growth/contraction tab."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Freeze header row and industry column
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1,
+                            "frozenColumnCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
+                }
+            },
+            # Auto-resize industry column
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": 1
+                    }
+                }
+            },
+            # Set month columns to fixed width
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 1,
+                        "endIndex": col_count
+                    },
+                    "properties": {
+                        "pixelSize": 100  # Fixed width for month columns
+                    },
+                    "fields": "pixelSize"
+                }
+            }
+        ]
+        
+        # Add conditional formatting for status values
+        status_formats = [
+            # Growing/Increasing = green background
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip industry column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Growing"}]
+                            },
+                            "format": {
+                                "backgroundColor": {
+                                    "red": 0.7,
+                                    "green": 0.9,
+                                    "blue": 0.7
+                                }
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            },
+            # Contracting = red background
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip industry column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Contracting"}]
+                            },
+                            "format": {
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.7,
+                                    "blue": 0.7
+                                }
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            },
+            # Neutral = yellow background
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip industry column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": "Neutral"}]
+                            },
+                            "format": {
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.9,
+                                    "blue": 0.7
+                                }
+                            }
+                        }
+                    },
+                    "index": 2
+                }
+            }
+        ]
+        
+        # Add all formatting requests to a single batch
+        requests.extend(status_formats)
+        
+        return requests
+
+    def _structure_extracted_data(self, extracted_data):
+        """Structure the extracted data for tabs."""
+        try:
+            # Get month and year
+            month_year = extracted_data.get("month_year", "Unknown")
+            
+            # Get industry data
+            industry_data = extracted_data.get("industry_data", {})
+            
+            # Check if industry_data is empty but corrected_industry_data exists
+            if not industry_data and "corrected_industry_data" in extracted_data:
+                industry_data = extracted_data["corrected_industry_data"]
+            
+            # Structure data for each index
+            structured_data = {}
+            
+            for index in ISM_INDICES:
+                if index in industry_data:
+                    structured_data[index] = {
+                        "month_year": month_year,
+                        "categories": industry_data[index]
+                    }
+            
+            return structured_data
+        except Exception as e:
+            logger.error(f"Error structuring extracted data: {str(e)}")
+            return {}
+
+    def _prepare_heatmap_summary_data(self, month_year):
+        """Prepare heatmap summary data."""
+        # Get data from the database
+        monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
+        
+        if not monthly_data:
+            return None, []
+        
+        # Get all unique index names
+        all_indices = set()
+        for data in monthly_data:
+            all_indices.update(data['indices'].keys())
+        
+        # Order indices with Manufacturing PMI first, then alphabetically
+        ordered_indices = ['Manufacturing PMI']
+        ordered_indices.extend(sorted([idx for idx in all_indices if idx != 'Manufacturing PMI']))
+        
+        # Prepare header row
+        header_row = ["Month/Year"]
+        header_row.extend(ordered_indices)
+        
+        # Prepare data rows
+        data_rows = []
+        for data in monthly_data:
+            row = [data['month_year']]
+            
+            for index_name in ordered_indices:
+                index_data = data['indices'].get(index_name, {})
+                value = index_data.get('value', '')
+                direction = index_data.get('direction', '')
+                
+                if value and direction:
+                    cell_value = f"{value} ({direction})"
+                else:
+                    cell_value = "N/A"
+                    
+                row.append(cell_value)
+            
+            data_rows.append(row)
+        
+        # All rows for the sheet
+        all_rows = [header_row] + data_rows
+        
+        # Prepare formatting requests
+        tab_id = None  # Will be replaced later
+        formatting = self._prepare_heatmap_summary_formatting(tab_id, len(all_rows), len(header_row))
+        
+        return all_rows, formatting
+
+    def _prepare_heatmap_summary_formatting(self, tab_id, row_count, col_count):
+        """Prepare formatting requests for the heatmap summary tab."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Freeze header row and first column
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1,
+                            "frozenColumnCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
+                }
+            },
+            # Auto-resize all columns
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_count
+                    }
+                }
+            }
+        ]
+        
+        # Add conditional formatting for status colors
+        color_formats = [
+            # Growing = green text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "(Growing)"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.0,
+                                        "green": 0.6,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            },
+            # Contracting = red text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "(Contracting)"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.8,
+                                        "green": 0.0,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            }
+        ]
+        
+        # Add heatmap color formatting based on values
+        heatmap_format = {
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [
+                        {
+                            "sheetId": tab_id,
+                            "startRowIndex": 1,
+                            "endRowIndex": row_count,
+                            "startColumnIndex": 1,
+                            "endColumnIndex": col_count
+                        }
+                    ],
+                    "gradientRule": {
+                        "minpoint": {
+                            "color": {
+                                "red": 1.0,
+                                "green": 0.8,
+                                "blue": 0.8
+                            },
+                            "type": "NUMBER",
+                            "value": "42"
+                        },
+                        "midpoint": {
+                            "color": {
+                                "red": 1.0,
+                                "green": 1.0,
+                                "blue": 0.8
+                            },
+                            "type": "NUMBER",
+                            "value": "50"
+                        },
+                        "maxpoint": {
+                            "color": {
+                                "red": 0.8,
+                                "green": 1.0,
+                                "blue": 0.8
+                            },
+                            "type": "NUMBER",
+                            "value": "60"
+                        }
+                    }
+                },
+                "index": 2
+            }
+        }
+        
+        # Combine all formatting
+        requests.extend(color_formats)
+        requests.append(heatmap_format)
+        
+        return requests
+                
+    def _execute_with_backoff(self, request_func, max_retries=5, initial_delay=1, backoff_factor=2):
+        """Execute a request with exponential backoff for rate limit errors."""
+        delay = initial_delay
+        for retry in range(max_retries):
+            try:
+                return request_func()
+            except Exception as e:
+                if retry == max_retries - 1:
+                    # Last retry, re-raise the exception
+                    raise
+                
+                if "429" in str(e) or "Quota exceeded" in str(e):
+                    # This is a rate limit error, apply backoff
+                    logger.warning(f"Rate limit error, retrying in {delay} seconds: {str(e)}")
+                    import time
+                    time.sleep(delay)
+                    # Increase delay for next retry
+                    delay *= backoff_factor
+                else:
+                    # Not a rate limit error, re-raise
+                    raise
+
 
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")
