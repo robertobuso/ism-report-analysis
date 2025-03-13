@@ -66,6 +66,18 @@ def upload_file():
         flash('No selected file')
         return redirect(request.url)
     
+    # Get visualization options
+    visualization_types = request.form.getlist('visualization_types')
+    visualization_options = {
+        'basic': 'basic' in visualization_types,
+        'heatmap': 'heatmap' in visualization_types,
+        'timeseries': 'timeseries' in visualization_types,
+        'industry': 'industry' in visualization_types
+    }
+    
+    # Store visualization options in session
+    session['visualization_options'] = visualization_options
+    
     # Process files
     saved_files = []
     for file in files:
@@ -91,6 +103,9 @@ def process():
         flash('No files to process')
         return redirect(url_for('index'))
     
+    # Get visualization options from session (if available)
+    visualization_options = session.get('visualization_options', None)
+    
     results = {}
     
     # Process each file
@@ -98,8 +113,11 @@ def process():
         try:
             filename = os.path.basename(filepath)
             if len(files) == 1:
-                # Process single PDF
-                result = process_single_pdf(filepath)
+                # If visualization options exist, pass them; otherwise, don't
+                if visualization_options:
+                    result = process_single_pdf(filepath, visualization_options)
+                else:
+                    result = process_single_pdf(filepath)
                 results[filename] = "Success" if result else "Failed"
             else:
                 # Just store the files to process them together
@@ -135,6 +153,7 @@ def process():
     
     # Clear session
     session.pop('files', None)
+    session.pop('visualization_options', None)
     
     # Delete uploaded files
     for filepath in files:

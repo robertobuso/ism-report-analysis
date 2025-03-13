@@ -33,6 +33,33 @@
                         <label for="fileInput" class="form-label">Select one or more PDF files</label>
                         <input class="form-control" type="file" id="fileInput" name="file" accept=".pdf" multiple>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">Visualization Options:</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="basicViz" name="visualization_types" value="basic" checked>
+                            <label class="form-check-label" for="basicViz">
+                                Basic Industry Classification
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="heatmapViz" name="visualization_types" value="heatmap" checked>
+                            <label class="form-check-label" for="heatmapViz">
+                                Monthly Heatmap Summary
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="timeseriesViz" name="visualization_types" value="timeseries" checked>
+                            <label class="form-check-label" for="timeseriesViz">
+                                Index Time-Series Analysis
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="industryViz" name="visualization_types" value="industry" checked>
+                            <label class="form-check-label" for="industryViz">
+                                Industry Growth/Contraction Over Time
+                            </label>
+                        </div>
+                    </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary">Upload and Process</button>
                     </div>

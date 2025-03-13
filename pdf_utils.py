@@ -3,7 +3,10 @@ import re
 import json
 import logging
 import os
+import sqlite3
+import traceback
 from datetime import datetime
+from db_utils import get_db_connection, parse_date, initialize_database
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
@@ -764,13 +767,200 @@ def parse_ism_report(pdf_path):
                 if not industries:
                     logger.warning(f"No industries found for {index} - {category}")
         
-        return {
-            "month_year": month_year,
-            "manufacturing_table": manufacturing_table,
-            "index_summaries": index_summaries,
-            "industry_data": industry_data
-        }
+            try:
+                # Store the extracted data in the database
+                store_result = store_report_data_in_db(
+                    {
+                        "month_year": month_year,
+                        "manufacturing_table": manufacturing_table,
+                        "index_summaries": index_summaries,
+                        "industry_data": industry_data
+                    }, 
+                    pdf_path
+                )
+                
+                if store_result:
+                    logger.info(f"Successfully stored data from {pdf_path} in database")
+                else:
+                    logger.warning(f"Failed to store data from {pdf_path} in database")
+            except Exception as e:
+                logger.error(f"Error storing data in database: {str(e)}")
+                # Continue processing to return the data even if database storage fails
+            
+            return {
+                "month_year": month_year,
+                "manufacturing_table": manufacturing_table,
+                "index_summaries": index_summaries,
+                "industry_data": industry_data
+            }
+
     except Exception as e:
         logger.error(f"Error parsing ISM report: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
+
+def store_report_data_in_db(extracted_data, pdf_path):
+    """
+    Store the extracted report data in the SQLite database.
+    
+    Args:
+        extracted_data: Dictionary containing the extracted report data
+        pdf_path: Path to the PDF file
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if not extracted_data:
+        logger.error(f"No data to store for {pdf_path}")
+        return False
+        
+    conn = None
+    try:
+        # Ensure database is initialized
+        initialize_database()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Extract necessary data
+        month_year = extracted_data.get('month_year', 'Unknown')
+        
+        # Parse the date from month_year
+        report_date = parse_date(month_year)
+        if not report_date:
+            logger.error(f"Could not parse date from '{month_year}' for {pdf_path}")
+            return False
+            
+        # Insert into reports table
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO reports
+            (report_date, file_path, processing_date, month_year)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                report_date.isoformat(),
+                pdf_path,
+                datetime.now().isoformat(),
+                month_year
+            )
+        )
+        
+        # Get Manufacturing table data
+        manufacturing_table = extracted_data.get('manufacturing_table', '')
+        
+        # Process pmi_indices data
+        # This will be extracted from the manufacturing_table text
+        # For each index in the report, extract value and direction
+        indices_data = {}
+        
+        # First try to extract from structured index_summaries if available
+        index_summaries = extracted_data.get('index_summaries', {})
+        for index_name, summary in index_summaries.items():
+            # Try to extract numeric value and direction from the summary
+            try:
+                # Pattern for values like "PMI® registered 50.9 percent in January"
+                import re
+                value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
+                value_match = re.search(value_pattern, summary, re.IGNORECASE)
+                
+                direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
+                direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
+                
+                if value_match:
+                    value = float(value_match.group(1))
+                    direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
+                    
+                    # Standardize direction terms
+                    if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+                        direction = 'Growing'
+                    elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
+                        direction = 'Contracting'
+                    elif direction.lower() == 'slower':
+                        direction = 'Slowing'
+                    elif direction.lower() == 'faster':
+                        direction = 'Faster'
+                    
+                    indices_data[index_name] = {
+                        'value': value,
+                        'direction': direction
+                    }
+            except Exception as e:
+                logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
+        
+        # Insert pmi_indices data
+        for index_name, data in indices_data.items():
+            try:
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO pmi_indices
+                    (report_date, index_name, index_value, direction)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        report_date.isoformat(),
+                        index_name,
+                        data.get('value', 0.0),
+                        data.get('direction', 'Unknown')
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
+        
+        # Process industry_status data
+        industry_data = extracted_data.get('industry_data', {})
+        for index_name, categories in industry_data.items():
+            for category, industries in categories.items():
+                # Determine status based on category
+                if index_name == 'Supplier Deliveries':
+                    status = 'Slowing' if category == 'Slower' else 'Faster'
+                elif index_name == 'Inventories':
+                    status = 'Higher' if category == 'Higher' else 'Lower'
+                elif index_name == "Customers' Inventories":
+                    status = category  # 'Too High' or 'Too Low'
+                elif index_name == 'Prices':
+                    status = 'Increasing' if category == 'Increasing' else 'Decreasing'
+                else:
+                    status = 'Growing' if category == 'Growing' else 'Contracting'
+                
+                # Insert each industry
+                for industry in industries:
+                    if not industry or not isinstance(industry, str):
+                        continue
+                        
+                    # Clean industry name
+                    industry = industry.strip()
+                    if not industry:
+                        continue
+                        
+                    try:
+                        cursor.execute(
+                            """
+                            INSERT OR REPLACE INTO industry_status
+                            (report_date, index_name, industry_name, status, category)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (
+                                report_date.isoformat(),
+                                index_name,
+                                industry,
+                                status,
+                                category
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(f"Error inserting industry_status data for {industry}: {str(e)}")
+        
+        conn.commit()
+        logger.info(f"Successfully stored data for report {month_year} in database")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error storing report data in database: {str(e)}")
+        logger.error(traceback.format_exc())
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()

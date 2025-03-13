@@ -411,9 +411,18 @@ def fallback_regex_parsing(text):
             "industry_data": {}
         }
 
-def process_single_pdf(pdf_path):
-    """Process a single PDF file."""
+def process_single_pdf(pdf_path, visualization_options=None):
+    """Process a single PDF file with optional visualization selections."""
     logger.info(f"Processing PDF: {pdf_path}")
+    
+    # If visualization_options is None, use default settings
+    if visualization_options is None:
+        visualization_options = {
+            'basic': True,
+            'heatmap': True,
+            'timeseries': True,
+            'industry': True
+        }
     
     try:
         # First check if sheet_id.txt exists
@@ -758,6 +767,13 @@ def process_single_pdf(pdf_path):
             'structured_data': structured_data,
             'validation_results': validation_dict,
             'extraction_data': extraction_data
+        })
+
+        formatting_result = formatter_tool._run({
+            'structured_data': structured_data,
+            'validation_results': validation_dict,
+            'extraction_data': extraction_data,
+            'visualization_options': visualization_options
         })
 
         logger.info("Google Sheets formatting completed")
