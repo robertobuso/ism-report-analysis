@@ -542,6 +542,16 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
+
+        # Add handling for the case where extraction_data is a Python object with corrected_industry_data
+        if hasattr(extraction_data, 'corrected_industry_data'):
+            # Convert to a dictionary if it's not already
+            if not isinstance(extraction_data, dict):
+                extracted_dict = {}
+                for attr in dir(extraction_data):
+                    if not attr.startswith('_') and not callable(getattr(extraction_data, attr)):
+                        extracted_dict[attr] = getattr(extraction_data, attr)
+                extraction_data = extracted_dict
         
         # If agent extraction failed or returned empty data, use direct parsing
         if not extraction_data or not extraction_data.get('industry_data'):
@@ -690,8 +700,16 @@ def process_single_pdf(pdf_path, visualization_options=None):
         if "corrected_industry_data" in extraction_data and not extraction_data.get("industry_data"):
             extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
         
-        # Structure the data
-        structured_data = structurer_tool._run(extraction_data)
+        # Use the verified data if it was successfully parsed
+        if verified_data and 'corrected_industry_data' in verified_data:
+            structured_data = structurer_tool._run({
+                'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
+                'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
+                'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
+                'industry_data': verified_data.get('corrected_industry_data', {})
+            })
+        else:
+            structured_data = structurer_tool._run(extraction_data)
         logger.info("Data structuring completed")
         
         # Check if structured_data is empty or None and fix if needed
@@ -766,13 +784,8 @@ def process_single_pdf(pdf_path, visualization_options=None):
         formatting_result = formatter_tool._run({
             'structured_data': structured_data,
             'validation_results': validation_dict,
-            'extraction_data': extraction_data
-        })
-
-        formatting_result = formatter_tool._run({
-            'structured_data': structured_data,
-            'validation_results': validation_dict,
             'extraction_data': extraction_data,
+            'verification_result': verified_data,  # Add the verification result
             'visualization_options': visualization_options
         })
 

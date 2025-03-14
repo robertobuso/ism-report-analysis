@@ -1,16 +1,10 @@
+import os
+import json
+import logging
 import traceback
 from typing import Dict, Any, Optional, List, Union, Tuple
-import json
-import os
 import pandas as pd
 from google_auth import get_google_sheets_service
-from pdf_utils import parse_ism_report
-import logging
-from config import ISM_INDICES, INDEX_CATEGORIES
-from crewai.tools import BaseTool
-from pydantic import Field
-from googleapiclient import discovery
-import re
 from db_utils import (
     get_pmi_data_by_month, 
     get_index_time_series, 
@@ -19,6 +13,9 @@ from db_utils import (
     initialize_database,
     check_report_exists_in_db
 )
+from config import ISM_INDICES, INDEX_CATEGORIES
+from crewai.tools import BaseTool
+from pydantic import Field
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
@@ -214,50 +211,103 @@ class SimpleDataStructurerTool(BaseTool):
             month_year = extracted_data.get("month_year", "Unknown")
             logger.info(f"Structuring data for {month_year}")
             
-            # Get industry data
-            industry_data = extracted_data.get("industry_data", {})
+            # Get industry data - check all possible locations
+            industry_data = None
             
-            # Check if industry_data is empty but corrected_industry_data exists
-            if not industry_data and "corrected_industry_data" in extracted_data:
+            # First try getting industry_data directly
+            if "industry_data" in extracted_data and extracted_data["industry_data"]:
+                industry_data = extracted_data["industry_data"]
+                logger.info("Using industry_data from extraction")
+                
+            # If not available, check for corrected_industry_data
+            elif "corrected_industry_data" in extracted_data and extracted_data["corrected_industry_data"]:
                 industry_data = extracted_data["corrected_industry_data"]
-                logger.info("Using corrected_industry_data instead of empty industry_data")
+                logger.info("Using corrected_industry_data")
+                
+            # If still not available, look inside "manufacturing_table" which may have the industry data
+            elif "manufacturing_table" in extracted_data and isinstance(extracted_data["manufacturing_table"], dict):
+                # The data verification specialist might put industry data in manufacturing_table
+                if any(k in ISM_INDICES for k in extracted_data["manufacturing_table"].keys()):
+                    industry_data = extracted_data["manufacturing_table"]
+                    logger.info("Using industry data from manufacturing_table")
             
-            # Validate industry_data has content
-            if not industry_data:
-                logger.warning("Industry data is empty, attempting to re-extract from summaries")
+            # If we still don't have industry data, try a last resort extraction
+            if not industry_data or all(not industries for categories in industry_data.values() for industries in categories.values()):
+                logger.warning("Industry data is empty or contains no entries, attempting to re-extract from summaries")
                 
                 if "index_summaries" in extracted_data and extracted_data["index_summaries"]:
                     try:
                         from pdf_utils import extract_industry_mentions
-                        # Try to re-extract industry data from the summaries
                         industry_data = extract_industry_mentions("", extracted_data["index_summaries"])
                         logger.info("Re-extracted industry data from summaries")
                     except Exception as e:
                         logger.error(f"Error re-extracting industry data: {str(e)}")
             
+            # If we still have no valid industry data, check if there was a verification result
+            if not industry_data and hasattr(extracted_data, 'get') and callable(extracted_data.get):
+                verification_result = extracted_data.get('verification_result', None)
+                if verification_result and 'corrected_industry_data' in verification_result:
+                    industry_data = verification_result['corrected_industry_data']
+                    logger.info("Using industry data from verification result")
+            
             # Structure data for each index
             structured_data = {}
             
             # Ensure we have entries for all expected indices
-            from config import ISM_INDICES, INDEX_CATEGORIES
-            
             for index in ISM_INDICES:
-                # Get categories for this index from industry_data
-                categories = industry_data.get(index, {})
+                # Get categories for this index if available
+                categories = {}
+                if industry_data and index in industry_data:
+                    categories = industry_data[index]
+                
+                # Clean up the categories but preserve order
+                cleaned_categories = {}
+                
+                # Process each category
+                for category_name, industries in categories.items():
+                    cleaned_industries = []
+                    
+                    # Clean up each industry name in the list
+                    for industry in industries:
+                        if not industry or not isinstance(industry, str):
+                            continue
+                            
+                        # Skip parsing artifacts and invalid entries
+                        if ("following order" in industry.lower() or 
+                            "are:" in industry.lower() or 
+                            industry.startswith(',') or 
+                            industry.startswith(':') or 
+                            len(industry.strip()) < 3):
+                            continue
+                            
+                        # Clean up the industry name
+                        industry = industry.strip()
+                        
+                        # Add to cleaned list if not already there
+                        if industry not in cleaned_industries:
+                            cleaned_industries.append(industry)
+                    
+                    # Only add categories that actually have industries
+                    if cleaned_industries:
+                        cleaned_categories[category_name] = cleaned_industries
                 
                 # If no data for this index, create empty categories
-                if not categories and index in INDEX_CATEGORIES:
-                    categories = {category: [] for category in INDEX_CATEGORIES[index]}
+                if not cleaned_categories and index in INDEX_CATEGORIES:
+                    cleaned_categories = {category: [] for category in INDEX_CATEGORIES[index]}
                 
                 # Add to structured_data
                 structured_data[index] = {
                     "month_year": month_year,
-                    "categories": categories
+                    "categories": cleaned_categories
                 }
                 
                 # Count industries to log
-                total_industries = sum(len(industries) for industries in categories.values())
-                logger.info(f"Structured {index}: {total_industries} industries across {len(categories)} categories")
+                total_industries = sum(len(industries) for industries in cleaned_categories.values())
+                logger.info(f"Structured {index}: {total_industries} industries across {len(cleaned_categories)} categories")
+            
+            # Log total industry count
+            total = sum(sum(len(industries) for industries in data["categories"].values()) for data in structured_data.values())
+            logger.info(f"Total industries in structured data: {total}")
             
             return structured_data
         except Exception as e:
@@ -271,7 +321,7 @@ class SimpleDataStructurerTool(BaseTool):
                     for category in INDEX_CATEGORIES[index]:
                         categories[category] = []
                 structured_data[index] = {
-                    "month_year": "Unknown",
+                    "month_year": month_year if 'month_year' in locals() else "Unknown",
                     "categories": categories
                 }
             return structured_data
@@ -403,6 +453,20 @@ class GoogleSheetsFormatterTool(BaseTool):
                 data = {'structured_data': {}, 'validation_results': {}}
                 logger.warning("Data is not a dictionary. Creating an empty structure.")
                 
+            # Get extraction_data first since we'll use it in multiple places
+            extraction_data = data.get('extraction_data', {})
+            
+            # Check for corrected industry data from verification
+            if 'verification_result' in data and isinstance(data['verification_result'], dict):
+                verification_result = data['verification_result']
+                if 'corrected_industry_data' in verification_result:
+                    # If we have a verification result with corrected data, inject it back into the extraction data
+                    if 'extraction_data' not in data:
+                        data['extraction_data'] = {}
+                    data['extraction_data']['industry_data'] = verification_result['corrected_industry_data']
+                    extraction_data = data['extraction_data']
+                    logger.info("Using corrected industry data from verification result")
+            
             if 'structured_data' not in data:
                 data['structured_data'] = {}
                 logger.warning("structured_data not found. Creating empty structured_data.")
@@ -410,10 +474,9 @@ class GoogleSheetsFormatterTool(BaseTool):
             if 'validation_results' not in data:
                 data['validation_results'] = {}
                 logger.warning("validation_results not found. Creating empty validation_results.")
-                
+            
             structured_data = data.get('structured_data', {})
             validation_results = data.get('validation_results', {})
-            extraction_data = data.get('extraction_data', {})
             visualization_options = data.get('visualization_options', {
                 'basic': True,
                 'heatmap': True,
@@ -434,12 +497,30 @@ class GoogleSheetsFormatterTool(BaseTool):
                 structured_data = self._create_structured_data_from_extraction(extraction_data)
                 industry_count = self._count_industries(structured_data)
                 logger.info(f"Created structured data with {industry_count} industries from extraction_data")
+                
+                # If we now have industry data from extraction_data, make sure validation_results is updated
+                if industry_count > 0:
+                    validation_results = self._create_default_validation_results(structured_data)
+                    logger.info("Created default validation results for the newly structured data")
             
+            # If no industries in structured data but we have corrected_industry_data, use that
+            if industry_count == 0 and extraction_data and 'corrected_industry_data' in extraction_data:
+                logger.info("No industries found in structured data, trying to use corrected_industry_data")
+                extraction_data['industry_data'] = extraction_data['corrected_industry_data']
+                structured_data = self._create_structured_data_from_extraction(extraction_data)
+                industry_count = self._count_industries(structured_data)
+                logger.info(f"Created structured data with {industry_count} industries from corrected_industry_data")
+                
+                # If we now have industry data from corrected_industry_data, make sure validation_results is updated
+                if industry_count > 0:
+                    validation_results = self._create_default_validation_results(structured_data)
+                    logger.info("Created default validation results for the newly structured data")
+                    
             # If still no valid data, log warning and return failure
             if industry_count == 0:
                 logger.warning("No valid industry data found for Google Sheets update")
                 return False
-                
+
             # If no validation results, create some basic ones for continuing
             if not validation_results:
                 validation_results = self._create_default_validation_results(structured_data)
@@ -598,7 +679,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                             logger.warning(f"{tab_name} tab not found")
                         else:
                             # Prepare formatting requests
-                            formatting = self._prepare_heatmap_formatting(tab_id, len(all_rows), len(header_row))
+                            formatting = self._prepare_heatmap_summary_data(tab_id, len(all_rows), len(header_row))
                             
                             # Add to batch update
                             all_tab_data[tab_name] = {
@@ -651,7 +732,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                                     continue
                                 
                                 # Prepare formatting
-                                formatting = self._prepare_timeseries_formatting(tab_id, len(data_rows) + 1, len(header_row))
+                                formatting = self._prepare_time_series_formatting(tab_id, len(data_rows) + 1, len(header_row))
                                 
                                 # Add to batch update
                                 all_tab_data[tab_name] = {
@@ -717,7 +798,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                                     continue
                                 
                                 # Prepare formatting
-                                formatting = self._prepare_industry_formatting(tab_id, len(data_rows) + 1, len(header_row))
+                                formatting = self._prepare_industry_data(tab_id, len(data_rows) + 1, len(header_row))
                                 
                                 # Add to batch update
                                 all_tab_data[tab_name] = {
@@ -840,6 +921,21 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Return a default in case of error
             from datetime import datetime
             return datetime.now().strftime("%m/%y")
+    
+    def _is_valid_industry(self, industry):
+        """Check if an industry string is valid."""
+        if not industry or not isinstance(industry, str):
+            return False
+        
+        # Skip text patterns that indicate artifacts from parsing
+        if ("following order" in industry.lower() or 
+            "are:" in industry.lower() or
+            industry.startswith(',') or 
+            industry.startswith(':') or
+            len(industry.strip()) < 3):
+            return False
+        
+        return True
     
     def _get_or_create_sheet(self, service, title):
         """Get an existing sheet or create a new one."""
@@ -1133,6 +1229,45 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error extracting data with LLM: {str(e)}")
             return {"month_year": month_year, "indices": {}}
         
+    def _prepare_horizontal_row(self, parsed_data, formatted_month_year):
+        """Prepare a horizontal row for the manufacturing table."""
+        try:
+            indices = parsed_data.get('indices', {})
+            row = [formatted_month_year]
+            
+            # Standard indices in order
+            standard_indices = [
+                "Manufacturing PMI", "New Orders", "Production", 
+                "Employment", "Supplier Deliveries", "Inventories", 
+                "Customers' Inventories", "Prices", "Backlog of Orders",
+                "New Export Orders", "Imports"
+            ]
+            
+            # Add each index value
+            for index in standard_indices:
+                index_data = indices.get(index, {})
+                value = index_data.get('current', 'N/A')
+                direction = index_data.get('direction', 'N/A')
+                
+                if value and direction:
+                    cell_value = f"{value} ({direction})"
+                else:
+                    cell_value = "N/A"
+                
+                row.append(cell_value)
+            
+            # Add special rows for Overall Economy and Manufacturing Sector
+            for special in ["OVERALL ECONOMY", "Manufacturing Sector"]:
+                special_data = indices.get(special, {})
+                direction = special_data.get('direction', 'N/A')
+                row.append(direction)
+            
+            return row
+        except Exception as e:
+            logger.error(f"Error preparing horizontal row: {str(e)}")
+            # Return a default row with N/A values
+            return [formatted_month_year] + ["N/A"] * 13
+    
     def _prepare_manufacturing_table_formatting(self, tab_id, row_count, col_count):
         """Prepare formatting requests for the manufacturing table."""
         requests = [
@@ -1311,7 +1446,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             data_rows = [[industry, category] for industry, category in all_entries]
             
             # Prepare formatting
-            formatting = self._prepare_index_tab_formatting(tab_id, len(data_rows) + 1, 2, index_name)
+            formatting = self._prepare_industry_tab_formatting(tab_id, len(data_rows) + 1, 2, index_name)
             
             return [header_row] + data_rows, formatting
         except Exception as e:
@@ -1423,7 +1558,129 @@ class GoogleSheetsFormatterTool(BaseTool):
         }
         return index_category_map.get(index, "Declining")
 
-    def _prepare_heatmap_formatting(self, tab_id, row_count, col_count):
+    def _prepare_industry_tab_formatting(self, tab_id, row_count, col_count, index_name):
+        """Prepare formatting requests for an index tab."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Auto-resize columns
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_count
+                    }
+                }
+            },
+            # Freeze header row
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            }
+        ]
+        
+        # Get category colors based on index type
+        color_configs = []
+        
+        # Define color mapping for different categories
+        if index_name == "Supplier Deliveries":
+            color_configs = [
+                ("Slower", {"red": 0.9, "green": 0.7, "blue": 0.7}),  # Red for Slower (economic slowdown)
+                ("Faster", {"red": 0.7, "green": 0.9, "blue": 0.7})   # Green for Faster (economic improvement)
+            ]
+        elif index_name == "Prices":
+            color_configs = [
+                ("Increasing", {"red": 0.9, "green": 0.7, "blue": 0.7}),  # Red for Increasing (inflation)
+                ("Decreasing", {"red": 0.7, "green": 0.9, "blue": 0.7})   # Green for Decreasing (deflation)
+            ]
+        else:
+            # Default color scheme for most indices
+            color_configs = [
+                ("Growing", {"red": 0.7, "green": 0.9, "blue": 0.7}),      # Green for Growing
+                ("Declining", {"red": 0.9, "green": 0.7, "blue": 0.7})     # Red for Declining
+            ]
+        
+        # Add conditional formatting for each category
+        for i, (category, color) in enumerate(color_configs):
+            requests.append({
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 1,  # Skip industry column
+                                "endColumnIndex": col_count
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": category}]
+                            },
+                            "format": {
+                                "backgroundColor": color
+                            }
+                        }
+                    },
+                    "index": i
+                }
+            })
+        
+        return requests
+    
+    def _prepare_heatmap_summary_data(self, tab_id, row_count, col_count):
         """Prepare formatting requests for the heatmap summary tab."""
         requests = [
             # Format header row
@@ -1568,7 +1825,216 @@ class GoogleSheetsFormatterTool(BaseTool):
         
         return requests
     
-    def _prepare_industry_formatting(self, tab_id, row_count, col_count):
+    def _prepare_time_series_formatting(self, tab_id, row_count, col_count):
+        """Prepare formatting requests for time series tab."""
+        requests = [
+            # Format header row
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {
+                                "bold": True
+                            },
+                            "backgroundColor": {
+                                "red": 0.9,
+                                "green": 0.9,
+                                "blue": 0.9
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                }
+            },
+            # Add borders
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": col_count
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            },
+            # Freeze header row
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            },
+            # Auto-resize columns
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": col_count
+                    }
+                }
+            }
+        ]
+        
+        # Add conditional formatting for directions
+        direction_formats = [
+            # Growing/Expanding = green text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 2,  # Direction column
+                                "endColumnIndex": 3
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "Growing"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.0,
+                                        "green": 0.6,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 0
+                }
+            },
+            # Contracting = red text
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 2,  # Direction column
+                                "endColumnIndex": 3
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_CONTAINS",
+                                "values": [{"userEnteredValue": "Contracting"}]
+                            },
+                            "format": {
+                                "textFormat": {
+                                    "foregroundColor": {
+                                        "red": 0.8,
+                                        "green": 0.0,
+                                        "blue": 0.0
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "index": 1
+                }
+            }
+        ]
+        
+        # Add conditional formatting for changes
+        change_formats = [
+            # Positive change = green background
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 3,  # Change column
+                                "endColumnIndex": 4
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_GREATER",
+                                "values": [{"userEnteredValue": "0"}]
+                            },
+                            "format": {
+                                "backgroundColor": {
+                                    "red": 0.7,
+                                    "green": 0.9,
+                                    "blue": 0.7
+                                }
+                            }
+                        }
+                    },
+                    "index": 2
+                }
+            },
+            # Negative change = red background
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,
+                                "endRowIndex": row_count,
+                                "startColumnIndex": 3,  # Change column
+                                "endColumnIndex": 4
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "NUMBER_LESS",
+                                "values": [{"userEnteredValue": "0"}]
+                            },
+                            "format": {
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.7,
+                                    "blue": 0.7
+                                }
+                            }
+                        }
+                    },
+                    "index": 3
+                }
+            }
+        ]
+        
+        # Combine all formatting
+        requests.extend(direction_formats)
+        requests.extend(change_formats)
+        
+        return requests
+    
+    def _prepare_industry_data(self, tab_id, row_count, col_count):
         """Prepare formatting requests for industry growth/contraction tab."""
         requests = [
             # Format header row
