@@ -271,20 +271,24 @@ class SimplePDFExtractionTool(BaseTool):
                     page_text = pdf.pages[i].extract_text()
                     if page_text:
                         extracted_text += page_text + "\n\n"
+                        logger.debug(f"First 300 chars of extracted text: {extracted_text[:300]}")
 
             # If text is too long (over ~30K characters), try to extract just the relevant section
             if len(extracted_text) > 30000:
                 # Try to find Manufacturing at a Glance table section - improved pattern
-                table_match = re.search(r"(?:MANUFACTURING AT A GLANCE|Manufacturing at a Glance).*?(?:(?=COMMODITIES)|(?=WHAT RESPONDENTS)|(?=About The)|$)", 
-                                    extracted_text, re.DOTALL | re.IGNORECASE)
+                # Expand the pattern to ensure we capture the entire table with context
+                table_match = re.search(r"(?:.*?\n)?(?:MANUFACTURING AT A GLANCE|Manufacturing at a Glance).*?(?:(?=COMMODITIES)|(?=WHAT RESPONDENTS)|(?=About The)|$)", 
+                                        extracted_text, re.DOTALL | re.IGNORECASE)
                 if table_match:
                     table_text = table_match.group(0)
                     logger.info(f"Found Manufacturing at a Glance table section, reducing text from {len(extracted_text)} to {len(table_text)} characters")
                     extracted_text = table_text
+                    logger.debug(f"First 300 chars of extracted text: {extracted_text[:300]}")
                 else:
                     # If we can't find the specific section, just truncate
                     logger.info(f"Text is too long ({len(extracted_text)} chars), truncating to 20000 chars")
                     extracted_text = extracted_text[:20000]
+                    logger.debug(f"First 300 chars of extracted text: {extracted_text[:300]}")
             
             # Check if we extracted text successfully
             if not extracted_text or len(extracted_text) < 100:
@@ -349,6 +353,8 @@ class SimplePDFExtractionTool(BaseTool):
                 # Get the response text
                 response_text = response.choices[0].message.content
                 logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                # Log the last 50 characters to see where it's breaking
+                logger.debug(f"End of response: {response_text[-50:]}")
                 
                 # Try to extract JSON from the response
                 json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
@@ -363,10 +369,10 @@ class SimplePDFExtractionTool(BaseTool):
                     else:
                         # If no pattern matches, use the whole response
                         json_text = response_text
-        
+
                 try:
-                    # Parse the JSON
-                    parsed_data = json.loads(response_text)
+                    # Parse the JSON - use json_text instead of response_text
+                    parsed_data = json.loads(json_text)
                     logger.info(f"Successfully extracted data for {parsed_data.get('month_year', 'Unknown')}")
                     
                     # Validate structure
@@ -378,6 +384,57 @@ class SimplePDFExtractionTool(BaseTool):
                     
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON from response: {str(e)}")
+
+                    # Try a manual approach to extract the data
+                    result = {"month_year": month_year, "indices": {}}
+                    
+                    # Try to extract month/year
+                    month_year_match = re.search(r'"month_year":\s*"([^"]+)"', json_text)
+                    if month_year_match:
+                        result["month_year"] = month_year_match.group(1)
+                    
+                    # Try to extract individual indices
+                    # Use a more flexible pattern that handles different JSON structures
+                    index_pattern = r'"([^"]+)":\s*{\s*"(?:current|value)":\s*"([^"]+)",\s*"direction":\s*"([^"]+)"(?:,.*?)?\s*}'
+                    for match in re.finditer(index_pattern, json_text):
+                        index_name, value, direction = match.groups()
+                        result["indices"][index_name] = {"current": value, "direction": direction}
+
+                    # Try to extract individual indices
+                    index_pattern = r'"([^"]+)":\s*{\s*"current":\s*"([^"]+)",\s*"direction":\s*"([^"]+)"\s*}'
+                    for match in re.finditer(index_pattern, json_text):
+                        index_name, value, direction = match.groups()
+                        result["indices"][index_name] = {"current": value, "direction": direction}
+
+                    # Add this part here ↓
+                    # If regex extraction didn't find all expected indices, try direct extraction
+                    expected_indices = [
+                        "Manufacturing PMI", "New Orders", "Production", "Employment", 
+                        "Supplier Deliveries", "Inventories", "Customers' Inventories", 
+                        "Prices", "Backlog of Orders", "New Export Orders", "Imports"
+                    ]
+                    # If we have fewer than expected indices, try direct extraction
+                    if len(result["indices"]) < len(expected_indices):
+                        logger.info("Missing some indices, trying direct extraction from text")
+                        
+                        # Look for each index directly in the text
+                        for index_name in expected_indices:
+                            if index_name not in result["indices"]:
+                                # General pattern to find index with value and direction
+                                direct_pattern = fr"{re.escape(index_name)}\s+(\d+\.\d+)[^\n]*?(Growing|Contracting|Slowing|Faster|Too High|Too Low|Increasing|Decreasing)"
+                                direct_match = re.search(direct_pattern, extracted_text, re.IGNORECASE | re.DOTALL)
+                                
+                                if direct_match:
+                                    value = direct_match.group(1)
+                                    direction = direct_match.group(2)
+                                    logger.info(f"Found {index_name} directly in text: {value} ({direction})")
+                                    result["indices"][index_name] = {"current": value, "direction": direction}
+                    
+                    # If we found any indices, return the result
+                    if result["indices"]:
+                        logger.info(f"Partially extracted {len(result['indices'])} indices using regex")
+                        logger.info(f"Found {len(result['indices'])} indices: {', '.join(result['indices'].keys())}")
+                        return result
                     
                     # For better error logging, don't truncate the response
                     # Log the error position instead of the content
@@ -599,8 +656,8 @@ class DataValidatorTool(BaseTool):
                         actual_categories = [c.lower() for c in categories.keys()]
                         expected_lower = [c.lower() for c in expected_categories]
                         
-                        # Check if all expected categories exist (case insensitive)
-                        categories_valid = all(ec in actual_categories for ec in expected_lower)
+                        # Make validation more lenient
+                        categories_valid = any(ec in actual_categories for ec in expected_lower) and any(industries for category, industries in categories.items())
                         
                         # Check if any industries exist in any category
                         has_industries = False

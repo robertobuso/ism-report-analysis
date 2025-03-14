@@ -575,8 +575,49 @@ def store_report_data_in_db(extracted_data, pdf_path):
                     }
             except Exception as e:
                 logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
+
+        # Check if there's manufacturing table data with indices
+        if isinstance(manufacturing_table, dict) and 'indices' in manufacturing_table:
+            logger.info(f"Processing {len(manufacturing_table['indices'])} indices from manufacturing table")
+            
+            # Add these indices to indices_data
+            for index_name, data in manufacturing_table['indices'].items():
+                try:
+                    # Get value from either current or value field
+                    value = data.get("current", data.get("value"))
+                    direction = data.get("direction")
+                    
+                    if not value or not direction:
+                        logger.warning(f"Missing value or direction for {index_name}")
+                        continue
+                        
+                    # Add to indices_data if not already there
+                    if index_name not in indices_data:
+                        indices_data[index_name] = {
+                            'value': float(value),
+                            'direction': direction
+                        }
+                        logger.info(f"Added index {index_name}: {value} ({direction}) from manufacturing table")
+                except Exception as e:
+                    logger.error(f"Error processing index {index_name} from manufacturing table: {str(e)}")
+
+        # Also check for pmi_data which might be added directly
+        if 'pmi_data' in extracted_data and extracted_data['pmi_data']:
+            logger.info(f"Found pmi_data with {len(extracted_data['pmi_data'])} indices")
+            for index_name, data in extracted_data['pmi_data'].items():
+                # Only add if not already in indices_data
+                if index_name not in indices_data:
+                    try:
+                        indices_data[index_name] = {
+                            'value': float(data.get('current', data.get('value'))),
+                            'direction': data.get('direction')
+                        }
+                        logger.info(f"Added index {index_name} from pmi_data")
+                    except Exception as e:
+                        logger.error(f"Error processing index {index_name} from pmi_data: {str(e)}")
         
         # Insert pmi_indices data
+        indices_processed = 0
         for index_name, data in indices_data.items():
             try:
                 cursor.execute(
@@ -592,8 +633,12 @@ def store_report_data_in_db(extracted_data, pdf_path):
                         data.get('direction', 'Unknown')
                     )
                 )
+                indices_processed += 1
+                logger.info(f"Successfully inserted {index_name} with value {data.get('value')} ({data.get('direction')})")
             except Exception as e:
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
+        
+        logger.info(f"Successfully processed {indices_processed} out of {len(indices_data)} indices")
         
         # Process industry_status data
         industry_data = extracted_data.get('industry_data', {})
