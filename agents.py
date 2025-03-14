@@ -110,10 +110,11 @@ def create_data_correction_agent():
             EXPLICIT statements in the report text. Pay particular attention to the exact phrasing 
             in the source text when determining categories. Never invent or assume data.
             
-            Always maintain the correct month and year for the report.
+            ALWAYS PRESERVE THE EXACT MONTH AND YEAR from the original data without changing it.
+            NEVER CHANGE THE MONTH_YEAR VALUE - copy it exactly as provided in the input data.
             
             When producing corrected data, return a complete dictionary that includes:
-            - 'month_year' from the original data
+            - 'month_year' copied exactly from the original data
             - 'manufacturing_table' from the original data
             - 'index_summaries' from the original data
             - 'corrected_industry_data' with your corrections

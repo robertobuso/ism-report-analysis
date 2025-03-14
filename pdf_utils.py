@@ -706,6 +706,42 @@ def preserve_order_industry_list(text):
     
     return items
 
+def extract_pmi_values_from_summaries(index_summaries):
+    """Extract PMI numeric values and directions from the index summaries."""
+    pmi_data = {}
+    
+    for index_name, summary in index_summaries.items():
+        try:
+            # Pattern for values like "registering 55.1 percent"
+            import re
+            value_pattern = r'(?:registering|was|at|of)\s+(\d+\.\d+)\s*percent'
+            value_match = re.search(value_pattern, summary, re.IGNORECASE)
+            
+            # Direction patterns
+            if "growing" in summary.lower() or "expansion" in summary.lower():
+                direction = "Growing"
+            elif "contracting" in summary.lower() or "contraction" in summary.lower():
+                direction = "Contracting"
+            elif "slowing" in summary.lower() or "slower" in summary.lower():
+                direction = "Slowing"
+            elif "faster" in summary.lower():
+                direction = "Faster"
+            else:
+                direction = "Neutral"
+            
+            if value_match:
+                value = float(value_match.group(1))
+                pmi_data[index_name] = {
+                    "value": value,
+                    "direction": direction
+                }
+                logger.info(f"Extracted PMI value for {index_name}: {value} ({direction})")
+            
+        except Exception as e:
+            logger.warning(f"Error extracting PMI values for {index_name}: {str(e)}")
+    
+    return pmi_data
+
 def parse_ism_report(pdf_path):
     """Parse an ISM manufacturing report and extract key data."""
     try:

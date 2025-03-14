@@ -662,6 +662,21 @@ def process_single_pdf(pdf_path, visualization_options=None):
         
         # Ensure we're working with the correct data
         if verified_data:
+            # Ensure month_year is preserved correctly
+            if 'month_year' in verified_data and verified_data['month_year'] != extraction_data.get('month_year'):
+                logger.warning(f"Month/year changed from {extraction_data.get('month_year')} to {verified_data['month_year']} - using original")
+                verified_data['month_year'] = extraction_data.get('month_year')
+                
+            # Use the verified data if it was successfully parsed
+            if 'industry_data' in verified_data:
+                extraction_data = verified_data
+                logger.info("Successfully verified and corrected data")
+            elif 'corrected_industry_data' in verified_data:
+                # Use the corrected industry data but preserve the original month_year
+                extraction_data['industry_data'] = verified_data['corrected_industry_data']
+                logger.info("Successfully applied corrected industry data")
+            else:
+                logger.warning("Verification didn't return expected structure, using original data")
                 
             # Use the verified data if it was successfully parsed
             if 'industry_data' in verified_data:
@@ -778,6 +793,20 @@ def process_single_pdf(pdf_path, visualization_options=None):
         industry_count = count_industries(extraction_data.get('industry_data', {}))
         logger.info(f"Found {industry_count} industries in structured data")
         
+        # Ensure PMI data is extracted and included
+        if extraction_data and 'index_summaries' in extraction_data:
+            try:
+                # Extract numerical PMI values from the summaries if not already available
+                from pdf_utils import extract_pmi_values_from_summaries
+                pmi_data = extract_pmi_values_from_summaries(extraction_data['index_summaries'])
+                
+                # Add the PMI data to the extraction_data
+                if 'pmi_data' not in extraction_data:
+                    extraction_data['pmi_data'] = pmi_data
+                    logger.info(f"Added PMI data for {len(pmi_data)} indices")
+            except Exception as e:
+                logger.error(f"Error extracting PMI values: {str(e)}")
+
         # Fix the formatting task to ensure proper data structure
         from tools import GoogleSheetsFormatterTool
         formatter_tool = GoogleSheetsFormatterTool()

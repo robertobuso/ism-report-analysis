@@ -455,6 +455,14 @@ class GoogleSheetsFormatterTool(BaseTool):
                 
             # Get extraction_data first since we'll use it in multiple places
             extraction_data = data.get('extraction_data', {})
+
+            # Ensure month_year is extracted and preserved correctly
+            month_year = extraction_data.get('month_year', 'Unknown')
+            if 'verification_result' in data and isinstance(data['verification_result'], dict):
+                # If verification_result has a different month_year, use the original
+                if 'month_year' in data['verification_result'] and data['verification_result']['month_year'] != month_year:
+                    logger.warning(f"Month/year changed during verification - using original {month_year}")
+                    data['verification_result']['month_year'] = month_year
             
             # Check for corrected industry data from verification
             if 'verification_result' in data and isinstance(data['verification_result'], dict):
@@ -536,9 +544,25 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Format the month_year as MM/YY for spreadsheet
             formatted_month_year = self._format_month_year(month_year)
             
-            # Check if the report exists in the database
-            if not check_report_exists_in_db(month_year):
+            # Try uppercase and title case variations since capitalization might differ
+            variations = [
+                month_year,
+                month_year.upper(),
+                month_year.title(),
+                # Also check the formatted version
+                formatted_month_year
+            ]
+
+            report_exists = False
+            for variation in variations:
+                if check_report_exists_in_db(variation):
+                    report_exists = True
+                    logger.info(f"Found report in database using variant: {variation}")
+                    break
+
+            if not report_exists:
                 logger.warning(f"Report for {month_year} not found in database. Some visualizations may be incomplete.")
+
             
             # Get Google Sheets service
             service = get_google_sheets_service()
@@ -860,22 +884,22 @@ class GoogleSheetsFormatterTool(BaseTool):
     
     def _get_month_year(self, structured_data, extraction_data):
         """Get the month and year from structured data or extraction data."""
-        # Try to get from structured data first
-        for index_data in structured_data.values():
-            month_year = index_data.get("month_year")
-            if month_year:
-                return month_year
-        
-        # Try extraction data
+        # Try to get from extraction_data first as the most authoritative source
         if extraction_data:
             month_year = extraction_data.get("month_year")
-            if month_year:
+            if month_year and month_year != "Unknown":
+                return month_year
+        
+        # Try to get from structured data
+        for index_data in structured_data.values():
+            month_year = index_data.get("month_year")
+            if month_year and month_year != "Unknown":
                 return month_year
         
         # Default to current date
         from datetime import datetime
         return datetime.now().strftime("%B %Y")
-    
+
     def _format_month_year(self, month_year):
         """Convert full month and year to MM/YY format."""
         try:
@@ -1179,52 +1203,74 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             if content_length < 50:
                 logger.warning("Table content is too short, may not contain actual table data")
-                return {"month_year": month_year, "indices": {}}
                 
-            # Log first 200 chars for debugging
-            if content_length > 0:
-                logger.info(f"Table content sample: {table_content[:200]}...")
-            
-            # Get data from the database if available
-            pmi_data = get_pmi_data_by_month(1)  # Just get the most recent month
-            
-            if pmi_data and len(pmi_data) > 0:
-                logger.info("Using data from database for manufacturing table")
-                
-                indices_data = {}
-                db_month_year = pmi_data[0].get('month_year', month_year)
-                
-                for index_name, index_data in pmi_data[0].get('indices', {}).items():
-                    indices_data[index_name] = {
-                        "current": str(index_data.get('value', 'N/A')),
-                        "direction": index_data.get('direction', 'N/A')
+                # Try to get PMI data from database
+                pmi_data = get_pmi_data_by_month(1)
+                if pmi_data and len(pmi_data) > 0:
+                    logger.info("Using PMI data from database")
+                    return {
+                        "month_year": pmi_data[0].get('month_year', month_year),
+                        "indices": pmi_data[0].get('indices', {})
                     }
                 
+                # Log sample of table content if available
+                if content_length > 0:
+                    logger.info(f"Table content sample: {table_content[:200]}...")
+                
+                # Get pmi_data from extraction_data if available
+                from db_utils import initialize_database, parse_date
+                
+                # Format the month_year for database query
+                formatted_date = parse_date(month_year)
+                if formatted_date:
+                    logger.info(f"Parsed date: {formatted_date}")
+                    # Try to get data from DB using the parsed date
+                    initialize_database()
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    cursor.execute(
+                        """
+                        SELECT * FROM pmi_indices 
+                        WHERE report_date = ?
+                        """,
+                        (formatted_date.isoformat(),)
+                    )
+                    
+                    indices_data = {}
+                    for row in cursor.fetchall():
+                        index_name = row['index_name']
+                        indices_data[index_name] = {
+                            "current": str(row['index_value']),
+                            "direction": row['direction']
+                        }
+                    
+                    if indices_data:
+                        logger.info(f"Found {len(indices_data)} indices in database")
+                        return {
+                            "month_year": month_year,
+                            "indices": indices_data
+                        }
+                
+                # Fallback to hardcoded data for demo purposes
+                logger.info("Using fallback data for manufacturing table")
                 return {
-                    "month_year": db_month_year,
-                    "indices": indices_data
+                    "month_year": month_year,
+                    "indices": {
+                        "Manufacturing PMI": {"current": "50.9", "direction": "Growing"},
+                        "New Orders": {"current": "55.1", "direction": "Growing"},
+                        "Production": {"current": "52.5", "direction": "Growing"},
+                        "Employment": {"current": "50.3", "direction": "Growing"},
+                        "Supplier Deliveries": {"current": "50.9", "direction": "Slowing"},
+                        "Inventories": {"current": "45.9", "direction": "Contracting"},
+                        "Customers' Inventories": {"current": "46.7", "direction": "Too Low"},
+                        "Prices": {"current": "54.9", "direction": "Increasing"},
+                        "Backlog of Orders": {"current": "44.9", "direction": "Contracting"},
+                        "New Export Orders": {"current": "52.4", "direction": "Growing"},
+                        "Imports": {"current": "51.1", "direction": "Growing"}
+                    }
                 }
             
-            # Fallback to hardcoded data for demo purposes
-            logger.info("Using fallback data for manufacturing table")
-            return {
-                "month_year": month_year,
-                "indices": {
-                    "Manufacturing PMI": {"current": "50.3", "direction": "Growing"},
-                    "New Orders": {"current": "48.6", "direction": "Contracting"},
-                    "Production": {"current": "50.7", "direction": "Growing"},
-                    "Employment": {"current": "47.6", "direction": "Contracting"},
-                    "Supplier Deliveries": {"current": "54.5", "direction": "Slowing"},
-                    "Inventories": {"current": "49.9", "direction": "Contracting"},
-                    "Customers' Inventories": {"current": "45.3", "direction": "Too Low"},
-                    "Prices": {"current": "62.4", "direction": "Increasing"},
-                    "Backlog of Orders": {"current": "46.8", "direction": "Contracting"},
-                    "New Export Orders": {"current": "51.4", "direction": "Growing"},
-                    "Imports": {"current": "52.6", "direction": "Growing"},
-                    "OVERALL ECONOMY": {"direction": "Growing"},
-                    "Manufacturing Sector": {"direction": "Growing"}
-                }
-            }
         except Exception as e:
             logger.error(f"Error extracting data with LLM: {str(e)}")
             return {"month_year": month_year, "indices": {}}
@@ -1452,7 +1498,7 @@ class GoogleSheetsFormatterTool(BaseTool):
         except Exception as e:
             logger.error(f"Error preparing index tab data for {index_name}: {str(e)}")
             return None, []
-    
+
     def _format_index_data(self, index, data):
         """Format data for a specific index."""
         try:

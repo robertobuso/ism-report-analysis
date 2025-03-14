@@ -127,6 +127,39 @@ def check_report_exists_in_db(month_year):
         if count > 0:
             return True
             
+        # Try with case-insensitive match
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM reports
+            WHERE LOWER(month_year) = LOWER(?)
+            """,
+            (month_year,)
+        )
+        
+        count = cursor.fetchone()[0]
+        
+        if count > 0:
+            return True
+            
+        # Parse the date and try with date match
+        from datetime import datetime
+        try:
+            date_obj = parse_date(month_year)
+            if date_obj:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) FROM reports
+                    WHERE report_date = ?
+                    """,
+                    (date_obj.isoformat(),)
+                )
+                
+                count = cursor.fetchone()[0]
+                if count > 0:
+                    return True
+        except:
+            pass
+            
         # Try with partial match (case insensitive)
         cursor.execute(
             """
@@ -160,20 +193,25 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
     try:
         if not date_str or date_str == "Unknown":
             return None
-            
-        # Try parsing with dateutil
-        dt = parser.parse(date_str)
-        return dt.date()
-    except Exception as e:
-        logger.warning(f"Failed to parse date '{date_str}': {str(e)}")
         
+        # Normalize case
+        date_str = date_str.strip()
+        
+        # Try parsing with dateutil
+        try:
+            dt = parser.parse(date_str)
+            return dt.date()
+        except:
+            # Continue to manual parsing
+            pass
+            
         # Try manual parsing for common formats
         try:
             # Try Month Year format (e.g., "January 2025")
             import re
-            month_year_match = re.match(r'(\w+)\s+(\d{4})', date_str)
+            month_year_match = re.match(r'(\w+)\s+(\d{4})', date_str, re.IGNORECASE)
             if month_year_match:
-                month_name = month_year_match.group(1)
+                month_name = month_year_match.group(1).lower()
                 year = int(month_year_match.group(2))
                 
                 month_map = {
@@ -184,11 +222,29 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
                 
                 month_num = month_map.get(month_name.lower(), 1)
                 return datetime.date(year, month_num, 1)
-        except Exception:
-            pass
+                
+            # Try all caps format (e.g., "JANUARY 2025")
+            month_year_match = re.match(r'([A-Z]+)\s+(\d{4})', date_str)
+            if month_year_match:
+                month_name = month_year_match.group(1).lower()
+                year = int(month_year_match.group(2))
+                
+                month_map = {
+                    'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                    'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                    'september': 9, 'october': 10, 'november': 11, 'december': 12
+                }
+                
+                month_num = month_map.get(month_name, 1)
+                return datetime.date(year, month_num, 1)
+        except Exception as e:
+            logger.warning(f"Manual date parsing failed: {str(e)}")
             
         # Last resort: return current date
         logger.error(f"Could not parse date '{date_str}', using current date")
+        return datetime.date.today()
+    except Exception as e:
+        logger.error(f"Failed to parse date '{date_str}': {str(e)}")
         return datetime.date.today()
     
 def get_all_report_dates():
