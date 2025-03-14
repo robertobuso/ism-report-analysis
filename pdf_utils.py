@@ -184,7 +184,7 @@ def extract_industry_mentions(text, indices):
         try:
             # Clean up the summary text before processing
             summary = preprocess_summary(summary)
-            
+
             # Initialize all pattern matches as None at the beginning
             growth_match = None
             decline_match = None
@@ -684,13 +684,13 @@ def preserve_order_industry_list(text):
     """
     if not text:
         return []
-    
+
     # First, standardize the text by removing formatting and special characters
     cleaned_text = text.strip()
-    
+
     # Replace special control characters
     cleaned_text = re.sub(r'[\n\r\t]+', ' ', cleaned_text)
-    
+
     # Remove common artifacts
     artifacts = [
         r'in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+\d{4})?(?:\s*[-—]\s*)?',
@@ -702,11 +702,16 @@ def preserve_order_industry_list(text):
         r':',
         r'^[,;.\s]*',  # Remove leading punctuation
         r'(?:and|&)\s+',  # Remove "and" or "&" at beginning
+        r'the (?:[\w\s]+ )?industries (?:are|is):?',  # Catch common prefixes
+        r'industries that reported(?:.+?)are:?' # catch more common prefixes
     ]
-    
+
     for artifact in artifacts:
         cleaned_text = re.sub(artifact, '', cleaned_text, flags=re.IGNORECASE)
-    
+
+    # Account for cases where "and" is directly attached to last industry
+    cleaned_text = re.sub(r'\s+and([A-Za-z])', r' , \1', cleaned_text)
+
     # Primary split: Use semicolons as the main delimiter
     # This is safer than using commas since semicolons are more likely to separate distinct industries
     items = []
@@ -717,43 +722,37 @@ def preserve_order_industry_list(text):
         # If no semicolons, comma splitting is a fallback but riskier
         raw_items = [part.strip() for part in cleaned_text.split(',')]
     
-    # Process the last item which might have "and" prefixing the last industry
-    if raw_items and len(raw_items) > 0:
-        last_item = raw_items[-1]
-        if last_item.lower().startswith('and '):
-            raw_items[-1] = last_item[4:].strip()
-    
-    # Process each item to ensure proper formatting
-    for item in raw_items:
-        item = item.strip()
-        
+    # Post processing (Cleaning up the raw items)
+    cleaned_items = []
+    for raw_item in raw_items:
         # Skip empty items
-        if not item:
+        if not raw_item:
             continue
-            
-        # Clean up the item
-        item = re.sub(r'\s*\(\d+\)\s*$', '', item)  # Remove footnote numbers
-        item = re.sub(r'\s*\*+\s*$', '', item)      # Remove trailing asterisks
-        item = re.sub(r'^\s*-\s*', '', item)        # Remove leading dashes
-        
-        # Skip if item is just an artifact
-        if (not item or
-            len(item) < 3 or
-            re.match(r'^(and|&|,|\.|:|;)\s*$', item) or
-            item.lower() in ['are', 'is', 'in', 'the', 'following', 'order']):
-            continue
-        
-        # Only add non-empty, meaningful items
-        if item and len(item) > 1 and not item.isdigit():
-            # Fix common formatting issues in industry names
-            item = re.sub(r'Products\s*$', 'Products', item)  # Fix "ProductsProducts" issue
-            item = re.sub(r'&\s*$', '& ', item)              # Fix dangling ampersands
-            
-            # Ensure industry name looks valid (contains at least one word character)
-            if re.search(r'\w', item):
-                items.append(item)
     
-    return items
+        # Clean up each item
+        raw_item = re.sub(r'\s*\(\d+\)\s*$', '', raw_item)  # Remove footnote numbers
+        raw_item = re.sub(r'\s*\*+\s*$', '', raw_item)      # Remove trailing asterisks
+        raw_item = re.sub(r'^\s*-\s*', '', raw_item)        # Remove leading dashes
+        raw_item = re.sub(r"^(?:the|those|that|are)\s+", "", raw_item, flags=re.IGNORECASE)
+        raw_item = re.sub(r'\s+products$', '', raw_item, flags=re.IGNORECASE)
+    
+        # Clean each word and remove leading zeros
+        raw_item = ' '.join([word.lstrip('0') for word in raw_item.split()])
+        raw_item = re.sub(r"andprimary", "and primary", raw_item, flags=re.IGNORECASE)
+    
+        # Append cleaned item (if longer than 1 character - also remove duplicates)
+        if len(raw_item) > 1:
+             cleaned_items.append(raw_item)
+
+    # remove duplicates while preserving order:
+    deduped = []
+    seen = set()
+    for item in cleaned_items:
+        if item not in seen:
+             deduped.append(item)
+             seen.add(item)
+
+    return deduped
 
 def extract_pmi_values_from_summaries(index_summaries):
     """Extract PMI numeric values and directions from the index summaries."""

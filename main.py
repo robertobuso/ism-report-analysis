@@ -414,7 +414,7 @@ def fallback_regex_parsing(text):
 def process_single_pdf(pdf_path, visualization_options=None):
     """Process a single PDF file with optional visualization selections."""
     logger.info(f"Processing PDF: {pdf_path}")
-    
+
     # If visualization_options is None, use default settings
     if visualization_options is None:
         visualization_options = {
@@ -423,7 +423,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
             'timeseries': True,
             'industry': True
         }
-    
+
     try:
         # First check if sheet_id.txt exists
         if os.path.exists("sheet_id.txt"):
@@ -435,79 +435,79 @@ def process_single_pdf(pdf_path, visualization_options=None):
                     logger.warning("sheet_id.txt file exists but is empty")
         else:
             logger.warning("sheet_id.txt not found. A new Google Sheet will be created.")
-        
+
         # Create agents
         extractor_agent = create_extractor_agent()
         data_correction_agent = create_data_correction_agent()
         validator_agent = create_validator_agent()
         formatter_agent = create_formatter_agent()
-        
+
         # Execute extraction
         logger.info("Starting data extraction...")
-        
+
         # Always attempt direct PDF parsing first to get baseline data
         direct_data = None
         try:
             from pdf_utils import parse_ism_report
             logger.info("Performing initial direct PDF parsing")
             direct_data = parse_ism_report(pdf_path)
-            
+
             # Check if direct parsing found any industries
             industry_count = 0
             if direct_data and 'industry_data' in direct_data:
                 for index, categories in direct_data['industry_data'].items():
                     for category, industries in categories.items():
                         industry_count += len(industries)
-            
+
             logger.info(f"Direct PDF parsing found {industry_count} industries")
-            
+
         except Exception as e:
             logger.error(f"Error in initial direct PDF parsing: {str(e)}")
-        
+
         # Custom extraction task
         extraction_task = Task(
             description=f"""
             Extract all relevant data from the ISM Manufacturing Report PDF.
             The PDF path is: {pdf_path}
-            
+
             When using the PDF Extraction Tool, pass the path in this format:
             {{
                 "extracted_data": {{
                     "pdf_path": "{pdf_path}"
                 }}
             }}
-            
+
             You must extract:
             1. The month and year of the report
             2. The Manufacturing at a Glance table
             3. All index-specific summaries (New Orders, Production, etc.)
             4. Industry mentions in each index summary
-            
+
             VERY IMPORTANT CLASSIFICATION RULES:
             For each index, you must carefully identify the correct category for each industry:
-            
+
             - New Orders, Production, Employment, Backlog of Orders, New Export Orders, Imports:
             * GROWING category: Industries explicitly mentioned as reporting "growth", "expansion", "increase", or similar positive terms
             * DECLINING category: Industries explicitly mentioned as reporting "contraction", "decline", "decrease" or similar negative terms
-            
+
             - Supplier Deliveries:
             * SLOWER category: Industries reporting "slower" deliveries (NOTE: slower deliveries are a POSITIVE economic indicator)
             * FASTER category: Industries reporting "faster" deliveries (NOTE: faster deliveries are a NEGATIVE economic indicator)
-            
+
             - Inventories:
             * HIGHER category: Industries reporting "higher" or "increased" inventories
             * LOWER category: Industries reporting "lower" or "decreased" inventories
-            
+
             - Customers' Inventories:
             * TOO HIGH category: Industries reporting customers' inventories as "too high"
             * TOO LOW category: Industries reporting customers' inventories as "too low"
-            
+
             - Prices:
             * INCREASING category: Industries reporting "higher" or "increasing" prices
             * DECREASING category: Industries reporting "lower" or "decreasing" prices
-            
+
             READ THE TEXT CAREFULLY AND LOOK FOR THESE SPECIFIC TERMS AND PHRASES. Do not guess or infer - only place industries in categories when the text explicitly states their status.
-            
+
             Look for sentences like:
             - "The X industries reporting growth in February are..."
             - "The Y industries reporting contraction in February are..."
@@ -515,14 +515,14 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
             YOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.
             Format your answer as:
-            
+
             {{
                 'month_year': 'Month Year',
                 'manufacturing_table': 'table content',
                 'index_summaries': {{...}},
                 'industry_data': {{...}}
             }}
-            
+
             Ensure all data is correctly identified and structured for further processing.
             """,
             expected_output="A dictionary containing the extracted data with month_year, manufacturing_table, index_summaries, and industry_data",
@@ -552,7 +552,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
                     if not attr.startswith('_') and not callable(getattr(extraction_data, attr)):
                         extracted_dict[attr] = getattr(extraction_data, attr)
                 extraction_data = extracted_dict
-        
+
         # If agent extraction failed or returned empty data, use direct parsing
         if not extraction_data or not extraction_data.get('industry_data'):
             if direct_data:
@@ -571,14 +571,14 @@ def process_single_pdf(pdf_path, visualization_options=None):
             # Compare both methods and merge results to get the most comprehensive data
             agent_industries = count_industries(extraction_data.get('industry_data', {}))
             direct_industries = count_industries(direct_data.get('industry_data', {}))
-            
+
             logger.info(f"Comparison: Agent found {agent_industries} industries, Direct parsing found {direct_industries} industries")
-            
+
             # If direct parsing found more industries, start with that and supplement
             if direct_industries > agent_industries:
                 logger.info(f"Using direct PDF extraction as base which found more industries")
                 merged_data = direct_data.copy()
-                
+
                 # Keep agent's month_year and manufacturing_table if they exist
                 if extraction_data.get('month_year'):
                     merged_data['month_year'] = extraction_data['month_year']
@@ -586,14 +586,14 @@ def process_single_pdf(pdf_path, visualization_options=None):
                     merged_data['manufacturing_table'] = extraction_data['manufacturing_table']
                 if extraction_data.get('index_summaries'):
                     merged_data['index_summaries'] = extraction_data['index_summaries']
-                
+
                 # Merge industry data to get the most complete set
                 merged_industry_data = merge_industry_data(
                     direct_data.get('industry_data', {}),
                     extraction_data.get('industry_data', {})
                 )
                 merged_data['industry_data'] = merged_industry_data
-                
+
                 extraction_data = merged_data
             else:
                 # Even if agent found more industries, still check for any missing categories
@@ -603,49 +603,62 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 )
                 extraction_data['industry_data'] = merged_industry_data
                 logger.info(f"Keeping agent extraction with merged industry data")
-        
+
+        # STORE DATA IN DATABASE - CRITICAL STEP - happen after EXTRACTION
+        from db_utils import store_report_data_in_db
+        try:
+            store_result = store_report_data_in_db(extraction_data, pdf_path)
+
+            if store_result:
+                logger.info(f"Successfully stored data from {pdf_path} in database")
+            else:
+                logger.warning(f"Failed to store data from {pdf_path} in database")
+        except Exception as e:
+            logger.error(f"Error storing data in database: {str(e)}")
+            # Continue processing to return the data even if database storage fails
+
         # Execute verification with enhanced data
         logger.info("Starting data verification...")
         verification_task = Task(
             description=f"""
             CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
-            
+
             The extracted data is: {json.dumps(extraction_data.get('industry_data', {}))}
-            
+
             STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
             {json.dumps(extraction_data.get('index_summaries', {}))}
-            
+
             STEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:
             - GROWING vs DECLINING for most indices
             - SLOWER vs FASTER for Supplier Deliveries
             - HIGHER vs LOWER for Inventories
             - TOO HIGH vs TOO LOW for Customers' Inventories
             - INCREASING vs DECREASING for Prices
-            
+
             STEP 3: Compare your findings against industry_data to identify errors.
             Common errors include:
             - Industries placed in the wrong category (e.g., growing when they should be declining)
             - Missing industries that were mentioned in the text
             - Industries appearing in both categories for a single index
-            
+
             STEP 4: Correct any errors by:
             - Moving industries to the correct category
             - Adding missing industries to appropriate categories
             - Removing industries from incorrect categories
-            
+
             STEP 5: Return a COMPLETE, CORRECTED copy of the data with your changes implemented.
-            
+
             IMPORTANT: For each industry, look for EXACT PHRASES in the index summaries that specify its status.
             Do not make assumptions - only categorize based on explicit statements.
-            
-            ESPECIALLY IMPORTANT: Make sure to include all parts of the original extraction (month_year, manufacturing_table, 
+
+            ESPECIALLY IMPORTANT: Make sure to include all parts of the original extraction (month_year, manufacturing_table,
             index_summaries, AND the corrected industry_data).
-            
+
             """,
             expected_output="A complete dictionary containing the verified data with month_year, manufacturing_table, index_summaries, and corrected industry_data",
             agent=data_correction_agent
         )
-        
+
         # Create verification crew
         verification_crew = Crew(
             agents=[data_correction_agent],
@@ -653,20 +666,20 @@ def process_single_pdf(pdf_path, visualization_options=None):
             verbose=True,
             process=Process.sequential
         )
-        
+
         verified_result = verification_crew.kickoff()
         logger.info("Verification result received")
-        
+
         # Safely parse verification result
         verified_data = safely_parse_agent_output(verified_result)
-        
+
         # Ensure we're working with the correct data
         if verified_data:
             # Ensure month_year is preserved correctly
             if 'month_year' in verified_data and verified_data['month_year'] != extraction_data.get('month_year'):
                 logger.warning(f"Month/year changed from {extraction_data.get('month_year')} to {verified_data['month_year']} - using original")
                 verified_data['month_year'] = extraction_data.get('month_year')
-                
+
             # Use the verified data if it was successfully parsed
             if 'industry_data' in verified_data:
                 extraction_data = verified_data
@@ -677,7 +690,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 logger.info("Successfully applied corrected industry data")
             else:
                 logger.warning("Verification didn't return expected structure, using original data")
-                
+
             # Use the verified data if it was successfully parsed
             if 'industry_data' in verified_data:
                 extraction_data = verified_data
@@ -690,31 +703,31 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 logger.warning("Verification didn't return expected structure, using original data")
         else:
             logger.warning("Verification failed, continuing with unverified data")
-        
+
         # Execute structuring - ensure we have valid data for structuring
         logger.info("Starting data structuring...")
         from tools import SimpleDataStructurerTool
         structurer_tool = SimpleDataStructurerTool()
-        
+
         # Ensure extraction_data has required keys before structuring
         if not isinstance(extraction_data, dict):
             extraction_data = {}
-        
+
         # Add missing required keys to prevent downstream errors
         required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
         for key in required_keys:
             if key not in extraction_data:
                 if key == "month_year":
-                    extraction_data[key] = "" 
+                    extraction_data[key] = ""
                 elif key == "manufacturing_table":
                     extraction_data[key] = ""
                 else:
                     extraction_data[key] = {}
-        
+
         # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
         if "corrected_industry_data" in extraction_data and not extraction_data.get("industry_data"):
             extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
-        
+
         # Use the verified data if it was successfully parsed
         if verified_data and 'corrected_industry_data' in verified_data:
             structured_data = structurer_tool._run({
@@ -726,7 +739,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
         else:
             structured_data = structurer_tool._run(extraction_data)
         logger.info("Data structuring completed")
-        
+
         # Check if structured_data is empty or None and fix if needed
         if not structured_data:
             logger.warning("Structured data is empty, using fallback structure")
@@ -741,34 +754,34 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 if index in INDEX_CATEGORIES:
                     for category in INDEX_CATEGORIES[index]:
                         structured_data[index]["categories"][category] = []
-        
+
         # Execute validation
         logger.info("Starting data validation...")
         validation_task = Task(
             description=f"""
             Validate the structured ISM Manufacturing Report data for accuracy and completeness.
-            
+
             Check:
             1. All expected indices are present
             2. Each index has the appropriate categories
             3. No missing data or incorrect classifications
             4. Industries are preserved exactly as listed in the report
-            
+
             Flag any issues that would require manual review.
-            
+
             The structured data is: {structured_data}
             """,
             expected_output="A dictionary mapping each index name to a boolean indicating validation status",
             agent=validator_agent
         )
-        
+
         validation_crew = Crew(
             agents=[validator_agent],
             tasks=[validation_task],
             verbose=True,
             process=Process.sequential
         )
-        
+
         validation_results = validation_crew.kickoff()
 
         # Safely parse validation results
@@ -788,7 +801,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 first_key = next(iter(validation_dict))
                 validation_dict[first_key] = True
                 logger.info(f"Setting {first_key} validation to True to continue processing")
-        
+
         # Log total industry count for final checking
         industry_count = count_industries(extraction_data.get('industry_data', {}))
         logger.info(f"Found {industry_count} industries in structured data")
@@ -820,12 +833,12 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         logger.info("Google Sheets formatting completed")
         return formatting_result
-        
+
     except Exception as e:
         logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
-
+    
 def count_industries(industry_data):
     """Count the total number of industries in the industry_data dict."""
     count = 0

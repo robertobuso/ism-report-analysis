@@ -305,7 +305,7 @@ class SimplePDFExtractionTool(BaseTool):
             
             Please extract and return these data points in JSON format:
             - Month and Year of the report (should be {month_year})
-            - Manufacturing PMI value and status (Growing/Contracting)
+            - Manufacturing PMI value and status (Growing/Contracting) 
             - New Orders value and status
             - Production value and status
             - Employment value and status
@@ -929,11 +929,20 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 index_sheet_id
                             )
                             
-                            # Add to batch update
+                            # MODIFIED: Read existing data to determine the last column
+                            range_to_read = f"'{index}'!1:1"  # Read the first row
+                            existing_values = service.spreadsheets().values().get(spreadsheetId=sheet_id, range=range_to_read).execute().get('values', [[]])[0]
+                            
+                            # Determine starting cell
+                            start_column_index = len(existing_values)  # Append to the end
+                            start_cell = self._get_column_letter(start_column_index) + '1' # Convert to letter
+                            
+                            # Append to batch update
                             if tab_data:
                                 all_tab_data[index] = {
                                     'data': tab_data,
-                                    'formatting': formatting
+                                    'formatting': formatting,
+                                    'start_cell': start_cell # new start cell
                                 }
                 except Exception as e:
                     logger.error(f"Error updating basic visualization: {str(e)}")
@@ -1588,12 +1597,11 @@ class GoogleSheetsFormatterTool(BaseTool):
                 "New Export Orders", "Imports"
             ]
             
-            # Add fallback PMI data if Manufacturing PMI is missing
+            # If Manufacturing PMI is missing from indices, check the database
             if "Manufacturing PMI" not in indices:
-                # Try to extract from extracted_data directly
                 from db_utils import get_db_connection, parse_date
                 
-                # Try to get data from DB using the parsed date
+                # Try to get data from DB using the date
                 formatted_date = parse_date(formatted_month_year)
                 if formatted_date:
                     try:
@@ -1601,26 +1609,42 @@ class GoogleSheetsFormatterTool(BaseTool):
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         
-                        # Look for Manufacturing PMI or any index data for this date
+                        # Look specifically for Manufacturing PMI
                         cursor.execute(
                             """
                             SELECT * FROM pmi_indices 
-                            WHERE report_date = ? 
-                            ORDER BY id DESC LIMIT 1
+                            WHERE report_date = ? AND index_name = ?
                             """,
-                            (formatted_date.isoformat(),)
+                            (formatted_date.isoformat(), "Manufacturing PMI")
                         )
                         
                         row_data = cursor.fetchone()
                         if row_data:
-                            # We have at least one index, use its value for Manufacturing PMI as fallback
                             indices["Manufacturing PMI"] = {
                                 "current": str(row_data['index_value']),
                                 "direction": row_data['direction']
                             }
-                            logger.info(f"Using fallback PMI data: {row_data['index_value']} ({row_data['direction']})")
+                            logger.info(f"Retrieved Manufacturing PMI from database: {row_data['index_value']} ({row_data['direction']})")
+                        else:
+                            # If Manufacturing PMI not found, look for any index data
+                            cursor.execute(
+                                """
+                                SELECT * FROM pmi_indices 
+                                WHERE report_date = ? 
+                                ORDER BY id DESC LIMIT 1
+                                """,
+                                (formatted_date.isoformat(),)
+                            )
+                            
+                            row_data = cursor.fetchone()
+                            if row_data:
+                                logger.info(f"Using fallback index data for Manufacturing PMI from {row_data['index_name']}")
+                                indices["Manufacturing PMI"] = {
+                                    "current": str(row_data['index_value']),
+                                    "direction": row_data['direction']
+                                }
                     except Exception as e:
-                        logger.error(f"Error getting fallback PMI data: {str(e)}")
+                        logger.error(f"Error retrieving index data from database: {str(e)}")
             
             # Add each index value
             for index in standard_indices:
@@ -1651,7 +1675,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error preparing horizontal row: {str(e)}")
             # Return a default row with N/A values
             return [formatted_month_year] + ["N/A"] * 13
-
+    
     def _prepare_manufacturing_table_formatting(self, tab_id, row_count, col_count):
         """Prepare formatting requests for the manufacturing table."""
         requests = [
@@ -1816,27 +1840,27 @@ class GoogleSheetsFormatterTool(BaseTool):
                 if category in formatted_data:
                     for industry in formatted_data[category]:
                         if self._is_valid_industry(industry):
-                            all_entries.append((industry, category))
+                            all_entries.append(industry) # (industry, category))
             
             # Process any other categories
             for category, industries in formatted_data.items():
                 if category not in [primary_category, secondary_category]:
                     for industry in industries:
                         if self._is_valid_industry(industry):
-                            all_entries.append((industry, category))
+                            all_entries.append(industry)
             
             # Build header and data
-            header_row = ["Industry", formatted_month_year]
-            data_rows = [[industry, category] for industry, category in all_entries]
+            header_row = [formatted_month_year] # ["Industry", formatted_month_year]
+            data_rows = [[industry] for industry in all_entries] #[[industry, category] for industry, category in all_entries]
             
             # Prepare formatting
             formatting = self._prepare_industry_tab_formatting(tab_id, len(data_rows) + 1, 2, index_name)
             
-            return [header_row] + data_rows, formatting
+            return header_row + data_rows, formatting #  removed the list here. 
         except Exception as e:
             logger.error(f"Error preparing index tab data for {index_name}: {str(e)}")
             return None, []
-
+        
     def _format_index_data(self, index, data):
         """Format data for a specific index."""
         try:
@@ -2607,12 +2631,12 @@ class GoogleSheetsFormatterTool(BaseTool):
     def _update_multiple_tabs_with_data(self, service, sheet_id, all_tab_data):
         """
         Update multiple tabs in a single operation, grouping all formatting requests.
-        
+
         Args:
             service: Google Sheets API service
             sheet_id: Spreadsheet ID
             all_tab_data: Dictionary mapping tab names to their data and formatting
-            
+
         Returns:
             Boolean indicating success
         """
@@ -2620,11 +2644,11 @@ class GoogleSheetsFormatterTool(BaseTool):
             # First ensure all required tabs exist (do this in one batch)
             existing_tabs = self._get_all_sheet_ids(service, sheet_id)
             tabs_to_create = []
-            
+
             for tab_name in all_tab_data.keys():
                 if tab_name not in existing_tabs:
                     tabs_to_create.append(tab_name)
-            
+
             # Create all missing tabs in one batch
             if tabs_to_create:
                 create_requests = [
@@ -2637,22 +2661,22 @@ class GoogleSheetsFormatterTool(BaseTool):
                     }
                     for tab_name in tabs_to_create
                 ]
-                
+
                 self._batch_update_requests(service, sheet_id, create_requests)
-                
+
                 # Refresh sheet_id mapping
                 existing_tabs = self._get_all_sheet_ids(service, sheet_id)
-            
+
             # Group all value updates
             value_batch_requests = []
-            
+
             for tab_name, tab_info in all_tab_data.items():
                 if 'data' in tab_info and tab_info['data']:
                     value_batch_requests.append({
-                        'range': f"'{tab_name}'!{tab_info.get('start_cell', 'A1')}",
+                        'range': f"'{tab_name}'!A1",
                         'values': tab_info['data']
                     })
-            
+
             # Execute all value updates in one batchUpdate
             if value_batch_requests:
                 def batch_value_update():
@@ -2663,12 +2687,12 @@ class GoogleSheetsFormatterTool(BaseTool):
                             "data": value_batch_requests
                         }
                     ).execute()
-                
+
                 self._execute_with_backoff(batch_value_update)
-            
+
             # Collect all formatting requests
             all_formatting_requests = []
-            
+
             for tab_name, tab_info in all_tab_data.items():
                 if 'formatting' in tab_info and tab_info['formatting']:
                     # Update the sheetId for each tab if it has changed or was created
@@ -2691,18 +2715,28 @@ class GoogleSheetsFormatterTool(BaseTool):
                         all_formatting_requests.extend(updated_formatting)
                     else:
                         logger.warning(f"Tab {tab_name} not found in existing_tabs, skipping formatting")
-            
+
             # Apply all formatting in batches
             if all_formatting_requests:
                 self._batch_update_requests(service, sheet_id, all_formatting_requests)
-            
+
             return True
-        
+
         except Exception as e:
             logger.error(f"Error updating multiple tabs: {str(e)}")
             logger.error(traceback.format_exc())
             return False
-                
+        
+    def _get_column_letter(self, column_index):
+        """Convert a column index to a column letter (e.g., 0 -> A, 25 -> Z, 26 -> AA)."""
+        column_letter = ''
+        while column_index >= 0:
+            column_letter = chr(65 + (column_index % 26)) + column_letter
+            column_index = (column_index // 26) - 1
+            if column_index < 0:
+                break
+        return column_letter
+    
     def _batch_update_requests(self, service, sheet_id, requests, max_batch_size=100):
         """
         Execute batch updates with proper chunking and backoff strategy.
