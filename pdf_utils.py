@@ -766,39 +766,35 @@ def parse_ism_report(pdf_path):
                 logger.debug(f"Extracted for {index} - {category}: {len(industries)} industries")
                 if not industries:
                     logger.warning(f"No industries found for {index} - {category}")
-        
-            try:
-                # Store the extracted data in the database
-                store_result = store_report_data_in_db(
-                    {
-                        "month_year": month_year,
-                        "manufacturing_table": manufacturing_table,
-                        "index_summaries": index_summaries,
-                        "industry_data": industry_data
-                    }, 
-                    pdf_path
-                )
-                
-                if store_result:
-                    logger.info(f"Successfully stored data from {pdf_path} in database")
-                else:
-                    logger.warning(f"Failed to store data from {pdf_path} in database")
-            except Exception as e:
-                logger.error(f"Error storing data in database: {str(e)}")
-                # Continue processing to return the data even if database storage fails
             
-            return {
-                "month_year": month_year,
-                "manufacturing_table": manufacturing_table,
-                "index_summaries": index_summaries,
-                "industry_data": industry_data
-            }
+        # Create the result dictionary
+        extracted_data = {
+            "month_year": month_year,
+            "manufacturing_table": manufacturing_table,
+            "index_summaries": index_summaries,
+            "industry_data": industry_data
+        }
+            
+        # Store the extracted data in the database
+        from db_utils import store_report_data_in_db
+        try:
+            store_result = store_report_data_in_db(extracted_data, pdf_path)
+            
+            if store_result:
+                logger.info(f"Successfully stored data from {pdf_path} in database")
+            else:
+                logger.warning(f"Failed to store data from {pdf_path} in database")
+        except Exception as e:
+            logger.error(f"Error storing data in database: {str(e)}")
+            # Continue processing to return the data even if database storage fails
+        
+        return extracted_data
 
     except Exception as e:
         logger.error(f"Error parsing ISM report: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
-
+    
 def store_report_data_in_db(extracted_data, pdf_path):
     """
     Store the extracted report data in the SQLite database.
