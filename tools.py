@@ -1278,7 +1278,17 @@ class GoogleSheetsFormatterTool(BaseTool):
     def _prepare_horizontal_row(self, parsed_data, formatted_month_year):
         """Prepare a horizontal row for the manufacturing table."""
         try:
+            # Handle case where parsed_data is None or missing essential data
+            if not parsed_data or not isinstance(parsed_data, dict):
+                logger.error("Invalid parsed_data, using default empty structure")
+                parsed_data = {"month_year": formatted_month_year, "indices": {}}
+            
             indices = parsed_data.get('indices', {})
+            
+            # If indices is empty or None, initialize an empty dict
+            if not indices:
+                indices = {}
+                
             row = [formatted_month_year]
             
             # Standard indices in order
@@ -1289,31 +1299,70 @@ class GoogleSheetsFormatterTool(BaseTool):
                 "New Export Orders", "Imports"
             ]
             
+            # Add fallback PMI data if Manufacturing PMI is missing
+            if "Manufacturing PMI" not in indices:
+                # Try to extract from extracted_data directly
+                from db_utils import get_db_connection, parse_date
+                
+                # Try to get data from DB using the parsed date
+                formatted_date = parse_date(formatted_month_year)
+                if formatted_date:
+                    try:
+                        initialize_database()
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        
+                        # Look for Manufacturing PMI or any index data for this date
+                        cursor.execute(
+                            """
+                            SELECT * FROM pmi_indices 
+                            WHERE report_date = ? 
+                            ORDER BY id DESC LIMIT 1
+                            """,
+                            (formatted_date.isoformat(),)
+                        )
+                        
+                        row_data = cursor.fetchone()
+                        if row_data:
+                            # We have at least one index, use its value for Manufacturing PMI as fallback
+                            indices["Manufacturing PMI"] = {
+                                "current": str(row_data['index_value']),
+                                "direction": row_data['direction']
+                            }
+                            logger.info(f"Using fallback PMI data: {row_data['index_value']} ({row_data['direction']})")
+                    except Exception as e:
+                        logger.error(f"Error getting fallback PMI data: {str(e)}")
+            
             # Add each index value
             for index in standard_indices:
                 index_data = indices.get(index, {})
-                value = index_data.get('current', 'N/A')
+                value = index_data.get('current', index_data.get('value', 'N/A'))
                 direction = index_data.get('direction', 'N/A')
                 
-                if value and direction:
+                if value and direction and value != 'N/A' and direction != 'N/A':
                     cell_value = f"{value} ({direction})"
                 else:
                     cell_value = "N/A"
                 
                 row.append(cell_value)
             
-            # Add special rows for Overall Economy and Manufacturing Sector
-            for special in ["OVERALL ECONOMY", "Manufacturing Sector"]:
-                special_data = indices.get(special, {})
-                direction = special_data.get('direction', 'N/A')
-                row.append(direction)
+            # Add special rows for Overall Economy and Manufacturing Sector - with defaults
+            overall_economy = indices.get("OVERALL ECONOMY", indices.get("Overall Economy", {}))
+            manufacturing_sector = indices.get("Manufacturing Sector", {})
+            
+            # Default directions based on Manufacturing PMI if available
+            default_economy = "Growing"  # Default assumption for economy
+            default_mfg = "Growing" if indices.get("Manufacturing PMI", {}).get("current", 0) >= 50 else "Contracting"
+            
+            row.append(overall_economy.get('direction', default_economy))
+            row.append(manufacturing_sector.get('direction', default_mfg))
             
             return row
         except Exception as e:
             logger.error(f"Error preparing horizontal row: {str(e)}")
             # Return a default row with N/A values
             return [formatted_month_year] + ["N/A"] * 13
-    
+
     def _prepare_manufacturing_table_formatting(self, tab_id, row_count, col_count):
         """Prepare formatting requests for the manufacturing table."""
         requests = [

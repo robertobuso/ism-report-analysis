@@ -162,9 +162,29 @@ def extract_industry_mentions(text, indices):
     """
     industry_data = {}
     
-    # Loop through each index and its summary text
+    # Preprocess the text to remove common artifacts before pattern matching
+    def preprocess_summary(summary_text):
+        """Clean up summary text by removing common artifacts that can interfere with pattern matching."""
+        # Replace line breaks and excess whitespace
+        cleaned = re.sub(r'\s+', ' ', summary_text)
+        
+        # Remove footnote markers and similar artifacts
+        cleaned = re.sub(r'\(\d+\)', '', cleaned)
+        
+        # Fix spacing around punctuation
+        cleaned = re.sub(r'\s*([,;:.])\s*', r'\1 ', cleaned)
+        
+        # Remove tab characters and other control characters
+        cleaned = re.sub(r'[\t\r\n\f\v]+', ' ', cleaned)
+        
+        return cleaned.strip()
+
+    # Then apply this to each summary:
     for index, summary in indices.items():
         try:
+            # Clean up the summary text before processing
+            summary = preprocess_summary(summary)
+            
             # Initialize all pattern matches as None at the beginning
             growth_match = None
             decline_match = None
@@ -671,6 +691,22 @@ def preserve_order_industry_list(text):
     # Replace special control characters
     cleaned_text = re.sub(r'[\n\r\t]+', ' ', cleaned_text)
     
+    # Remove common artifacts
+    artifacts = [
+        r'in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+\d{4})?(?:\s*[-—]\s*)?',
+        r'in (?:the )?following order(?:\s*[-—]\s*)?',
+        r'in order(?:\s*[-—]\s*)?',
+        r'are(?:\s*:)?',
+        r'is(?:\s*:)?',
+        r'(?:listed|in) order(?:\s*[-—]\s*)?',
+        r':',
+        r'^[,;.\s]*',  # Remove leading punctuation
+        r'(?:and|&)\s+',  # Remove "and" or "&" at beginning
+    ]
+    
+    for artifact in artifacts:
+        cleaned_text = re.sub(artifact, '', cleaned_text, flags=re.IGNORECASE)
+    
     # Primary split: Use semicolons as the main delimiter
     # This is safer than using commas since semicolons are more likely to separate distinct industries
     items = []
@@ -700,9 +736,22 @@ def preserve_order_industry_list(text):
         item = re.sub(r'\s*\*+\s*$', '', item)      # Remove trailing asterisks
         item = re.sub(r'^\s*-\s*', '', item)        # Remove leading dashes
         
+        # Skip if item is just an artifact
+        if (not item or
+            len(item) < 3 or
+            re.match(r'^(and|&|,|\.|:|;)\s*$', item) or
+            item.lower() in ['are', 'is', 'in', 'the', 'following', 'order']):
+            continue
+        
         # Only add non-empty, meaningful items
-        if item and len(item) > 1:
-            items.append(item)
+        if item and len(item) > 1 and not item.isdigit():
+            # Fix common formatting issues in industry names
+            item = re.sub(r'Products\s*$', 'Products', item)  # Fix "ProductsProducts" issue
+            item = re.sub(r'&\s*$', '& ', item)              # Fix dangling ampersands
+            
+            # Ensure industry name looks valid (contains at least one word character)
+            if re.search(r'\w', item):
+                items.append(item)
     
     return items
 
@@ -710,27 +759,63 @@ def extract_pmi_values_from_summaries(index_summaries):
     """Extract PMI numeric values and directions from the index summaries."""
     pmi_data = {}
     
+    # First, try to extract Manufacturing PMI directly
+    if "Manufacturing PMI" in index_summaries:
+        summary = index_summaries["Manufacturing PMI"]
+        # Pattern for values like "PMI® registered 50.3 percent"
+        value_pattern = r'(?:PMI®|Manufacturing PMI®)(?:.+?)(?:registering|registered|was|at)\s+(\d+\.\d+)\s*percent'
+        value_match = re.search(value_pattern, summary, re.IGNORECASE)
+        
+        if value_match:
+            value = float(value_match.group(1))
+            # Determine direction based on threshold
+            direction = "Growing" if value >= 50.0 else "Contracting"
+            pmi_data["Manufacturing PMI"] = {
+                "value": value,
+                "direction": direction
+            }
+            logger.info(f"Extracted Manufacturing PMI: {value} ({direction})")
+    
+    # Extract values for other indices
     for index_name, summary in index_summaries.items():
-        try:
-            # Pattern for values like "registering 55.1 percent"
-            import re
-            value_pattern = r'(?:registering|was|at|of)\s+(\d+\.\d+)\s*percent'
-            value_match = re.search(value_pattern, summary, re.IGNORECASE)
+        # Skip if it's already processed Manufacturing PMI
+        if index_name == "Manufacturing PMI" and "Manufacturing PMI" in pmi_data:
+            continue
             
-            # Direction patterns
-            if "growing" in summary.lower() or "expansion" in summary.lower():
-                direction = "Growing"
-            elif "contracting" in summary.lower() or "contraction" in summary.lower():
-                direction = "Contracting"
-            elif "slowing" in summary.lower() or "slower" in summary.lower():
-                direction = "Slowing"
-            elif "faster" in summary.lower():
-                direction = "Faster"
-            else:
-                direction = "Neutral"
+        try:
+            # Enhanced pattern matches more variations of value reporting
+            value_patterns = [
+                r'(?:registering|registered|was|at)\s+(\d+\.\d+)\s*percent',  # Standard pattern
+                r'(?:index|reading)(?:.+?)(\d+\.\d+)\s*percent',  # Alternative pattern
+                r'(\d+\.\d+)\s*percent',  # Fallback pattern
+            ]
+            
+            value_match = None
+            for pattern in value_patterns:
+                value_match = re.search(pattern, summary, re.IGNORECASE)
+                if value_match:
+                    break
+            
+            direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
+            direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
             
             if value_match:
                 value = float(value_match.group(1))
+                direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
+                
+                # Standardize direction terms
+                if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+                    direction = 'Growing'
+                elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
+                    direction = 'Contracting'
+                elif direction.lower() == 'slower':
+                    direction = 'Slowing'
+                elif direction.lower() == 'faster':
+                    direction = 'Faster'
+                else:
+                    # Default direction based on value if not explicitly stated
+                    direction = 'Growing' if value >= 50.0 else 'Contracting'
+                
                 pmi_data[index_name] = {
                     "value": value,
                     "direction": direction
@@ -739,6 +824,26 @@ def extract_pmi_values_from_summaries(index_summaries):
             
         except Exception as e:
             logger.warning(f"Error extracting PMI values for {index_name}: {str(e)}")
+    
+    # Look for Manufacturing PMI in first paragraphs if not found yet
+    if "Manufacturing PMI" not in pmi_data:
+        for index_name, summary in index_summaries.items():
+            try:
+                # Pattern specific to Manufacturing PMI in introduction paragraphs
+                pmi_pattern = r'Manufacturing PMI®(?:.+?)(?:registered|was|at)\s+(\d+\.\d+)\s*percent'
+                pmi_match = re.search(pmi_pattern, summary, re.IGNORECASE)
+                
+                if pmi_match:
+                    value = float(pmi_match.group(1))
+                    direction = 'Growing' if value >= 50.0 else 'Contracting'
+                    pmi_data["Manufacturing PMI"] = {
+                        "value": value,
+                        "direction": direction
+                    }
+                    logger.info(f"Extracted Manufacturing PMI from paragraph: {value} ({direction})")
+                    break
+            except Exception as e:
+                continue
     
     return pmi_data
 

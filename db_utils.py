@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import logging
 import datetime
@@ -610,15 +611,29 @@ def store_report_data_in_db(extracted_data, pdf_path):
                 else:
                     status = 'Growing' if category == 'Growing' else 'Contracting'
                 
-                # Insert each industry
                 for industry in industries:
-                    if not industry or not isinstance(industry, str):
+                    # Clean and validate the industry name
+                    cleaned_industry = clean_industry_name(industry)
+                    if not cleaned_industry:
                         continue
-                        
-                    # Clean industry name
-                    industry = industry.strip()
-                    if not industry:
-                        continue
+                    
+                    try:
+                        cursor.execute(
+                            """
+                            INSERT OR REPLACE INTO industry_status
+                            (report_date, index_name, industry_name, status, category)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (
+                                report_date.isoformat(),
+                                index_name,
+                                cleaned_industry,
+                                status,
+                                category
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(f"Error inserting industry_status data for {cleaned_industry}: {str(e)}")
                         
                     try:
                         cursor.execute(
@@ -651,3 +666,35 @@ def store_report_data_in_db(extracted_data, pdf_path):
     finally:
         if conn:
             conn.close()
+
+def clean_industry_name(industry):
+    """Clean industry name to remove common artifacts."""
+    if not industry or not isinstance(industry, str):
+        return None
+        
+    # Skip parsing artifacts
+    artifacts = [
+        "following order",
+        "are:",
+        "in order",
+        "listed in order",
+        "in the following order",
+    ]
+    
+    for artifact in artifacts:
+        if artifact in industry.lower():
+            return None
+    
+    # Skip if starts with punctuation
+    if re.match(r'^[,;:.]+', industry.strip()):
+        return None
+        
+    # Skip if too short
+    if len(industry.strip()) < 3:
+        return None
+    
+    # Clean up the name
+    cleaned = industry.strip()
+    cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize whitespace
+    
+    return cleaned
