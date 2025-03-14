@@ -5,6 +5,11 @@ import traceback
 from typing import Dict, Any, Optional, List, Union, Tuple
 import pandas as pd
 from google_auth import get_google_sheets_service
+import pdfplumber
+import openai
+from dotenv import load_dotenv
+import re
+import json
 from db_utils import (
     get_pmi_data_by_month, 
     get_index_time_series, 
@@ -36,7 +41,17 @@ class SimplePDFExtractionTool(BaseTool):
             index_summaries, and industry_data
         """
     )
-    
+
+    def __init__(self):
+        """Initialize the tool with necessary API keys."""
+        super().__init__()
+        # Load environment variables
+        load_dotenv()
+        # Get OpenAI API key from environment
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if openai_api_key:
+            openai.api_key = openai_api_key
+
     def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Implementation of the required abstract _run method.
@@ -56,6 +71,29 @@ class SimplePDFExtractionTool(BaseTool):
                 from pdf_utils import parse_ism_report
                 parsed_data = parse_ism_report(pdf_path)
                 if parsed_data:
+                    # Save the original month_year from parsed data
+                    month_year = parsed_data.get('month_year', 'Unknown')
+                    
+                    # Always try to extract manufacturing table data with LLM as primary method
+                    logger.info("Using LLM for primary extraction of Manufacturing at a Glance data")
+                    manufacturing_data = self._extract_manufacturing_data_with_llm(pdf_path, month_year)
+                    
+                    if manufacturing_data and manufacturing_data.get('indices'):
+                        # Replace/update the manufacturing_table data with LLM-extracted data
+                        logger.info("Successfully extracted manufacturing table data with LLM")
+                        parsed_data['manufacturing_table'] = manufacturing_data
+                        
+                        # Also save the indices data directly for ease of access
+                        parsed_data['pmi_data'] = manufacturing_data.get('indices', {})
+                    else:
+                        # If LLM extraction failed, log a warning but continue with the original data
+                        logger.warning("LLM extraction failed, using original parsed data")
+                        
+                        # If there's no manufacturing table data at all, initialize an empty structure
+                        if 'manufacturing_table' not in parsed_data or not parsed_data['manufacturing_table']:
+                            parsed_data['manufacturing_table'] = ''
+                            parsed_data['pmi_data'] = {}
+                    
                     return parsed_data
             
             # Check if this is just a direct pdf_path request
@@ -66,7 +104,31 @@ class SimplePDFExtractionTool(BaseTool):
                 from pdf_utils import parse_ism_report
                 parsed_data = parse_ism_report(pdf_path)
                 if parsed_data:
+                    # Save the original month_year from parsed data
+                    month_year = parsed_data.get('month_year', 'Unknown')
+                    
+                    # Always try to extract manufacturing table data with LLM as primary method
+                    logger.info("Using LLM for primary extraction of Manufacturing at a Glance data")
+                    manufacturing_data = self._extract_manufacturing_data_with_llm(pdf_path, month_year)
+                    
+                    if manufacturing_data and manufacturing_data.get('indices'):
+                        # Replace/update the manufacturing_table data with LLM-extracted data
+                        logger.info("Successfully extracted manufacturing table data with LLM")
+                        parsed_data['manufacturing_table'] = manufacturing_data
+                        
+                        # Also save the indices data directly for ease of access
+                        parsed_data['pmi_data'] = manufacturing_data.get('indices', {})
+                    else:
+                        # If LLM extraction failed, log a warning but continue with the original data
+                        logger.warning("LLM extraction failed, using original parsed data")
+                        
+                        # If there's no manufacturing table data at all, initialize an empty structure
+                        if 'manufacturing_table' not in parsed_data or not parsed_data['manufacturing_table']:
+                            parsed_data['manufacturing_table'] = ''
+                            parsed_data['pmi_data'] = {}
+                    
                     return parsed_data
+
                 # If parsing failed, continue with empty data structure
                 extracted_data = {
                     "month_year": "Unknown",
@@ -185,6 +247,176 @@ class SimplePDFExtractionTool(BaseTool):
                 }
             return structured_data
     
+    def _extract_manufacturing_data_with_llm(self, pdf_path, month_year):
+        """
+        Extract Manufacturing at a Glance data by sending PDF pages to OpenAI's API.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            month_year: Month and year of the report
+            
+        Returns:
+            Dictionary with extracted manufacturing table data
+        """
+        try:
+            # Log the operation
+            logger.info(f"Extracting Manufacturing at a Glance data from {pdf_path} with LLM")
+            
+            # Extract text from first four pages of PDF using pdfplumber
+            extracted_text = ""
+            with pdfplumber.open(pdf_path) as pdf:
+                # Get first four pages or less if PDF has fewer pages
+                max_pages = min(4, len(pdf.pages))
+                for i in range(max_pages):
+                    page_text = pdf.pages[i].extract_text()
+                    if page_text:
+                        extracted_text += page_text + "\n\n"
+
+            # If text is too long (over ~30K characters), try to extract just the relevant section
+            if len(extracted_text) > 30000:
+                # Try to find Manufacturing at a Glance table section - improved pattern
+                table_match = re.search(r"(?:MANUFACTURING AT A GLANCE|Manufacturing at a Glance).*?(?:(?=COMMODITIES)|(?=WHAT RESPONDENTS)|(?=About The)|$)", 
+                                    extracted_text, re.DOTALL | re.IGNORECASE)
+                if table_match:
+                    table_text = table_match.group(0)
+                    logger.info(f"Found Manufacturing at a Glance table section, reducing text from {len(extracted_text)} to {len(table_text)} characters")
+                    extracted_text = table_text
+                else:
+                    # If we can't find the specific section, just truncate
+                    logger.info(f"Text is too long ({len(extracted_text)} chars), truncating to 20000 chars")
+                    extracted_text = extracted_text[:20000]
+            
+            # Check if we extracted text successfully
+            if not extracted_text or len(extracted_text) < 100:
+                logger.warning(f"Failed to extract sufficient text from PDF: {pdf_path}")
+                return {"month_year": month_year, "indices": {}}
+                
+            # Log a sample of the extracted text
+            logger.info(f"Extracted {len(extracted_text)} characters from first {max_pages} pages")
+            logger.debug(f"Text sample: {extracted_text[:500]}...")
+            
+            # Create a prompt for OpenAI to extract the data
+            prompt = f"""
+            I need you to analyze this ISM Manufacturing Report PDF and extract data from the "Manufacturing at a Glance" table.
+            
+            Please extract and return these data points in JSON format:
+            - Month and Year of the report (should be {month_year})
+            - Manufacturing PMI value and status (Growing/Contracting)
+            - New Orders value and status
+            - Production value and status
+            - Employment value and status
+            - Supplier Deliveries value and status
+            - Inventories value and status
+            - Customers' Inventories value and status
+            - Prices value and status
+            - Backlog of Orders value and status
+            - New Export Orders value and status
+            - Imports value and status
+            - Overall Economy status
+            - Manufacturing Sector status
+            
+            Return ONLY the JSON object in this format:
+            {{
+                "month_year": "{month_year}",
+                "indices": {{
+                    "Manufacturing PMI": {{"current": "48.4", "direction": "Contracting"}},
+                    "New Orders": {{"current": "50.4", "direction": "Growing"}},
+                    ...and so on for all indices,
+                    "OVERALL ECONOMY": {{"direction": "Growing"}},
+                    "Manufacturing Sector": {{"direction": "Contracting"}}
+                }}
+            }}
+            
+            Here is the extracted text from the PDF:
+            ```
+            {extracted_text}
+            ```
+            """
+            
+            # Call OpenAI API
+            try:
+                # Use openai client
+                client = openai.OpenAI()
+                response = client.chat.completions.create(
+                    model="gpt-4",  # Using gpt-4 model
+                    messages=[
+                        {"role": "system", "content": "You are a data extraction specialist that returns only valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0  # Low temperature for deterministic output
+                )
+                
+                # Get the response text
+                response_text = response.choices[0].message.content
+                logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                
+                # Try to extract JSON from the response
+                json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group(1)
+                else:
+                    # Try to find JSON directly using regex
+                    json_pattern = r'{\s*"month_year":\s*"[^"]*",\s*"indices":\s*{.*?}\s*}'
+                    json_match = re.search(json_pattern, response_text, re.DOTALL)
+                    if json_match:
+                        json_text = json_match.group(0)
+                    else:
+                        # If no pattern matches, use the whole response
+                        json_text = response_text
+        
+                try:
+                    # Parse the JSON
+                    parsed_data = json.loads(response_text)
+                    logger.info(f"Successfully extracted data for {parsed_data.get('month_year', 'Unknown')}")
+                    
+                    # Validate structure
+                    if "indices" not in parsed_data:
+                        logger.warning("Expected 'indices' key not found in response")
+                        return {"month_year": month_year, "indices": {}}
+                        
+                    return parsed_data
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON from response: {str(e)}")
+                    
+                    # For better error logging, don't truncate the response
+                    # Log the error position instead of the content
+                    error_position = str(e).split('(char ')[1].split(')')[0] if '(char ' in str(e) else 'unknown'
+                    logger.error(f"JSON parse error at position {error_position} in a {len(response_text)} character response")
+                    
+                    # Try to fix common JSON issues
+                    try:
+                        # Try to find a complete JSON object in the response
+                        json_pattern = r'{\s*"month_year":[^}]*"indices":\s*{[^}]*}}'
+                        json_match = re.search(json_pattern, response_text, re.DOTALL)
+                        if json_match:
+                            fixed_json = json_match.group(0)
+                            logger.info(f"Attempting to parse extracted JSON pattern ({len(fixed_json)} chars)")
+                            return json.loads(fixed_json)
+                            
+                        # If that fails, try to reconstruct the JSON from what we know
+                        # Focus on the valid part of the JSON
+                        truncated_json = response_text[:int(error_position)]
+                        # Try to complete the truncated JSON
+                        if '"indices"' in truncated_json and not truncated_json.endswith('}'):
+                            completed_json = truncated_json + "}}}"
+                            logger.info("Attempting to parse completed JSON")
+                            return json.loads(completed_json)
+                    except Exception as inner_e:
+                        logger.error(f"Failed to fix JSON: {str(inner_e)}")
+                    
+                    # Return default structure if all parsing attempts fail
+                    return {"month_year": month_year, "indices": {}}
+                    
+            except Exception as e:
+                logger.error(f"Error calling OpenAI API: {str(e)}")
+                return {"month_year": month_year, "indices": {}}
+            
+        except Exception as e:
+            logger.error(f"Error in manufacturing data extraction with LLM: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"month_year": month_year, "indices": {}}
+
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")
     description: str = Field(
