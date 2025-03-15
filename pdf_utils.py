@@ -945,18 +945,15 @@ def extract_pmi_values_from_summaries(index_summaries):
     return pmi_data
 
 def parse_ism_report(pdf_path):
-    """Parse an ISM manufacturing report and extract key data."""
+    """Parse an ISM manufacturing report and extract key data using LLM."""
     try:
-        # Extract text from PDF
+        # Extract text from PDF only for basic metadata
         text = extract_text_from_pdf(pdf_path)
         if not text:
             logger.error(f"Failed to extract text from {pdf_path}")
             return None
         
-        # Log a sample of the text for debugging
-        logger.debug(f"Extracted text sample (first 1000 chars): {text[:1000]}")
-        
-        # Extract month and year
+        # Extract month and year as a fallback
         month_year = extract_month_year(text)
         if not month_year:
             logger.warning(f"Could not extract month and year from {pdf_path}")
@@ -982,52 +979,34 @@ def parse_ism_report(pdf_path):
         
         logger.info(f"Extracted month and year: {month_year}")
         
-        # Extract the Manufacturing at a Glance table
-        manufacturing_table = extract_manufacturing_at_a_glance(text)
-        if not manufacturing_table:
-            logger.warning(f"Could not extract manufacturing table from {pdf_path}")
+        # Use LLM for extraction
+        from tools import SimplePDFExtractionTool
+        extraction_tool = SimplePDFExtractionTool()
+
+        # Call LLM extraction
+        llm_result = extraction_tool._extract_manufacturing_data_with_llm(pdf_path, month_year)
         
-        # Extract index-specific summaries
-        index_summaries = extract_index_summaries(text)
-        if not index_summaries:
-            logger.warning(f"Could not extract index summaries from {pdf_path}")
-        
-        # Log which indices were found
-        logger.info(f"Extracted summaries for indices: {', '.join(index_summaries.keys())}")
-        
-        # Extract industry mentions for each index
-        industry_data = extract_industry_mentions(text, index_summaries)
-        
-        # Log extracted industry data for debugging
-        for index, categories in industry_data.items():
-            for category, industries in categories.items():
-                logger.debug(f"Extracted for {index} - {category}: {len(industries)} industries")
-                if not industries:
-                    logger.warning(f"No industries found for {index} - {category}")
-            
-        # Create the result dictionary
-        extracted_data = {
-            "month_year": month_year,
-            "manufacturing_table": manufacturing_table,
-            "index_summaries": index_summaries,
-            "industry_data": industry_data
+        # Create result with proper structure
+        result = {
+            "month_year": llm_result.get('month_year', month_year),
+            "manufacturing_table": llm_result,
+            "index_summaries": {},  # Keep empty for backward compatibility
+            "industry_data": llm_result.get('industry_data', {}),
+            "pmi_data": llm_result.get('indices', {})
         }
             
-        # Store the extracted data in the database
+        # Store data in database as-is
         from db_utils import store_report_data_in_db
         try:
-            store_result = store_report_data_in_db(extracted_data, pdf_path)
-            
+            store_result = store_report_data_in_db(result, pdf_path)
             if store_result:
                 logger.info(f"Successfully stored data from {pdf_path} in database")
             else:
                 logger.warning(f"Failed to store data from {pdf_path} in database")
         except Exception as e:
             logger.error(f"Error storing data in database: {str(e)}")
-            # Continue processing to return the data even if database storage fails
         
-        return extracted_data
-
+        return result
     except Exception as e:
         logger.error(f"Error parsing ISM report: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
