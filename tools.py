@@ -1646,10 +1646,15 @@ class GoogleSheetsFormatterTool(BaseTool):
                     except Exception as e:
                         logger.error(f"Error retrieving index data from database: {str(e)}")
             
-            # Add each index value
+            # Add each index value - FIXED: Ensure all values are strings to avoid Google Sheets API errors
             for index in standard_indices:
                 index_data = indices.get(index, {})
+                
+                # CRITICAL FIX: Ensure value is always a string
                 value = index_data.get('current', index_data.get('value', 'N/A'))
+                if value != 'N/A' and not isinstance(value, str):
+                    value = str(value)
+                    
                 direction = index_data.get('direction', 'N/A')
                 
                 if value and direction and value != 'N/A' and direction != 'N/A':
@@ -1665,17 +1670,25 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # Default directions based on Manufacturing PMI if available
             default_economy = "Growing"  # Default assumption for economy
-            default_mfg = "Growing" if indices.get("Manufacturing PMI", {}).get("current", 0) >= 50 else "Contracting"
+            
+            # FIX: Handle potential conversion error by checking type
+            pmi_value = indices.get("Manufacturing PMI", {}).get("current", 0)
+            if isinstance(pmi_value, str) and pmi_value.replace('.', '', 1).isdigit():
+                pmi_value = float(pmi_value)
+            default_mfg = "Growing" if pmi_value >= 50 else "Contracting"
             
             row.append(overall_economy.get('direction', default_economy))
             row.append(manufacturing_sector.get('direction', default_mfg))
+            
+            # Log the final row being sent to Google Sheets for debugging
+            logger.info(f"Prepared row for Google Sheets: {row}")
             
             return row
         except Exception as e:
             logger.error(f"Error preparing horizontal row: {str(e)}")
             # Return a default row with N/A values
             return [formatted_month_year] + ["N/A"] * 13
-    
+     
     def _prepare_manufacturing_table_formatting(self, tab_id, row_count, col_count):
         """Prepare formatting requests for the manufacturing table."""
         requests = [
@@ -1828,39 +1841,37 @@ class GoogleSheetsFormatterTool(BaseTool):
                 logger.warning(f"No formatted data for {index_name}")
                 return None, []
             
-            # Combine all entries sorted by category
-            all_entries = []
+            # CRITICAL FIX: Column-based approach with month/year as header
+            header_row = [formatted_month_year]
+            data_rows = []
             
             # Get primary and secondary categories
             primary_category = self._get_primary_category(index_name)
             secondary_category = self._get_secondary_category(index_name)
             
-            # Process categories in specified order
+            # Process categories in specified order to maintain report order
             for category in [primary_category, secondary_category]:
                 if category in formatted_data:
                     for industry in formatted_data[category]:
                         if self._is_valid_industry(industry):
-                            all_entries.append(industry) # (industry, category))
+                            # CRITICAL FIX: Format as "Industry - Status" 
+                            data_rows.append([f"{industry} - {category}"])
             
             # Process any other categories
             for category, industries in formatted_data.items():
                 if category not in [primary_category, secondary_category]:
                     for industry in industries:
                         if self._is_valid_industry(industry):
-                            all_entries.append(industry)
-            
-            # Build header and data
-            header_row = [formatted_month_year] # ["Industry", formatted_month_year]
-            data_rows = [[industry] for industry in all_entries] #[[industry, category] for industry, category in all_entries]
+                            data_rows.append([f"{industry} - {category}"])
             
             # Prepare formatting
-            formatting = self._prepare_industry_tab_formatting(tab_id, len(data_rows) + 1, 2, index_name)
+            formatting = self._prepare_industry_tab_formatting(tab_id, len(data_rows) + 1, 1, index_name)
             
-            return header_row + data_rows, formatting #  removed the list here. 
+            return header_row + data_rows, formatting
         except Exception as e:
             logger.error(f"Error preparing index tab data for {index_name}: {str(e)}")
             return None, []
-        
+    
     def _format_index_data(self, index, data):
         """Format data for a specific index."""
         try:
@@ -2672,10 +2683,28 @@ class GoogleSheetsFormatterTool(BaseTool):
 
             for tab_name, tab_info in all_tab_data.items():
                 if 'data' in tab_info and tab_info['data']:
-                    value_batch_requests.append({
-                        'range': f"'{tab_name}'!A1",
-                        'values': tab_info['data']
-                    })
+                    # For Index tabs, we want to append as a new column
+                    if tab_name in ISM_INDICES:
+                        # Get current data to find next available column
+                        current_data = service.spreadsheets().values().get(
+                            spreadsheetId=sheet_id,
+                            range=f"'{tab_name}'!1:1"  # Get the header row
+                        ).execute().get('values', [[]])
+                        
+                        # Get the next column letter
+                        next_col = self._get_column_letter(len(current_data[0]))
+                        
+                        # The data should be appended as a new column
+                        value_batch_requests.append({
+                            'range': f"'{tab_name}'!{next_col}1",
+                            'values': [[cell] for cell in tab_info['data']]  # Each row becomes a single cell
+                        })
+                    else:
+                        # For non-Index tabs, continue with the normal approach
+                        value_batch_requests.append({
+                            'range': f"'{tab_name}'!A1",
+                            'values': tab_info['data']
+                        })
 
             # Execute all value updates in one batchUpdate
             if value_batch_requests:

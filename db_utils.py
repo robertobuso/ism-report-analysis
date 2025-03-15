@@ -1026,13 +1026,32 @@ def store_report_data_in_db(extracted_data, pdf_path):
         # Process pmi_indices data
         indices_data = {}
         
-        # CRITICAL FIX: First check manufacturing_table.indices which contains Manufacturing PMI
+        # CRITICAL FIX: First check for Manufacturing PMI specifically before processing other indices
+        # Check manufacturing_table.indices which contains Manufacturing PMI
         if 'manufacturing_table' in extracted_data and isinstance(extracted_data['manufacturing_table'], dict):
             mfg_table = extracted_data['manufacturing_table']
             if 'indices' in mfg_table and isinstance(mfg_table['indices'], dict):
-                logger.info(f"Processing {len(mfg_table['indices'])} indices from manufacturing table")
-                logger.info(f"Raw manufacturing_table indices: {mfg_table['indices']}")
-                for index_name, data in mfg_table['indices'].items():
+                indices = mfg_table['indices']
+                logger.info(f"Processing {len(indices)} indices from manufacturing table")
+                
+                # Explicitly look for Manufacturing PMI first
+                if 'Manufacturing PMI' in indices:
+                    pmi_data = indices['Manufacturing PMI']
+                    value = pmi_data.get('current', pmi_data.get('value'))
+                    direction = pmi_data.get('direction')
+                    
+                    if value and direction:
+                        indices_data['Manufacturing PMI'] = {
+                            'value': float(value),
+                            'direction': direction
+                        }
+                        logger.info(f"Added Manufacturing PMI: {value} ({direction}) from manufacturing table")
+                
+                # Now process the rest of the indices
+                for index_name, data in indices.items():
+                    if index_name == 'Manufacturing PMI':  # Skip as we already processed it
+                        continue
+                        
                     try:
                         # Get value from either current or value field
                         value = data.get("current", data.get("value"))
@@ -1046,56 +1065,86 @@ def store_report_data_in_db(extracted_data, pdf_path):
                             logger.info(f"Added index {index_name}: {value} ({direction}) from manufacturing table")
                     except Exception as e:
                         logger.error(f"Error processing index {index_name} from manufacturing table: {str(e)}")
+                        
+        # Check direct pmi_data if Manufacturing PMI is still not found
+        if 'Manufacturing PMI' not in indices_data and 'pmi_data' in extracted_data and extracted_data['pmi_data']:
+            pmi_data = extracted_data['pmi_data']
+            if 'Manufacturing PMI' in pmi_data:
+                data = pmi_data['Manufacturing PMI']
+                try:
+                    value = data.get('current', data.get('value'))
+                    direction = data.get('direction')
+                    
+                    if value and direction:
+                        indices_data['Manufacturing PMI'] = {
+                            'value': float(value),
+                            'direction': direction
+                        }
+                        logger.info(f"Added Manufacturing PMI from pmi_data: {value} ({direction})")
+                except Exception as e:
+                    logger.error(f"Error processing Manufacturing PMI from pmi_data: {str(e)}")
         
-        # Then try to extract from index_summaries as a fallback
-        if 'index_summaries' in extracted_data:
+        # Then try to extract from structured index_summaries if available
+        if 'Manufacturing PMI' not in indices_data and 'index_summaries' in extracted_data:
             index_summaries = extracted_data.get('index_summaries', {})
-            for index_name, summary in index_summaries.items():
-                # Only process if not already extracted from manufacturing table
-                if index_name not in indices_data:
+            if 'Manufacturing PMI' in index_summaries:
+                summary = index_summaries['Manufacturing PMI']
+                # Try to extract numeric value and direction from the summary
+                try:
+                    # Pattern for values like "PMI® registered 50.9 percent in January"
+                    import re
+                    value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
+                    value_match = re.search(value_pattern, summary, re.IGNORECASE)
+                    
+                    direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
+                    direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
+                    
+                    if value_match:
+                        value = float(value_match.group(1))
+                        direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
+                        
+                        # Standardize direction terms
+                        if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+                            direction = 'Growing'
+                        elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
+                            direction = 'Contracting'
+                        elif direction.lower() == 'slower':
+                            direction = 'Slowing'
+                        elif direction.lower() == 'faster':
+                            direction = 'Faster'
+                        
+                        indices_data['Manufacturing PMI'] = {
+                            'value': value,
+                            'direction': direction
+                        }
+                        logger.info(f"Added Manufacturing PMI from summary: {value} ({direction})")
+                except Exception as e:
+                    logger.warning(f"Error extracting Manufacturing PMI from summary: {str(e)}")
+        
+        # FINAL FALLBACK: Extract from the text content if we still don't have Manufacturing PMI
+        if 'Manufacturing PMI' not in indices_data:
+            # Try to extract directly from text in index_summaries if available
+            for index_name, summary in extracted_data.get('index_summaries', {}).items():
+                if 'Manufacturing PMI' not in indices_data and 'pmi' in index_name.lower():
                     try:
-                        # Pattern for values like "PMI® registered 50.9 percent in January"
+                        # Look for Manufacturing PMI value in text
                         import re
-                        value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
-                        value_match = re.search(value_pattern, summary, re.IGNORECASE)
+                        pmi_pattern = r'Manufacturing PMI®\s+registered\s+(\d+\.\d+)\s+percent'
+                        pmi_match = re.search(pmi_pattern, summary, re.IGNORECASE)
                         
-                        direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
-                        direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
-                        
-                        if value_match:
-                            value = float(value_match.group(1))
-                            direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
+                        if pmi_match:
+                            value = float(pmi_match.group(1))
+                            # Determine direction based on value
+                            direction = 'Growing' if value >= 50.0 else 'Contracting'
                             
-                            # Standardize direction terms
-                            if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
-                                direction = 'Growing'
-                            elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
-                                direction = 'Contracting'
-                            elif direction.lower() == 'slower':
-                                direction = 'Slowing'
-                            elif direction.lower() == 'faster':
-                                direction = 'Faster'
-                            
-                            indices_data[index_name] = {
+                            indices_data['Manufacturing PMI'] = {
                                 'value': value,
                                 'direction': direction
                             }
+                            logger.info(f"Added Manufacturing PMI from text extraction: {value} ({direction})")
+                            break
                     except Exception as e:
-                        logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
-        
-        # Also check for direct pmi_data
-        if 'pmi_data' in extracted_data and extracted_data['pmi_data']:
-            for index_name, data in extracted_data['pmi_data'].items():
-                # Only add if not already in indices_data
-                if index_name not in indices_data:
-                    try:
-                        indices_data[index_name] = {
-                            'value': float(data.get('current', data.get('value'))),
-                            'direction': data.get('direction')
-                        }
-                        logger.info(f"Added index {index_name} from pmi_data")
-                    except Exception as e:
-                        logger.error(f"Error processing index {index_name} from pmi_data: {str(e)}")
+                        logger.warning(f"Error extracting Manufacturing PMI from text: {str(e)}")
         
         logger.info(f"Final indices_data before insertion: {indices_data}")
 
@@ -1163,6 +1212,14 @@ def store_report_data_in_db(extracted_data, pdf_path):
                     except Exception as e:
                         logger.error(f"Error inserting industry_status data for {cleaned_industry}: {str(e)}")
                         
+        # Log Manufacturing PMI status after processing is complete
+        if 'Manufacturing PMI' in indices_data:
+            pmi_value = indices_data['Manufacturing PMI'].get('value')
+            pmi_direction = indices_data['Manufacturing PMI'].get('direction')
+            logger.info(f"FINAL: Manufacturing PMI saved to database: {pmi_value} ({pmi_direction})")
+        else:
+            logger.warning(f"FINAL: Manufacturing PMI not found or saved to database for {month_year}")
+            
         conn.commit()
         logger.info(f"Successfully stored data for report {month_year} in database")
         return True
