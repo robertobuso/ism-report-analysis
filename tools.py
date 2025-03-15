@@ -264,14 +264,27 @@ class SimplePDFExtractionTool(BaseTool):
             
             # Extract text from first four pages of PDF using pdfplumber
             extracted_text = ""
-            with pdfplumber.open(pdf_path) as pdf:
-                # Get first four pages or less if PDF has fewer pages
-                max_pages = min(4, len(pdf.pages))
-                for i in range(max_pages):
-                    page_text = pdf.pages[i].extract_text()
-                    if page_text:
-                        extracted_text += page_text + "\n\n"
-                        logger.debug(f"First 300 chars of extracted text: {extracted_text[:300]}")
+            try:
+                with pdfplumber.open(pdf_path) as pdf:
+                    # Get first four pages or less if PDF has fewer pages
+                    max_pages = min(4, len(pdf.pages))
+                    for i in range(max_pages):
+                        page_text = pdf.pages[i].extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n\n"
+            except Exception as e:
+                logger.warning(f"Error extracting text with pdfplumber: {str(e)}")
+                # Fallback to PyPDF2
+                try:
+                    from PyPDF2 import PdfReader
+                    reader = PdfReader(pdf_path)
+                    max_pages = min(4, len(reader.pages))
+                    for i in range(max_pages):
+                        page_text = reader.pages[i].extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n\n"
+                except Exception as e2:
+                    logger.error(f"Both PDF extraction methods failed: {str(e2)}")
 
             # If text is too long (over ~30K characters), try to extract just the relevant section
             if len(extracted_text) > 30000:
@@ -337,143 +350,185 @@ class SimplePDFExtractionTool(BaseTool):
             ```
             """
             
-            # Call OpenAI API
-            try:
-                # Use openai client
-                client = openai.OpenAI()
-                response = client.chat.completions.create(
-                    model="gpt-4",  # Using gpt-4 model
-                    messages=[
-                        {"role": "system", "content": "You are a data extraction specialist that returns only valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0  # Low temperature for deterministic output
-                )
-                
-                # Get the response text
-                response_text = response.choices[0].message.content
-                logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
-                # Log the last 50 characters to see where it's breaking
-                logger.debug(f"End of response: {response_text[-50:]}")
-                
-                # Try to extract JSON from the response
-                json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
-                if json_match:
-                    json_text = json_match.group(1)
-                else:
-                    # Try to find JSON directly using regex
-                    json_pattern = r'{\s*"month_year":\s*"[^"]*",\s*"indices":\s*{.*?}\s*}'
-                    json_match = re.search(json_pattern, response_text, re.DOTALL)
-                    if json_match:
-                        json_text = json_match.group(0)
-                    else:
-                        # If no pattern matches, use the whole response
-                        json_text = response_text
-
-                try:
-                    # Parse the JSON - use json_text instead of response_text
-                    parsed_data = json.loads(json_text)
-                    logger.info(f"Successfully extracted data for {parsed_data.get('month_year', 'Unknown')}")
-                    
-                    # Validate structure
-                    if "indices" not in parsed_data:
-                        logger.warning("Expected 'indices' key not found in response")
-                        return {"month_year": month_year, "indices": {}}
-                        
-                    return parsed_data
-                    
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse JSON from response: {str(e)}")
-
-                    # Try a manual approach to extract the data
-                    result = {"month_year": month_year, "indices": {}}
-                    
-                    # Try to extract month/year
-                    month_year_match = re.search(r'"month_year":\s*"([^"]+)"', json_text)
-                    if month_year_match:
-                        result["month_year"] = month_year_match.group(1)
-                    
-                    # Try to extract individual indices
-                    # Use a more flexible pattern that handles different JSON structures
-                    index_pattern = r'"([^"]+)":\s*{\s*"(?:current|value)":\s*"([^"]+)",\s*"direction":\s*"([^"]+)"(?:,.*?)?\s*}'
-                    for match in re.finditer(index_pattern, json_text):
-                        index_name, value, direction = match.groups()
-                        result["indices"][index_name] = {"current": value, "direction": direction}
-
-                    # Try to extract individual indices
-                    index_pattern = r'"([^"]+)":\s*{\s*"current":\s*"([^"]+)",\s*"direction":\s*"([^"]+)"\s*}'
-                    for match in re.finditer(index_pattern, json_text):
-                        index_name, value, direction = match.groups()
-                        result["indices"][index_name] = {"current": value, "direction": direction}
-
-                    # Add this part here ↓
-                    # If regex extraction didn't find all expected indices, try direct extraction
-                    expected_indices = [
-                        "Manufacturing PMI", "New Orders", "Production", "Employment", 
-                        "Supplier Deliveries", "Inventories", "Customers' Inventories", 
-                        "Prices", "Backlog of Orders", "New Export Orders", "Imports"
-                    ]
-                    # If we have fewer than expected indices, try direct extraction
-                    if len(result["indices"]) < len(expected_indices):
-                        logger.info("Missing some indices, trying direct extraction from text")
-                        
-                        # Look for each index directly in the text
-                        for index_name in expected_indices:
-                            if index_name not in result["indices"]:
-                                # General pattern to find index with value and direction
-                                direct_pattern = fr"{re.escape(index_name)}\s+(\d+\.\d+)[^\n]*?(Growing|Contracting|Slowing|Faster|Too High|Too Low|Increasing|Decreasing)"
-                                direct_match = re.search(direct_pattern, extracted_text, re.IGNORECASE | re.DOTALL)
-                                
-                                if direct_match:
-                                    value = direct_match.group(1)
-                                    direction = direct_match.group(2)
-                                    logger.info(f"Found {index_name} directly in text: {value} ({direction})")
-                                    result["indices"][index_name] = {"current": value, "direction": direction}
-                    
-                    # If we found any indices, return the result
-                    if result["indices"]:
-                        logger.info(f"Partially extracted {len(result['indices'])} indices using regex")
-                        logger.info(f"Found {len(result['indices'])} indices: {', '.join(result['indices'].keys())}")
-                        return result
-                    
-                    # For better error logging, don't truncate the response
-                    # Log the error position instead of the content
-                    error_position = str(e).split('(char ')[1].split(')')[0] if '(char ' in str(e) else 'unknown'
-                    logger.error(f"JSON parse error at position {error_position} in a {len(response_text)} character response")
-                    
-                    # Try to fix common JSON issues
-                    try:
-                        # Try to find a complete JSON object in the response
-                        json_pattern = r'{\s*"month_year":[^}]*"indices":\s*{[^}]*}}'
-                        json_match = re.search(json_pattern, response_text, re.DOTALL)
-                        if json_match:
-                            fixed_json = json_match.group(0)
-                            logger.info(f"Attempting to parse extracted JSON pattern ({len(fixed_json)} chars)")
-                            return json.loads(fixed_json)
-                            
-                        # If that fails, try to reconstruct the JSON from what we know
-                        # Focus on the valid part of the JSON
-                        truncated_json = response_text[:int(error_position)]
-                        # Try to complete the truncated JSON
-                        if '"indices"' in truncated_json and not truncated_json.endswith('}'):
-                            completed_json = truncated_json + "}}}"
-                            logger.info("Attempting to parse completed JSON")
-                            return json.loads(completed_json)
-                    except Exception as inner_e:
-                        logger.error(f"Failed to fix JSON: {str(inner_e)}")
-                    
-                    # Return default structure if all parsing attempts fail
-                    return {"month_year": month_year, "indices": {}}
-                    
-            except Exception as e:
-                logger.error(f"Error calling OpenAI API: {str(e)}")
-                return {"month_year": month_year, "indices": {}}
+            # Call OpenAI API with robust error handling and retries
+            max_retries = 3
+            retry_delay = 2  # seconds
             
-        except Exception as e:
-            logger.error(f"Error in manufacturing data extraction with LLM: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return {"month_year": month_year, "indices": {}}
+            for retry_count in range(max_retries):
+                try:
+                    # Use openai client
+                    client = openai.OpenAI()
+                    response = client.chat.completions.create(
+                        model="gpt-4o",  # Using gpt-4o
+                        messages=[
+                            {"role": "system", "content": "You are a data extraction specialist that returns only valid JSON."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.0  # Low temperature for deterministic output
+                    )
+                    
+                    # Get the response text
+                    response_text = response.choices[0].message.content
+                    logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                    # Log the last 50 characters to see where it's breaking
+                    logger.debug(f"End of response: {response_text[-50:]}")
+                    
+                    # Try to parse the JSON
+                    try:
+                        # Clean up the response to extract just the JSON part
+                        json_text = response_text
+                        
+                        # If it has markdown code blocks, extract just the JSON
+                        if "```json" in response_text:
+                            json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group(1)
+                        elif "```" in response_text:
+                            # Try to extract from any code block
+                            json_match = re.search(r'```\n?(.*?)\n?```', response_text, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group(1)
+                        
+                        # Try to parse as JSON
+                        json_data = json.loads(json_text)
+                        
+                        # Validate the required fields exist
+                        if "month_year" not in json_data or "indices" not in json_data:
+                            logger.warning("JSON is missing required fields")
+                            if retry_count == max_retries - 1:
+                                # Create minimal valid structure for returning
+                                return {"month_year": month_year, "indices": {}}
+                            continue
+                        
+                        # Success! Return the parsed JSON
+                        return json_data
+                        
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON on retry {retry_count}: {str(e)}")
+                        
+                        # Try a manual approach to extract the data
+                        result = {"month_year": month_year, "indices": {}}
+                        
+                        # Try to extract month/year
+                        month_year_match = re.search(r'"month_year":\s*"([^"]+)"', json_text)
+                        if month_year_match:
+                            result["month_year"] = month_year_match.group(1)
+                        
+                        # Try to extract individual indices using different patterns
+                        # Pattern for indices with current and direction
+                        index_pattern = r'"([^"]+)":\s*{\s*"(?:current|value)":\s*"([^"]+)",\s*"direction":\s*"([^"]+)"(?:,.*?)?\s*}'
+                        for match in re.finditer(index_pattern, json_text):
+                            index_name, value, direction = match.groups()
+                            result["indices"][index_name] = {"current": value, "direction": direction}
 
+                        # Standard pattern
+                        index_pattern = r'"([^"]+)":\s*{\s*"current":\s*"([^"]+)",\s*"direction":\s*"([^"]+)"\s*}'
+                        for match in re.finditer(index_pattern, json_text):
+                            index_name, value, direction = match.groups()
+                            result["indices"][index_name] = {"current": value, "direction": direction}
+
+                        # Try direct extraction for missing indices
+                        expected_indices = [
+                            "Manufacturing PMI", "New Orders", "Production", "Employment", 
+                            "Supplier Deliveries", "Inventories", "Customers' Inventories", 
+                            "Prices", "Backlog of Orders", "New Export Orders", "Imports"
+                        ]
+                        
+                        # If we have fewer than expected indices, try direct extraction
+                        if len(result["indices"]) < len(expected_indices):
+                            logger.info("Missing some indices, trying direct extraction from text")
+                            
+                            # Look for each index directly in the text
+                            for index_name in expected_indices:
+                                if index_name not in result["indices"]:
+                                    # General pattern to find index with value and direction
+                                    direct_pattern = fr"{re.escape(index_name)}\s+(\d+\.\d+)[^\n]*?(Growing|Contracting|Slowing|Faster|Too High|Too Low|Increasing|Decreasing)"
+                                    direct_match = re.search(direct_pattern, extracted_text, re.IGNORECASE | re.DOTALL)
+                                    
+                                    if direct_match:
+                                        value = direct_match.group(1)
+                                        direction = direct_match.group(2)
+                                        logger.info(f"Found {index_name} directly in text: {value} ({direction})")
+                                        result["indices"][index_name] = {"current": value, "direction": direction}
+                        
+                        # If we found any indices, return the result
+                        if result["indices"]:
+                            logger.info(f"Extracted {len(result['indices'])} indices using regex/direct extraction")
+                            logger.info(f"Found indices: {', '.join(result['indices'].keys())}")
+                            return result
+                        
+                        # For better error logging, get the error position
+                        error_position = str(e).split('(char ')[1].split(')')[0] if '(char ' in str(e) else 'unknown'
+                        logger.error(f"JSON parse error at position {error_position} in a {len(response_text)} character response")
+                        
+                        # Try to fix common JSON issues only on last retry
+                        if retry_count == max_retries - 1:
+                            try:
+                                # Try to find a complete JSON object in the response
+                                json_pattern = r'{\s*"month_year":[^}]*"indices":\s*{[^}]*}}'
+                                json_match = re.search(json_pattern, response_text, re.DOTALL)
+                                if json_match:
+                                    fixed_json = json_match.group(0)
+                                    logger.info(f"Attempting to parse extracted JSON pattern ({len(fixed_json)} chars)")
+                                    return json.loads(fixed_json)
+                                    
+                                # Try to complete the truncated JSON
+                                truncated_json = response_text[:int(error_position)]
+                                if '"indices"' in truncated_json and not truncated_json.endswith('}'):
+                                    completed_json = truncated_json + "}}}"
+                                    logger.info("Attempting to parse completed JSON")
+                                    return json.loads(completed_json)
+                                
+                                # Try to extract using regex pattern matching
+                                json_pattern = r'{\s*"month_year"\s*:\s*"[^"]*"\s*,\s*"indices"\s*:\s*{.+?}\s*}'
+                                json_match = re.search(json_pattern, response_text, re.DOTALL)
+                                
+                                if json_match:
+                                    json_text = json_match.group(0)
+                                    json_data = json.loads(json_text)
+                                    return json_data
+                                    
+                                # Create a minimal response with any extractable data
+                                indices = {}
+                                
+                                # Try to extract Manufacturing PMI
+                                pmi_pattern = r'"Manufacturing PMI"\s*:\s*{\s*"current"\s*:\s*"([^"]*)"\s*,\s*"direction"\s*:\s*"([^"]*)"\s*}'
+                                pmi_match = re.search(pmi_pattern, response_text)
+                                
+                                if pmi_match:
+                                    indices["Manufacturing PMI"] = {
+                                        "current": pmi_match.group(1),
+                                        "direction": pmi_match.group(2)
+                                    }
+                                
+                                return {"month_year": month_year, "indices": indices}
+                            except Exception as e2:
+                                logger.error(f"Failed to extract JSON with backup method: {str(e2)}")
+                        
+                        # Not the last retry, continue to next attempt
+                        if retry_count < max_retries - 1:
+                            import time
+                            time.sleep(retry_delay * (retry_count + 1))  # Exponential backoff
+                
+                except Exception as e:
+                    logger.warning(f"API request failed on retry {retry_count}: {str(e)}")
+                    
+                    # If it's not the last retry, wait and try again
+                    if retry_count < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay * (retry_count + 1))  # Exponential backoff
+                    else:
+                        logger.error(f"All API retries failed: {str(e)}")
+            
+            # If we get here, all retries failed
+            logger.error("All extraction attempts failed")
+            return {"month_year": month_year, "indices": {}}
+        
+        except Exception as e:
+            logger.error(f"Error in _extract_manufacturing_data_with_llm: {str(e)}")
+            logger.error(traceback.format_exc())
+            return {"month_year": month_year, "indices": {}}
+    
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")
     description: str = Field(

@@ -178,36 +178,93 @@ def extract_industry_mentions(text, indices):
         cleaned = re.sub(r'[\t\r\n\f\v]+', ' ', cleaned)
         
         return cleaned.strip()
-
-    # Then apply this to each summary:
+    
+    # Process each index's summary
     for index, summary in indices.items():
         try:
             # Clean up the summary text before processing
             summary = preprocess_summary(summary)
-
-            # Initialize all pattern matches as None at the beginning
-            growth_match = None
-            decline_match = None
-            slower_match = None
-            faster_match = None
-            higher_match = None
-            lower_match = None
-            too_high_match = None
-            too_low_match = None
-            increasing_match = None
-            decreasing_match = None
-
-            # Initialize categories based on index type
-            if index == "Supplier Deliveries":
-                industry_data[index] = {"Slower": [], "Faster": []}
-            elif index == "Inventories":
-                industry_data[index] = {"Higher": [], "Lower": []}
-            elif index == "Customers' Inventories":
-                industry_data[index] = {"Too High": [], "Too Low": []}
-            elif index == "Prices":
-                industry_data[index] = {"Increasing": [], "Decreasing": []}
-            else:
-                industry_data[index] = {"Growing": [], "Declining": []}
+            
+            # Look for more flexible patterns to extract industry lists
+            growth_pattern = None
+            decline_pattern = None
+            
+            # Broader patterns to catch industry lists
+            if "Growing" in industry_data.get(index, {}) or index not in industry_data:
+                # Extract industries reporting growth
+                growth_patterns = [
+                    r"(?:industries|manufacturing industries).{0,30}(?:growth|expansion|growing|increase).{0,50}(?:are|:)([^\.;]+)",
+                    r"reporting growth.{0,30}(?:are|:)([^\.;]+)",
+                    r"industries reporting.{0,30}growth.{0,30}(?:are|:)([^\.;]+)"
+                ]
+                
+                for pattern in growth_patterns:
+                    growth_match = re.search(pattern, summary, re.IGNORECASE)
+                    if growth_match:
+                        growth_text = growth_match.group(1).strip()
+                        growing = preserve_order_industry_list(growth_text)
+                        if growing:
+                            if index not in industry_data:
+                                industry_data[index] = {}
+                            industry_data[index]["Growing"] = growing
+                            break
+            
+            if "Declining" in industry_data.get(index, {}) or index not in industry_data:
+                # Extract industries reporting decline
+                decline_patterns = [
+                    r"(?:industries|manufacturing industries).{0,30}(?:decline|contraction|declining|decrease).{0,50}(?:are|:)([^\.;]+)",
+                    r"reporting (?:a |)decline.{0,30}(?:are|:)([^\.;]+)",
+                    r"industries reporting.{0,30}(?:decrease|contraction).{0,30}(?:are|:)([^\.;]+)"
+                ]
+                
+                for pattern in decline_patterns:
+                    decline_match = re.search(pattern, summary, re.IGNORECASE)
+                    if decline_match:
+                        decline_text = decline_match.group(1).strip()
+                        declining = preserve_order_industry_list(decline_text)
+                        if declining:
+                            if index not in industry_data:
+                                industry_data[index] = {}
+                            industry_data[index]["Declining"] = declining
+                            break
+            
+            # Initialize industry_data[index] if not already done
+            if index not in industry_data:
+                if index == "Supplier Deliveries":
+                    industry_data[index] = {"Slower": [], "Faster": []}
+                elif index == "Inventories":
+                    industry_data[index] = {"Higher": [], "Lower": []}
+                elif index == "Customers' Inventories":
+                    industry_data[index] = {"Too High": [], "Too Low": []}
+                elif index == "Prices":
+                    industry_data[index] = {"Increasing": [], "Decreasing": []}
+                else:
+                    industry_data[index] = {"Growing": [], "Declining": []}
+            
+            # Try sentence-level extraction if industry lists are still empty
+            if not any(categories.values() for categories in industry_data.values()):
+                # Try to extract from individual sentences
+                sentences = re.split(r'(?<=[.!?])\s+', summary)
+                
+                for sentence in sentences:
+                    if "growth" in sentence.lower() or "growing" in sentence.lower() or "increased" in sentence.lower():
+                        industries = extract_industries_from_sentence(sentence)
+                        if industries and "Growing" in industry_data.get(index, {}):
+                            industry_data[index]["Growing"].extend(industries)
+                    
+                    if "decline" in sentence.lower() or "contracting" in sentence.lower() or "decreased" in sentence.lower():
+                        industries = extract_industries_from_sentence(sentence)
+                        if industries and "Declining" in industry_data.get(index, {}):
+                            industry_data[index]["Declining"].extend(industries)
+            
+            # Log warning if no industries found
+            for category, industries in industry_data.get(index, {}).items():
+                if not industries:
+                    logger.warning(f"No industries found for {index} - {category}")
+                    
+        except Exception as e:
+            logger.error(f"Error extracting industry mentions for {index}: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
             # Process based on index type
             if index == "Supplier Deliveries":
@@ -691,6 +748,21 @@ def preserve_order_industry_list(text):
     # Replace special control characters
     cleaned_text = re.sub(r'[\n\r\t]+', ' ', cleaned_text)
 
+    # Add more patterns to catch industry lists
+    additional_patterns = [
+        r'(?:industries|manufacturing industries).{0,20}(?:are|:)([^\.;]+)',
+        r'industries reporting.{0,30}(?::|are)([^\.;]+)',
+        r'(?:in|by) order:?([^\.;]+)'
+    ]
+    
+    # Try more patterns to extract the list if the text doesn't look like a clean list
+    if not (',' in cleaned_text or ';' in cleaned_text):
+        for pattern in additional_patterns:
+            match = re.search(pattern, cleaned_text, re.IGNORECASE)
+            if match:
+                cleaned_text = match.group(1).strip()
+                break
+
     # Remove common artifacts
     artifacts = [
         r'in (?:January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+\d{4})?(?:\s*[-—]\s*)?',
@@ -715,44 +787,70 @@ def preserve_order_industry_list(text):
     # Primary split: Use semicolons as the main delimiter
     # This is safer than using commas since semicolons are more likely to separate distinct industries
     items = []
-    if ';' in cleaned_text:
-        # Split by semicolons, which are the primary delimiter between industries
-        raw_items = [part.strip() for part in cleaned_text.split(';')]
-    else:
-        # If no semicolons, comma splitting is a fallback but riskier
-        raw_items = [part.strip() for part in cleaned_text.split(',')]
-    
+    # Try semicolons first, then commas if no semicolons
+    delimiter = ';' if ';' in cleaned_text else ','
+    raw_items = [part.strip() for part in cleaned_text.split(delimiter)]
+
     # Post processing (Cleaning up the raw items)
     cleaned_items = []
     for raw_item in raw_items:
         # Skip empty items
         if not raw_item:
             continue
-    
+
         # Clean up each item
         raw_item = re.sub(r'\s*\(\d+\)\s*$', '', raw_item)  # Remove footnote numbers
         raw_item = re.sub(r'\s*\*+\s*$', '', raw_item)      # Remove trailing asterisks
         raw_item = re.sub(r'^\s*-\s*', '', raw_item)        # Remove leading dashes
         raw_item = re.sub(r"^(?:the|those|that|are)\s+", "", raw_item, flags=re.IGNORECASE)
-        raw_item = re.sub(r'\s+products$', '', raw_item, flags=re.IGNORECASE)
-    
+        raw_item = raw_item.strip()
+
         # Clean each word and remove leading zeros
         raw_item = ' '.join([word.lstrip('0') for word in raw_item.split()])
         raw_item = re.sub(r"andprimary", "and primary", raw_item, flags=re.IGNORECASE)
-    
-        # Append cleaned item (if longer than 1 character - also remove duplicates)
-        if len(raw_item) > 1:
-             cleaned_items.append(raw_item)
 
-    # remove duplicates while preserving order:
+        # Append cleaned item if longer than 1 character
+        if len(raw_item) > 1:
+            cleaned_items.append(raw_item)
+
+    # Remove duplicates while preserving order
     deduped = []
     seen = set()
     for item in cleaned_items:
         if item not in seen:
-             deduped.append(item)
-             seen.add(item)
+            deduped.append(item)
+            seen.add(item)
 
     return deduped
+
+def extract_industries_from_sentence(sentence):
+    """Extract industries from a single sentence."""
+    # Look for industry name patterns
+    industry_patterns = [
+        r"(?:industries|sectors)(?:[^:]*):([^\.;]+)",
+        r"including ([^\.;]+)",
+        r": ([^\.;]+)"
+    ]
+    
+    for pattern in industry_patterns:
+        match = re.search(pattern, sentence, re.IGNORECASE)
+        if match:
+            text = match.group(1).strip()
+            return preserve_order_industry_list(text)
+    
+    # Last resort - look for comma-separated lists
+    if ',' in sentence:
+        words = sentence.split(',')
+        potential_industries = []
+        for word_group in words:
+            # Industry names usually have multiple words and capital letters
+            if re.search(r'[A-Z][a-z]+\s+[A-Z][a-z]+', word_group):
+                potential_industries.append(word_group.strip())
+        
+        if potential_industries:
+            return potential_industries
+            
+    return []
 
 def extract_pmi_values_from_summaries(index_summaries):
     """Extract PMI numeric values and directions from the index summaries."""
