@@ -2016,8 +2016,8 @@ class GoogleSheetsFormatterTool(BaseTool):
                         dt = datetime.now()
                         dt = dt.replace(day=1)  # Set to first day of month
                 
-                # Format the date as MM/01/YYYY
-                formatted_date = dt.strftime('%Y-%m-%d')
+                # Format the date as MM/DD/YYYY format to match existing format
+                formatted_date = dt.strftime('%m/%d/%Y')
                 
                 # Clean and extract numeric values
                 row_data = [formatted_date]
@@ -2969,10 +2969,32 @@ class GoogleSheetsFormatterTool(BaseTool):
             date_col_idx = 0
             
             # Create a dictionary to map dates to existing rows
+            # Parse dates to a standardized format for comparison
+            from datetime import datetime
+            import re
+            
             existing_date_map = {}
             for i, row in enumerate(existing_data):
                 if row and len(row) > date_col_idx:
-                    existing_date_map[row[date_col_idx]] = i
+                    date_str = row[date_col_idx]
+                    
+                    # Try to parse various date formats
+                    try:
+                        # Try MM/DD/YYYY format
+                        if re.match(r'\d{1,2}/\d{1,2}/\d{4}', date_str):
+                            dt = datetime.strptime(date_str, '%m/%d/%Y')
+                        # Try YYYY-MM-DD format
+                        elif re.match(r'\d{4}-\d{1,2}-\d{1,2}', date_str):
+                            dt = datetime.strptime(date_str, '%Y-%m-%d')
+                        else:
+                            # Skip if can't parse
+                            continue
+                            
+                        # Use a standardized key format for comparison
+                        key = dt.strftime('%Y-%m-%d')
+                        existing_date_map[key] = i
+                    except ValueError:
+                        continue
             
             # Process each new data row
             updates = []
@@ -2984,29 +3006,47 @@ class GoogleSheetsFormatterTool(BaseTool):
                     
                 date_value = row[date_col_idx]
                 
-                # Check if this date already exists
-                if date_value in existing_date_map:
-                    # Update existing row
-                    row_idx = existing_date_map[date_value] + 1  # +1 for header
+                # Standardize the date for comparison
+                try:
+                    # Parse the date value
+                    if re.match(r'\d{1,2}/\d{1,2}/\d{4}', date_value):
+                        dt = datetime.strptime(date_value, '%m/%d/%Y')
+                    elif re.match(r'\d{4}-\d{1,2}-\d{1,2}', date_value):
+                        dt = datetime.strptime(date_value, '%Y-%m-%d')
+                    else:
+                        # Skip if can't parse
+                        continue
+                        
+                    # Get standardized key
+                    key = dt.strftime('%Y-%m-%d')
                     
-                    # Create update for this row
-                    updates.append({
-                        "range": f"'{tab_name}'!A{row_idx + 1}:{chr(65 + len(row) - 1)}{row_idx + 1}",
-                        "values": [row]
-                    })
-                    
-                    logger.info(f"Updating existing row for date {date_value}")
-                else:
-                    # This is a new date - add to new rows
+                    # Check if this date already exists
+                    if key in existing_date_map:
+                        # Update existing row
+                        row_idx = existing_date_map[key]
+                        
+                        # Create update for this row - keeping original row_idx + 1 math
+                        updates.append({
+                            "range": f"'{tab_name}'!A{row_idx + 1 + 1}:{chr(65 + len(row) - 1)}{row_idx + 1 + 1}",
+                            "values": [row]
+                        })
+                        
+                        logger.info(f"Updating existing row for date {date_value}")
+                    else:
+                        # This is a new date - add to new rows
+                        new_rows.append(row)
+                        logger.info(f"Adding new row for date {date_value}")
+                except ValueError:
+                    # If date parsing fails, just add as new row
                     new_rows.append(row)
-                    logger.info(f"Adding new row for date {date_value}")
+                    logger.info(f"Adding new row for unparseable date {date_value}")
             
             # Execute batch update for existing rows
             if updates:
                 service.spreadsheets().values().batchUpdate(
                     spreadsheetId=sheet_id,
                     body={
-                        "valueInputOption": "RAW",
+                        "valueInputOption": "USER_ENTERED",  # Changed from RAW to match original
                         "data": updates
                     }
                 ).execute()
@@ -3066,9 +3106,9 @@ class GoogleSheetsFormatterTool(BaseTool):
             
         except Exception as e:
             logger.error(f"Error updating heatmap summary tab: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-
+    
     def _process_monthly_heatmap_summary(self, visualization_options, service, sheet_id, sheet_ids):
         """Process and update the monthly heatmap summary visualization."""
         if not visualization_options.get('heatmap', True):
