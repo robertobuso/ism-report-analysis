@@ -877,7 +877,6 @@ def count_industries(industry_data):
     return count
 
 def merge_industry_data(primary_data, secondary_data):
-    """Merge two industry_data dictionaries, prioritizing the primary_data."""
     merged = {}
     
     # Start with all indices from both datasets
@@ -888,11 +887,15 @@ def merge_industry_data(primary_data, secondary_data):
         
         # Get categories from primary data
         primary_categories = primary_data.get(index, {})
+        if not isinstance(primary_categories, dict):
+            primary_categories = {}
         
         # Get categories from secondary data
         secondary_categories = secondary_data.get(index, {})
+        if not isinstance(secondary_categories, dict):
+            secondary_categories = {}
         
-        # Merge categories (all unique categories from both datasets)
+        # Merge categories
         all_categories = set(primary_categories.keys()) | set(secondary_categories.keys())
         
         for category in all_categories:

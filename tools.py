@@ -951,68 +951,8 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # Process monthly heatmap summary if enabled
             if visualization_options.get('heatmap', True):
-                try:
-                    logger.info("Processing monthly heatmap summary visualization")
-                    
-                    # Get data from the database
-                    monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
-                    
-                    if not monthly_data:
-                        logger.warning("No monthly data found in database for heatmap summary")
-                    else:
-                        # Get all unique index names
-                        all_indices = set()
-                        for data in monthly_data:
-                            all_indices.update(data['indices'].keys())
-                        
-                        # Order indices with Manufacturing PMI first, then alphabetically
-                        ordered_indices = ['Manufacturing PMI']
-                        ordered_indices.extend(sorted([idx for idx in all_indices if idx != 'Manufacturing PMI']))
-                        
-                        # Prepare header row
-                        header_row = ["Month/Year"]
-                        header_row.extend(ordered_indices)
-                        
-                        # Prepare data rows
-                        data_rows = []
-                        for data in monthly_data:
-                            row = [data['month_year']]
-                            
-                            for index_name in ordered_indices:
-                                index_data = data['indices'].get(index_name, {})
-                                value = index_data.get('value', '')
-                                direction = index_data.get('direction', '')
-                                
-                                if value and direction:
-                                    cell_value = f"{value} ({direction})"
-                                else:
-                                    cell_value = "N/A"
-                                    
-                                row.append(cell_value)
-                            
-                            data_rows.append(row)
-                        
-                        # All rows for the sheet
-                        all_rows = [header_row] + data_rows
-                        
-                        # Get the sheet ID for the tab
-                        tab_name = 'PMI Heatmap Summary'
-                        tab_id = sheet_ids.get(tab_name)
-                        
-                        if not tab_id:
-                            logger.warning(f"{tab_name} tab not found")
-                        else:
-                            # Prepare formatting requests
-                            formatting = self._prepare_heatmap_summary_data(tab_id, len(all_rows), len(header_row))
-                            
-                            # Add to batch update
-                            all_tab_data[tab_name] = {
-                                'data': all_rows,
-                                'formatting': formatting
-                            }
-                except Exception as e:
-                    logger.error(f"Error updating heatmap summary: {str(e)}")
-            
+                self._process_monthly_heatmap_summary(visualization_options, service, sheet_id, sheet_ids)
+
             # Process time series analysis if enabled
             if visualization_options.get('timeseries', True):
                 try:
@@ -1992,6 +1932,139 @@ class GoogleSheetsFormatterTool(BaseTool):
         }
         return index_category_map.get(index, "Declining")
 
+    def _prepare_clean_heatmap_data(self, monthly_data):
+        """
+        Prepare data for heatmap with proper date formatting, sorting, and data cleaning.
+        
+        Args:
+            monthly_data: List of dictionaries containing report dates and indices
+            
+        Returns:
+            tuple: (header_row, data_rows) with clean numeric values and properly formatted dates
+        """
+        try:
+            # Get all unique index names
+            all_indices = set()
+            for data in monthly_data:
+                all_indices.update(data['indices'].keys())
+            
+            # Order indices with Manufacturing PMI first, then alphabetically
+            ordered_indices = ['Manufacturing PMI']
+            ordered_indices.extend(sorted([idx for idx in all_indices if idx != 'Manufacturing PMI']))
+            
+            # Map to the expected column names
+            column_mapping = {
+                'Manufacturing PMI': 'PMI',
+                'New Orders': 'New Orders',
+                'Production': 'Production',
+                'Employment': 'Employment',
+                'Supplier Deliveries': 'Deliveries',
+                'Inventories': 'Inventories',
+                "Customers' Inventories": 'Customer Inv',
+                'Prices': 'Prices',
+                'Backlog of Orders': 'Ord Backlog',
+                'New Export Orders': 'Exports',
+                'Imports': 'Imports'
+            }
+            
+            # Prepare header row with mapped column names
+            header_row = ["Month"]
+            header_row.extend([column_mapping.get(idx, idx) for idx in ordered_indices])
+            
+            # Convert month_year to datetime objects for sorting
+            from datetime import datetime
+            import re
+            
+            processed_data = []
+            for data in monthly_data:
+                month_year = data['month_year']
+                
+                # Parse the date
+                try:
+                    # First, try to directly parse the date if it's in a standard format
+                    dt = datetime.strptime(month_year, '%B %Y')
+                except ValueError:
+                    try:
+                        # Try to handle formats like "Sep - 24"
+                        match = re.match(r'(\w+)[- ](\d+)', month_year)
+                        if match:
+                            month_abbr, year_str = match.groups()
+                            
+                            # Convert month abbreviation to number
+                            month_map = {
+                                'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                                'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+                            }
+                            
+                            month_num = month_map.get(month_abbr, 1)
+                            
+                            # Convert 2-digit year to 4-digit year
+                            year = int(year_str)
+                            if year < 100:
+                                if year < 50:  # Arbitrary cutoff for century
+                                    year += 2000
+                                else:
+                                    year += 1900
+                                    
+                            dt = datetime(year, month_num, 1)
+                        else:
+                            # Default to current date if parsing fails
+                            dt = datetime.now()
+                            dt = dt.replace(day=1)  # Set to first day of month
+                    except Exception as e:
+                        logger.error(f"Date parsing error: {str(e)}")
+                        dt = datetime.now()
+                        dt = dt.replace(day=1)  # Set to first day of month
+                
+                # Format the date as MM/01/YYYY
+                formatted_date = dt.strftime('%m/01/%Y')
+                
+                # Clean and extract numeric values
+                row_data = [formatted_date]
+                
+                for index_name in ordered_indices:
+                    index_data = data['indices'].get(index_name, {})
+                    value = index_data.get('value', '')
+                    
+                    # If value is not available, try 'current' field
+                    if not value and 'current' in index_data:
+                        value = index_data['current']
+                    
+                    # Clean the value to get just the numeric part
+                    if isinstance(value, str):
+                        # Extract numeric part (e.g., "50.9 (Growing)" -> 50.9)
+                        import re
+                        numeric_match = re.search(r'(\d+\.?\d*)', value)
+                        if numeric_match:
+                            value = numeric_match.group(1)
+                        else:
+                            value = ""
+                    
+                    # Convert to float if possible
+                    try:
+                        if value:
+                            value = float(value)
+                        else:
+                            value = ""
+                    except (ValueError, TypeError):
+                        value = ""
+                    
+                    row_data.append(value)
+                
+                processed_data.append((dt, row_data))
+            
+            # Sort by date (ascending)
+            processed_data.sort(key=lambda x: x[0])
+            
+            # Extract just the row data
+            data_rows = [row for _, row in processed_data]
+            
+            return header_row, data_rows
+        
+        except Exception as e:
+            logger.error(f"Error preparing heatmap data: {str(e)}")
+            return ["Month"], []
+
     def _prepare_industry_tab_formatting(self, tab_id, row_count, col_count, index_name):
         """Prepare formatting requests for an index tab."""
         requests = [
@@ -2142,6 +2215,27 @@ class GoogleSheetsFormatterTool(BaseTool):
                     "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
                 }
             },
+            # Format date column as date (MM/dd/yyyy)
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 1,  # Skip header row
+                        "endRowIndex": row_count,
+                        "startColumnIndex": 0,  # First column (Month)
+                        "endColumnIndex": 1
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "numberFormat": {
+                                "type": "DATE",
+                                "pattern": "MM/dd/yyyy"
+                            }
+                        }
+                    },
+                    "fields": "userEnteredFormat.numberFormat"
+                }
+            },
             # Add borders
             {
                 "updateBorders": {
@@ -2186,79 +2280,56 @@ class GoogleSheetsFormatterTool(BaseTool):
             }
         ]
         
-        # Add conditional formatting for status colors
-        color_formats = [
-            # Growing = green text
-            {
+        # Add conditional formatting with gradient for all numeric cells
+        # Exclude the first column (dates)
+        for i in range(1, col_count):
+            # Add conditional formatting with gradient (red -> yellow -> green)
+            requests.append({
                 "addConditionalFormatRule": {
                     "rule": {
                         "ranges": [
                             {
                                 "sheetId": tab_id,
-                                "startRowIndex": 1,
+                                "startRowIndex": 1,  # Skip header
                                 "endRowIndex": row_count,
-                                "startColumnIndex": 1,
-                                "endColumnIndex": col_count
+                                "startColumnIndex": i,
+                                "endColumnIndex": i + 1
                             }
                         ],
-                        "booleanRule": {
-                            "condition": {
-                                "type": "TEXT_CONTAINS",
-                                "values": [{"userEnteredValue": "(Growing)"}]
+                        "gradientRule": {
+                            "minpoint": {
+                                "color": {
+                                    "red": 0.95,
+                                    "green": 0.2,
+                                    "blue": 0.2
+                                },
+                                "type": "MIN"
                             },
-                            "format": {
-                                "textFormat": {
-                                    "foregroundColor": {
-                                        "red": 0.0,
-                                        "green": 0.6,
-                                        "blue": 0.0
-                                    }
-                                }
+                            "midpoint": {
+                                "color": {
+                                    "red": 1.0,
+                                    "green": 1.0,
+                                    "blue": 0.0
+                                },
+                                "type": "PERCENTILE",
+                                "value": "50"
+                            },
+                            "maxpoint": {
+                                "color": {
+                                    "red": 0.2,
+                                    "green": 0.85,
+                                    "blue": 0.2
+                                },
+                                "type": "MAX"
                             }
                         }
                     },
-                    "index": 0
+                    "index": i - 1  # Unique index for each rule
                 }
-            },
-            # Contracting = red text
-            {
-                "addConditionalFormatRule": {
-                    "rule": {
-                        "ranges": [
-                            {
-                                "sheetId": tab_id,
-                                "startRowIndex": 1,
-                                "endRowIndex": row_count,
-                                "startColumnIndex": 1,
-                                "endColumnIndex": col_count
-                            }
-                        ],
-                        "booleanRule": {
-                            "condition": {
-                                "type": "TEXT_CONTAINS",
-                                "values": [{"userEnteredValue": "(Contracting)"}]
-                            },
-                            "format": {
-                                "textFormat": {
-                                    "foregroundColor": {
-                                        "red": 0.8,
-                                        "green": 0.0,
-                                        "blue": 0.0
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "index": 1
-                }
-            }
-        ]
-        
-        # Combine all formatting
-        requests.extend(color_formats)
+            })
         
         return requests
-    
+
     def _prepare_time_series_formatting(self, tab_id, row_count, col_count):
         """Prepare formatting requests for time series tab."""
         requests = [
@@ -2850,6 +2921,203 @@ class GoogleSheetsFormatterTool(BaseTool):
                 else:
                     # Not a rate limit error, re-raise
                     raise
+
+    def _update_heatmap_summary_tab(self, service, sheet_id, tab_id, header_row, data_rows):
+        """
+        Update the heatmap summary tab with new or updated data.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            tab_id: Sheet ID for the tab
+            header_row: List of column headers
+            data_rows: List of data rows with clean numeric values
+            
+        Returns:
+            Boolean indicating success
+        """
+        try:
+            tab_name = 'PMI Heatmap Summary'
+            
+            # Read existing data
+            result = service.spreadsheets().values().get(
+                spreadsheetId=sheet_id,
+                range=f"'{tab_name}'!A:Z"
+            ).execute()
+            
+            existing_values = result.get('values', [])
+            
+            # If no existing data, simply update with new data
+            if not existing_values:
+                # Write header and data rows
+                all_rows = [header_row] + data_rows
+                service.spreadsheets().values().update(
+                    spreadsheetId=sheet_id,
+                    range=f"'{tab_name}'!A1",
+                    valueInputOption="RAW",
+                    body={"values": all_rows}
+                ).execute()
+                
+                logger.info(f"Created new heatmap summary with {len(data_rows)} rows")
+                return True
+            
+            # Extract existing header and data
+            existing_header = existing_values[0] if existing_values else []
+            existing_data = existing_values[1:] if len(existing_values) > 1 else []
+            
+            # Get index of date column (should be the first column)
+            date_col_idx = 0
+            
+            # Create a dictionary to map dates to existing rows
+            existing_date_map = {}
+            for i, row in enumerate(existing_data):
+                if row and len(row) > date_col_idx:
+                    existing_date_map[row[date_col_idx]] = i
+            
+            # Process each new data row
+            updates = []
+            new_rows = []
+            
+            for row in data_rows:
+                if not row or len(row) <= date_col_idx:
+                    continue
+                    
+                date_value = row[date_col_idx]
+                
+                # Check if this date already exists
+                if date_value in existing_date_map:
+                    # Update existing row
+                    row_idx = existing_date_map[date_value] + 1  # +1 for header
+                    
+                    # Create update for this row
+                    updates.append({
+                        "range": f"'{tab_name}'!A{row_idx + 1}:{chr(65 + len(row) - 1)}{row_idx + 1}",
+                        "values": [row]
+                    })
+                    
+                    logger.info(f"Updating existing row for date {date_value}")
+                else:
+                    # This is a new date - add to new rows
+                    new_rows.append(row)
+                    logger.info(f"Adding new row for date {date_value}")
+            
+            # Execute batch update for existing rows
+            if updates:
+                service.spreadsheets().values().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={
+                        "valueInputOption": "RAW",
+                        "data": updates
+                    }
+                ).execute()
+            
+            # Append new rows if any
+            if new_rows:
+                # Calculate the next available row
+                next_row_idx = len(existing_values) + 1
+                
+                # Append the new rows
+                service.spreadsheets().values().append(
+                    spreadsheetId=sheet_id,
+                    range=f"'{tab_name}'!A{next_row_idx}",
+                    valueInputOption="RAW",
+                    insertDataOption="INSERT_ROWS",
+                    body={"values": new_rows}
+                ).execute()
+            
+            # Re-sort the sheet if needed (excluding header)
+            if updates or new_rows:
+                # Get latest data to sort
+                result = service.spreadsheets().values().get(
+                    spreadsheetId=sheet_id,
+                    range=f"'{tab_name}'!A:Z"
+                ).execute()
+                
+                latest_values = result.get('values', [])
+                
+                if len(latest_values) > 1:
+                    # Sort request
+                    sort_request = {
+                        "sortRange": {
+                            "range": {
+                                "sheetId": tab_id,
+                                "startRowIndex": 1,  # Skip header
+                                "endRowIndex": len(latest_values),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": len(latest_values[0])
+                            },
+                            "sortSpecs": [
+                                {
+                                    "dimensionIndex": 0,  # Sort by first column (dates)
+                                    "sortOrder": "ASCENDING"
+                                }
+                            ]
+                        }
+                    }
+                    
+                    service.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={"requests": [sort_request]}
+                    ).execute()
+                    
+                    logger.info("Re-sorted heatmap summary data by date")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating heatmap summary tab: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
+    def _process_monthly_heatmap_summary(self, visualization_options, service, sheet_id, sheet_ids):
+        """Process and update the monthly heatmap summary visualization."""
+        if not visualization_options.get('heatmap', True):
+            return
+            
+        try:
+            logger.info("Processing monthly heatmap summary visualization")
+            
+            # Get data from the database
+            monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
+            
+            if not monthly_data:
+                logger.warning("No monthly data found in database for heatmap summary")
+                return
+                
+            # Prepare and clean the data
+            header_row, data_rows = self._prepare_clean_heatmap_data(monthly_data)
+            
+            # Get the sheet ID for the tab
+            tab_name = 'PMI Heatmap Summary'
+            tab_id = sheet_ids.get(tab_name)
+            
+            if not tab_id:
+                logger.warning(f"{tab_name} tab not found")
+                return
+                
+            # Update the tab with the data
+            result = self._update_heatmap_summary_tab(service, sheet_id, tab_id, header_row, data_rows)
+            
+            if result:
+                # Apply formatting
+                formatting_requests = self._prepare_heatmap_summary_data(
+                    tab_id, 
+                    len(data_rows) + 1,  # +1 for header
+                    len(header_row)
+                )
+                
+                # Execute formatting requests
+                if formatting_requests:
+                    service.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={"requests": formatting_requests}
+                    ).execute()
+                    
+                logger.info("Successfully updated and formatted heatmap summary")
+            
+        except Exception as e:
+            logger.error(f"Error updating heatmap summary: {str(e)}")
+            logger.error(traceback.format_exc())
 
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")
