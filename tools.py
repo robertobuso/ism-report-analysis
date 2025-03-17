@@ -866,7 +866,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 service.spreadsheets().values().update(
                                     spreadsheetId=sheet_id,
                                     range=f"'{tab_name}'!A1",
-                                    valueInputOption="RAW",
+                                    valueInputOption="USER_ENTERED",
                                     body={"values": [headers]}
                                 ).execute()
                                 next_row_index = 2  # Headers are now in row 1
@@ -875,7 +875,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                             service.spreadsheets().values().update(
                                 spreadsheetId=sheet_id,
                                 range=f"'{tab_name}'!A{next_row_index}",
-                                valueInputOption="RAW",
+                                valueInputOption="USER_ENTERED",
                                 body={"values": [row_data]}
                             ).execute()
                             
@@ -897,7 +897,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                             service.spreadsheets().values().update(
                                 spreadsheetId=sheet_id,
                                 range=f"'{tab_name}'!A{existing_row_index}",
-                                valueInputOption="RAW",
+                                valueInputOption="USER_ENTERED",
                                 body={"values": [row_data]}
                             ).execute()
                             
@@ -2017,7 +2017,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                         dt = dt.replace(day=1)  # Set to first day of month
                 
                 # Format the date as MM/01/YYYY
-                formatted_date = dt.strftime('%m/01/%Y')
+                formatted_date = dt.strftime('%Y-%m-%d')
                 
                 # Clean and extract numeric values
                 row_data = [formatted_date]
@@ -2954,7 +2954,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 service.spreadsheets().values().update(
                     spreadsheetId=sheet_id,
                     range=f"'{tab_name}'!A1",
-                    valueInputOption="RAW",
+                    valueInputOption="USER_ENTERED",
                     body={"values": all_rows}
                 ).execute()
                 
@@ -3020,7 +3020,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 service.spreadsheets().values().append(
                     spreadsheetId=sheet_id,
                     range=f"'{tab_name}'!A{next_row_idx}",
-                    valueInputOption="RAW",
+                    valueInputOption="USER_ENTERED",
                     insertDataOption="INSERT_ROWS",
                     body={"values": new_rows}
                 ).execute()
