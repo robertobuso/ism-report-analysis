@@ -859,6 +859,10 @@ def extract_pmi_values_from_summaries(index_summaries):
     # First, try to extract Manufacturing PMI directly
     if "Manufacturing PMI" in index_summaries:
         summary = index_summaries["Manufacturing PMI"]
+        if not isinstance(summary, str):
+            # Convert to string if not already
+            summary = str(summary) if summary is not None else ""
+            
         # Pattern for values like "PMI® registered 50.3 percent"
         value_pattern = r'(?:PMI®|Manufacturing PMI®)(?:.+?)(?:registering|registered|was|at)\s+(\d+\.\d+)\s*percent'
         value_match = re.search(value_pattern, summary, re.IGNORECASE)
@@ -880,6 +884,10 @@ def extract_pmi_values_from_summaries(index_summaries):
             continue
             
         try:
+            # Convert to string if not already
+            if not isinstance(summary, str):
+                summary = str(summary) if summary is not None else ""
+            
             # Enhanced pattern matches more variations of value reporting
             value_patterns = [
                 r'(?:registering|registered|was|at)\s+(\d+\.\d+)\s*percent',  # Standard pattern

@@ -459,6 +459,21 @@ def process_single_pdf(pdf_path, visualization_options=None):
                     for category, industries in categories.items():
                         industry_count += len(industries)
 
+                logger.info(f"Direct PDF parsing found {industry_count} industries")
+                
+                # If direct parsing found a significant number of industries, use them
+                if industry_count > 0:
+                    # Either merge with existing extraction_data or use as primary source
+                    if not 'industry_data' in extraction_data or not extraction_data['industry_data']:
+                        logger.info(f"Using industry data from direct parsing")
+                        extraction_data['industry_data'] = direct_data['industry_data']
+                    else:
+                        # Compare and use the better source
+                        extraction_industries = count_industries(extraction_data.get('industry_data', {}))
+                        if industry_count > extraction_industries:
+                            logger.info(f"Direct parsing found more industries ({industry_count}) than extraction ({extraction_industries})")
+                            extraction_data['industry_data'] = direct_data['industry_data']
+
             logger.info(f"Direct PDF parsing found {industry_count} industries")
 
         except Exception as e:

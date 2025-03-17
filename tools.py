@@ -21,6 +21,7 @@ from db_utils import (
 from config import ISM_INDICES, INDEX_CATEGORIES
 from crewai.tools import BaseTool
 from pydantic import Field
+from googleapiclient.errors import HttpError
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
@@ -482,33 +483,46 @@ class SimpleDataStructurerTool(BaseTool):
                 # Clean up the categories but preserve order
                 cleaned_categories = {}
                 
-                # Process each category
-                for category_name, industries in categories.items():
-                    cleaned_industries = []
-                    
-                    # Clean up each industry name in the list
-                    for industry in industries:
-                        if not industry or not isinstance(industry, str):
-                            continue
-                            
-                        # Skip parsing artifacts and invalid entries
-                        if ("following order" in industry.lower() or 
-                            "are:" in industry.lower() or 
-                            industry.startswith(',') or 
-                            industry.startswith(':') or 
-                            len(industry.strip()) < 3):
-                            continue
-                            
-                        # Clean up the industry name
-                        industry = industry.strip()
+            # Process each category
+            for category_name, industries in categories.items():
+                cleaned_industries = []
+                
+                # Clean up each industry name in the list
+                for industry in industries:
+                    if not industry or not isinstance(industry, str):
+                        continue
                         
-                        # Add to cleaned list if not already there
-                        if industry not in cleaned_industries:
-                            cleaned_industries.append(industry)
+                    # Skip parsing artifacts and invalid entries
+                    if ("following order" in industry.lower() or 
+                        "are:" in industry.lower() or 
+                        industry.startswith(',') or 
+                        industry.startswith(':') or 
+                        len(industry.strip()) < 3):
+                        continue
+                        
+                    # Clean up the industry name
+                    industry = industry.strip()
                     
+                    # Add to cleaned list if not already there
+                    if industry not in cleaned_industries:
+                        cleaned_industries.append(industry)
+                
+                # DEFINE category_count BEFORE USING IT - ADD THIS LINE
+                category_count = len(cleaned_industries)  
+                
+                if category_count < 0 or category_count > len(cleaned_industries):
+                    logger.warning(f"Invalid category_count {category_count} for {category_name}, using available count {len(cleaned_industries)}")
+                    category_count = len(cleaned_industries)
+
                     # Only add categories that actually have industries
                     if cleaned_industries:
-                        cleaned_categories[category_name] = cleaned_industries
+                        actual_count = min(category_count, len(cleaned_industries))
+                        cleaned_categories[category_name] = cleaned_industries[:actual_count]
+
+                    if not cleaned_industries:
+                        logger.warning(f"No cleaned industries for {category_name}, using empty list")
+                        cleaned_categories[category_name] = []
+                        continue  
                 
                 # If no data for this index, create empty categories
                 if not cleaned_categories and index in INDEX_CATEGORIES:
@@ -828,11 +842,69 @@ class GoogleSheetsFormatterTool(BaseTool):
                         # Build row data
                         row_data = self._prepare_horizontal_row(parsed_data, formatted_month_year)
                         
-                        # Prepare the manufacturing table data
-                        all_tab_data[tab_name] = {
-                            'data': [headers, row_data],
-                            'formatting': self._prepare_manufacturing_table_formatting(mfg_sheet_id, 2, len(headers))
-                        }
+                        # Check if this month/year already exists in the sheet
+                        # Read existing data
+                        range_to_read = f"'{tab_name}'!A:A"
+                        existing_values = service.spreadsheets().values().get(
+                            spreadsheetId=sheet_id, range=range_to_read
+                        ).execute().get('values', [])
+                        
+                        # Find if current month/year exists
+                        existing_row_index = None
+                        for i, row in enumerate(existing_values):
+                            if row and row[0] == formatted_month_year:
+                                existing_row_index = i + 1  # +1 because sheets are 1-indexed
+                                break
+                        
+                        # If this is a new month/year, append to the sheet
+                        if existing_row_index is None:
+                            # Determine the next row
+                            next_row_index = len(existing_values) + 1
+                            
+                            # If this is the first row, add the headers first
+                            if next_row_index == 1:
+                                service.spreadsheets().values().update(
+                                    spreadsheetId=sheet_id,
+                                    range=f"'{tab_name}'!A1",
+                                    valueInputOption="RAW",
+                                    body={"values": [headers]}
+                                ).execute()
+                                next_row_index = 2  # Headers are now in row 1
+                            
+                            # Add new data row
+                            service.spreadsheets().values().update(
+                                spreadsheetId=sheet_id,
+                                range=f"'{tab_name}'!A{next_row_index}",
+                                valueInputOption="RAW",
+                                body={"values": [row_data]}
+                            ).execute()
+                            
+                            logger.info(f"Appended new row for {formatted_month_year} to {tab_name}")
+                            
+                            # Prepare formatting for the new row
+                            formatting = self._prepare_manufacturing_table_formatting(
+                                mfg_sheet_id, 
+                                next_row_index + 1,  # +1 because we need to include the row we just added
+                                len(headers)
+                            )
+                            
+                            # Add to batch update
+                            all_tab_data[tab_name] = {
+                                'formatting': formatting
+                            }
+                        else:
+                            # Update existing row
+                            service.spreadsheets().values().update(
+                                spreadsheetId=sheet_id,
+                                range=f"'{tab_name}'!A{existing_row_index}",
+                                valueInputOption="RAW",
+                                body={"values": [row_data]}
+                            ).execute()
+                            
+                            logger.info(f"Updated existing row for {formatted_month_year} in {tab_name}")
+                            
+                            # We don't need to add anything to all_tab_data since we've directly updated the values
+                        
                 except Exception as e:
                     logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
             
@@ -1283,10 +1355,23 @@ class GoogleSheetsFormatterTool(BaseTool):
                     
                     # If we got here, we have a valid sheet ID and all tabs exist
                     return sheet_id
+                except HttpError as e:
+                    if e.resp.status == 404:
+                        logger.warning("Sheet not found, creating new sheet")
+                        # Reset sheet_id to force creation of a new sheet
+                        sheet_id = None
+                        # You may want to update sheet_id.txt with empty content or remove it
+                        with open("sheet_id.txt", "w") as f:
+                            f.write("")  # Clear the file
+                    else:
+                        # For other HTTP errors, log and propagate
+                        logger.error(f"HTTP error accessing sheet: {str(e)}")
+                        raise
                 except Exception as e:
-                    logger.warning(f"Error accessing saved sheet: {str(e)}")
+                    # Handle other types of exceptions
+                    logger.error(f"Error accessing saved sheet: {str(e)}")
                     sheet_id = None
-            
+      
             # Create a new sheet if needed
             if not sheet_id:
                 logger.info("Creating new Google Sheet")
@@ -1784,8 +1869,8 @@ class GoogleSheetsFormatterTool(BaseTool):
                 if category in formatted_data:
                     for industry in formatted_data[category]:
                         if self._is_valid_industry(industry):
-                            # CRITICAL FIX: Format as just the industry name, not "Industry - Status"
-                            data_rows.append([industry])
+                            # Add the category to each industry entry
+                            data_rows.append([f"{industry} - {category}"])
             
             # Process any other categories
             for category, industries in formatted_data.items():
