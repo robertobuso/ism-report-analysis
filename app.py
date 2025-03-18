@@ -96,8 +96,6 @@ def upload_view():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # This should be your original upload_file function
-    # Make sure to keep its full implementation intact
     # Check if Google auth is set up
     if not os.path.exists('token.pickle'):
         flash('Please set up Google Authentication first')
@@ -122,6 +120,10 @@ def upload_file():
         'timeseries': 'timeseries' in visualization_types,
         'industry': 'industry' in visualization_types
     }
+
+    # Log what we're storing
+    logger.info(f"Storing visualization options in session: {visualization_options}")
+    session['visualization_options'] = visualization_options
     
     # Store visualization options in session
     session['visualization_options'] = visualization_options
@@ -151,8 +153,16 @@ def process():
         flash('No files to process')
         return redirect(url_for('upload_view'))
     
-    # Get visualization options from session (if available)
-    visualization_options = session.get('visualization_options', None)
+    # Make sure to get this from the session
+    visualization_options = session.get('visualization_options', {
+        'basic': True,
+        'heatmap': True,
+        'timeseries': True,
+        'industry': True
+    })
+    
+    # Explicitly log what options were retrieved
+    logger.info(f"Processing with visualization options: {visualization_options}")
     
     results = {}
     
@@ -250,8 +260,6 @@ def oauth2callback():
         flash(f'Error with Google authentication: {str(e)}')
     
     return redirect(url_for('index'))
-
-# Add this new route to your app.py file
 
 @app.route('/dashboard')
 def dashboard():
