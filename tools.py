@@ -2769,16 +2769,35 @@ class GoogleSheetsFormatterTool(BaseTool):
 
             for tab_name, tab_info in all_tab_data.items():
                 if 'data' in tab_info and tab_info['data']:
-                    # CRITICAL FIX: For Index tabs, ensure proper format
+                    # For Index tabs, ensure proper format
                     if tab_name in ISM_INDICES:
-                        # Get current data to find next available column
+                        # Get current data to find if month/year already exists
                         current_data = service.spreadsheets().values().get(
                             spreadsheetId=sheet_id,
                             range=f"'{tab_name}'!1:1"  # Get the header row
                         ).execute().get('values', [[]])
                         
-                        # Get the next column letter
-                        next_col = self._get_column_letter(len(current_data[0]))
+                        # Get the formatted month/year we're working with
+                        formatted_month_year = None
+                        if 'data' in tab_info and tab_info['data'] and len(tab_info['data']) > 0:
+                            formatted_month_year = tab_info['data'][0]
+                        
+                        # Check if month/year already exists in header
+                        existing_col_index = -1
+                        if formatted_month_year and current_data and len(current_data) > 0:
+                            for i, header in enumerate(current_data[0]):
+                                if header == formatted_month_year:
+                                    existing_col_index = i
+                                    break
+                        
+                        if existing_col_index >= 0:
+                            # Use existing column if found
+                            col_letter = self._get_column_letter(existing_col_index)
+                            logger.info(f"Found existing column for {formatted_month_year} at column {col_letter}")
+                        else:
+                            # Otherwise use next available column
+                            col_letter = self._get_column_letter(len(current_data[0]))
+                            logger.info(f"Adding new column for {formatted_month_year} at column {col_letter}")
                         
                         # CRITICAL FIX: Properly format data as expected by the API
                         # Each row should be a single value, not a list
@@ -2791,7 +2810,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 values.append([row])
                         
                         value_batch_requests.append({
-                            'range': f"'{tab_name}'!{next_col}1",
+                            'range': f"'{tab_name}'!{col_letter}1",
                             'values': values
                         })
                     else:
@@ -2801,18 +2820,18 @@ class GoogleSheetsFormatterTool(BaseTool):
                             'values': tab_info['data']
                         })
 
-            # Execute all value updates in one batchUpdate
-            if value_batch_requests:
-                def batch_value_update():
-                    return service.spreadsheets().values().batchUpdate(
-                        spreadsheetId=sheet_id,
-                        body={
-                            "valueInputOption": "RAW",
-                            "data": value_batch_requests
-                        }
-                    ).execute()
+                    # Execute all value updates in one batchUpdate
+                    if value_batch_requests:
+                        def batch_value_update():
+                            return service.spreadsheets().values().batchUpdate(
+                                spreadsheetId=sheet_id,
+                                body={
+                                    "valueInputOption": "RAW",
+                                    "data": value_batch_requests
+                                }
+                            ).execute()
 
-                self._execute_with_backoff(batch_value_update)
+                        self._execute_with_backoff(batch_value_update)
 
             # Collect all formatting requests
             all_formatting_requests = []

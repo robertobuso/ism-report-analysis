@@ -183,13 +183,13 @@ def check_report_exists_in_db(month_year):
 def parse_date(date_str: str) -> Optional[datetime.date]:
     """
     Parse a date string into a datetime.date object.
-    Handles various formats of date strings.
+    Always returns the 1st day of the month for consistency.
     
     Args:
         date_str: Date string in various possible formats
         
     Returns:
-        datetime.date object or None if parsing fails
+        datetime.date object (always with day=1) or None if parsing fails
     """
     try:
         if not date_str or date_str == "Unknown":
@@ -201,7 +201,8 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
         # Try parsing with dateutil
         try:
             dt = parser.parse(date_str)
-            return dt.date()
+            # Always set day to 1 for consistency
+            return datetime.date(dt.year, dt.month, 1)
         except:
             # Continue to manual parsing
             pass
@@ -222,6 +223,7 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
                 }
                 
                 month_num = month_map.get(month_name.lower(), 1)
+                # Return with day=1
                 return datetime.date(year, month_num, 1)
                 
             # Try all caps format (e.g., "JANUARY 2025")
@@ -237,17 +239,39 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
                 }
                 
                 month_num = month_map.get(month_name, 1)
+                # Return with day=1
+                return datetime.date(year, month_num, 1)
+                
+            # Try date format like Sep-24 or Oct-13
+            abbr_match = re.match(r'(\w{3})-(\d{2})', date_str)
+            if abbr_match:
+                month_abbr = abbr_match.group(1).capitalize()
+                year_short = int(abbr_match.group(2))
+                
+                month_map = {
+                    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+                }
+                
+                month_num = month_map.get(month_abbr, 1)
+                
+                # Convert 2-digit year to 4-digit
+                year = 2000 + year_short if year_short < 50 else 1900 + year_short
+                
+                # Return with day=1
                 return datetime.date(year, month_num, 1)
         except Exception as e:
             logger.warning(f"Manual date parsing failed: {str(e)}")
             
-        # Last resort: return current date
+        # Last resort: return current date with day=1
         logger.error(f"Could not parse date '{date_str}', using current date")
-        return datetime.date.today()
+        today = datetime.date.today()
+        return datetime.date(today.year, today.month, 1)
     except Exception as e:
         logger.error(f"Failed to parse date '{date_str}': {str(e)}")
-        return datetime.date.today()
-    
+        today = datetime.date.today()
+        return datetime.date(today.year, today.month, 1)
+     
 def get_all_report_dates():
     """Get all report dates in descending order."""
     conn = None
