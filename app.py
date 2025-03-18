@@ -2,6 +2,8 @@ import os
 import tempfile
 import logging
 import sys
+import traceback
+from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates
 
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
@@ -44,27 +46,73 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
+    try:
+        # Check if database is initialized and has data
+        has_data = False
+        try:
+            initialize_database()
+            dates = get_all_report_dates()
+            has_data = len(dates) > 0
+        except Exception as e:
+            logger.error(f"Error checking database: {str(e)}")
+        
+        # If data exists, show dashboard; otherwise, show upload page
+        if has_data:
+            # Get data for dashboard
+            heatmap_data = get_pmi_data_by_month(24)  # Get last 24 months of data
+            indices = get_all_indices()
+            report_dates = get_all_report_dates()
+            
+            return render_template('dashboard.html', 
+                               heatmap_data=heatmap_data,
+                               indices=indices,
+                               report_dates=report_dates)
+        else:
+            # No data yet, redirect to upload page
+            return redirect(url_for('upload_view'))
+    except Exception as e:
+        logger.error(f"Error in index route: {str(e)}")
+        logger.error(traceback.format_exc())
+        # On error, fall back to the upload page
+        return redirect(url_for('upload_view'))
+    
+@app.route('/upload', methods=['GET'])
+def upload_view():
     # Check if Google auth is set up
     google_auth_ready = os.path.exists('token.pickle')
-    return render_template('index.html', google_auth_ready=google_auth_ready)
+    
+    # Check if database is initialized and has data
+    has_data = False
+    try:
+        initialize_database()
+        dates = get_all_report_dates()
+        has_data = len(dates) > 0
+    except Exception as e:
+        logger.error(f"Error checking database: {str(e)}")
+    
+    return render_template('index.html', 
+                          google_auth_ready=google_auth_ready,
+                          has_data=has_data)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    # This should be your original upload_file function
+    # Make sure to keep its full implementation intact
     # Check if Google auth is set up
     if not os.path.exists('token.pickle'):
         flash('Please set up Google Authentication first')
-        return redirect(url_for('index'))
+        return redirect(url_for('upload_view'))
     
     # Check if the post request has the file part
     if 'file' not in request.files:
         flash('No file part')
-        return redirect(request.url)
+        return redirect(url_for('upload_view'))
     
     files = request.files.getlist('file')
     
     if len(files) == 1 and files[0].filename == '':
         flash('No selected file')
-        return redirect(request.url)
+        return redirect(url_for('upload_view'))
     
     # Get visualization options
     visualization_types = request.form.getlist('visualization_types')
@@ -89,7 +137,7 @@ def upload_file():
     
     if not saved_files:
         flash('No valid files uploaded')
-        return redirect(url_for('index'))
+        return redirect(url_for('upload_view'))
     
     # Store file paths in session
     session['files'] = saved_files
@@ -101,7 +149,7 @@ def process():
     files = session.get('files', [])
     if not files:
         flash('No files to process')
-        return redirect(url_for('index'))
+        return redirect(url_for('upload_view'))
     
     # Get visualization options from session (if available)
     visualization_options = session.get('visualization_options', None)
@@ -162,6 +210,7 @@ def process():
         except:
             pass
     
+    # Return results page which should then redirect to dashboard on success
     return render_template('results.html', results=results)
 
 @app.route('/setup-google')
@@ -201,6 +250,54 @@ def oauth2callback():
         flash(f'Error with Google authentication: {str(e)}')
     
     return redirect(url_for('index'))
+
+# Add this new route to your app.py file
+
+@app.route('/dashboard')
+def dashboard():
+    try:
+        # Get PMI heatmap data from database
+        heatmap_data = get_pmi_data_by_month(24)  # Get last 24 months of data
+        
+        # Get all available indices
+        indices = get_all_indices()
+        
+        # Get all report dates
+        report_dates = get_all_report_dates()
+        
+        return render_template('dashboard.html', 
+                               heatmap_data=heatmap_data,
+                               indices=indices,
+                               report_dates=report_dates)
+    except Exception as e:
+        logger.error(f"Error loading dashboard: {str(e)}")
+        logger.error(traceback.format_exc())
+        flash(f"Error loading dashboard: {str(e)}")
+        return redirect(url_for('upload_view'))
+    
+@app.route('/api/index_trends/<index_name>')
+def get_index_trends(index_name):
+    try:
+        # Get time series data for the specified index (last 24 months)
+        time_series_data = get_index_time_series(index_name, 24)
+        
+        # Return as JSON
+        return jsonify(time_series_data)
+    except Exception as e:
+        logger.error(f"Error getting index trends: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/industry_status/<index_name>')
+def get_industry_status(index_name):
+    try:
+        # Get industry status data for the specified index (last 12 months)
+        industry_data = get_industry_status_over_time(index_name, 12)
+        
+        # Return as JSON
+        return jsonify(industry_data)
+    except Exception as e:
+        logger.error(f"Error getting industry status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/health')
 def health():

@@ -12,8 +12,12 @@
 </head>
 <body>
     <div class="container mt-5">
-        <h2 class="text-center mb-4">Envoy LLC</h2>
-        <h1 class="text-center mb-4">ISM Manufacturing Report Analysis</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="text-center">ISM Manufacturing Report Analysis</h1>
+            <div>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">View Dashboard</a>
+            </div>
+        </div>
         
         {% with messages = get_flashed_messages() %}
           {% if messages %}
@@ -90,6 +94,9 @@
                     <li>Data will be validated and structured.</li>
                     <li>Results will be updated in Google Sheets.</li>
                     <li>You'll receive a processing report when complete.</li>
+                    {% if has_data %}
+                    <li>View the <a href="{{ url_for('dashboard') }}">Dashboard</a> to see visualizations of the processed data.</li>
+                    {% endif %}
                 </ol>
                 <p><strong>Note:</strong> Each index tab in Google Sheets will have industries as rows and months as columns. The number of industries may vary for each index and month.</p>
             </div>
