@@ -632,14 +632,38 @@ def process_single_pdf(pdf_path, visualization_options=None):
             logger.error(f"Error storing data in database: {str(e)}")
             # Continue processing to return the data even if database storage fails
 
-        # Execute verification with enhanced data
-        logger.info("Starting data verification...")
+        try:
+            json_data = json.dumps(extraction_data.get('industry_data', {}))
+        except TypeError as e:
+            if "ellipsis is not JSON serializable" in str(e):
+                # Just for this run, create a sanitized copy
+                import copy
+                sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
+                
+                # Function to recursively replace ellipsis
+                def replace_ellipsis(obj):
+                    if obj is ...:
+                        return None
+                    elif isinstance(obj, dict):
+                        return {k: replace_ellipsis(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [replace_ellipsis(item) for item in obj]
+                    else:
+                        return obj
+                
+                sanitized_data = replace_ellipsis(sanitized_data)
+                json_data = json.dumps(sanitized_data)
+                logger.warning("Handled ellipsis in JSON serialization as a one-time fix")
+            else:
+                raise  # Re-raise if it's a different TypeError
+
+        # Then use json_data in your Task description
         verification_task = Task(
             description=f"""
             CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
 
-            The extracted data is: {json.dumps(extraction_data.get('industry_data', {}))}
-
+            The extracted data is: {json_data}
+            
             STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
             {json.dumps(extraction_data.get('index_summaries', {}))}
 
