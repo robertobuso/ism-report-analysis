@@ -680,7 +680,7 @@ class GoogleSheetsFormatterTool(BaseTool):
         
         Args:
             data: Dictionary containing structured_data, validation_results, and visualization_options
-            
+                
         Returns:
             Boolean indicating whether the Google Sheets update was successful
         """
@@ -701,105 +701,15 @@ class GoogleSheetsFormatterTool(BaseTool):
                     logger.warning(f"Month/year changed during verification - using original {month_year}")
                     data['verification_result']['month_year'] = month_year
             
-            # Check for corrected industry data from verification
-            if 'verification_result' in data and isinstance(data['verification_result'], dict):
-                verification_result = data['verification_result']
-                if 'corrected_industry_data' in verification_result:
-                    # If we have a verification result with corrected data, inject it back into the extraction data
-                    if 'extraction_data' not in data:
-                        data['extraction_data'] = {}
-                    data['extraction_data']['industry_data'] = verification_result['corrected_industry_data']
-                    extraction_data = data['extraction_data']
-                    logger.info("Using corrected industry data from verification result")
-            
-            if 'structured_data' not in data:
-                data['structured_data'] = {}
-                logger.warning("structured_data not found. Creating empty structured_data.")
-                
-            if 'validation_results' not in data:
-                data['validation_results'] = {}
-                logger.warning("validation_results not found. Creating empty validation_results.")
-            
-            structured_data = data.get('structured_data', {})
-            validation_results = data.get('validation_results', {})
-            visualization_options = data.get('visualization_options', {
-                'basic': True,
-                'heatmap': True,
-                'timeseries': True,
-                'industry': True
-            })
-
-            # Initialize the database if needed
-            initialize_database()
-            
-            # Validate the data has actual industries before proceeding
-            industry_count = self._count_industries(structured_data)
-            logger.info(f"Found {industry_count} industries in structured data")
-            
-            # If no industries in structured data, try direct extraction if available
-            if industry_count == 0 and extraction_data and 'industry_data' in extraction_data:
-                logger.info("No industries found in structured data, trying to create from extraction_data")
-                structured_data = self._create_structured_data_from_extraction(extraction_data)
-                industry_count = self._count_industries(structured_data)
-                logger.info(f"Created structured data with {industry_count} industries from extraction_data")
-                
-                # If we now have industry data from extraction_data, make sure validation_results is updated
-                if industry_count > 0:
-                    validation_results = self._create_default_validation_results(structured_data)
-                    logger.info("Created default validation results for the newly structured data")
-            
-            # If no industries in structured data but we have corrected_industry_data, use that
-            if industry_count == 0 and extraction_data and 'corrected_industry_data' in extraction_data:
-                logger.info("No industries found in structured data, trying to use corrected_industry_data")
-                extraction_data['industry_data'] = extraction_data['corrected_industry_data']
-                structured_data = self._create_structured_data_from_extraction(extraction_data)
-                industry_count = self._count_industries(structured_data)
-                logger.info(f"Created structured data with {industry_count} industries from corrected_industry_data")
-                
-                # If we now have industry data from corrected_industry_data, make sure validation_results is updated
-                if industry_count > 0:
-                    validation_results = self._create_default_validation_results(structured_data)
-                    logger.info("Created default validation results for the newly structured data")
-                    
-            # If still no valid data, log warning and return failure
-            if industry_count == 0:
-                logger.warning("No valid industry data found for Google Sheets update")
-                return False
-
-            # If no validation results, create some basic ones for continuing
-            if not validation_results:
-                validation_results = self._create_default_validation_results(structured_data)
-            
-            # Check if validation passed for at least some indices
-            if not any(validation_results.values()):
-                # Force at least one index to be valid so we can continue
-                validation_results = self._force_valid_index(validation_results)
-            
-            # Get the month and year from the extraction data
-            month_year = self._get_month_year(structured_data, extraction_data)
-            
-            # Format the month_year as MM/YY for spreadsheet
-            formatted_month_year = self._format_month_year(month_year)
-            
-            # Try uppercase and title case variations since capitalization might differ
-            variations = [
-                month_year,
-                month_year.upper(),
-                month_year.title(),
-                # Also check the formatted version
-                formatted_month_year
-            ]
-
-            report_exists = False
-            for variation in variations:
-                if check_report_exists_in_db(variation):
-                    report_exists = True
-                    logger.info(f"Found report in database using variant: {variation}")
-                    break
-
-            if not report_exists:
-                logger.warning(f"Report for {month_year} not found in database. Some visualizations may be incomplete.")
-
+            # Store data in database if extraction_data is available
+            from db_utils import store_report_data_in_db
+            try:
+                if extraction_data and 'month_year' in extraction_data:
+                    pdf_path = data.get('pdf_path', 'unknown_path')
+                    store_result = store_report_data_in_db(extraction_data, pdf_path)
+                    logger.info(f"Database storage result: {store_result}")
+            except Exception as e:
+                logger.error(f"Error storing data in database: {str(e)}")
             
             # Get Google Sheets service
             service = get_google_sheets_service()
@@ -816,271 +726,9 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Get all sheet IDs for tabs
             sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # Initialize the tab data collection for batch updates
-            all_tab_data = {}
-            
-            # Process Manufacturing at a Glance table if available
-            if 'extraction_data' in data and data['extraction_data'].get('manufacturing_table'):
-                try:
-                    logger.info(f"Updating Manufacturing at a Glance table for {month_year}")
-                    
-                    # Get the sheet ID for the tab
-                    tab_name = 'Manufacturing at a Glance'
-                    mfg_sheet_id = sheet_ids.get(tab_name)
-                    
-                    if not mfg_sheet_id:
-                        logger.warning(f"{tab_name} tab not found")
-                    else:
-                        # Extract data with LLM if we have the table content
-                        table_content = data['extraction_data'].get('manufacturing_table', '')
-                        parsed_data = self._extract_data_with_llm(table_content, month_year)
-                        
-                        # Build header
-                        headers = [
-                            "Month & Year", "Manufacturing PMI", "New Orders", "Production", 
-                            "Employment", "Supplier Deliveries", "Inventories", 
-                            "Customers' Inventories", "Prices", "Backlog of Orders",
-                            "New Export Orders", "Imports", "Overall Economy", "Manufacturing Sector"
-                        ]
-                        
-                        # Build row data
-                        row_data = self._prepare_horizontal_row(parsed_data, formatted_month_year)
-                        
-                        # Check if this month/year already exists in the sheet
-                        # Read existing data
-                        range_to_read = f"'{tab_name}'!A:A"
-                        existing_values = service.spreadsheets().values().get(
-                            spreadsheetId=sheet_id, range=range_to_read
-                        ).execute().get('values', [])
-                        
-                        # Find if current month/year exists
-                        existing_row_index = None
-                        for i, row in enumerate(existing_values):
-                            if row and row[0] == formatted_month_year:
-                                existing_row_index = i + 1  # +1 because sheets are 1-indexed
-                                break
-                        
-                        # If this is a new month/year, append to the sheet
-                        if existing_row_index is None:
-                            # Determine the next row
-                            next_row_index = len(existing_values) + 1
-                            
-                            # If this is the first row, add the headers first
-                            if next_row_index == 1:
-                                service.spreadsheets().values().update(
-                                    spreadsheetId=sheet_id,
-                                    range=f"'{tab_name}'!A1",
-                                    valueInputOption="USER_ENTERED",
-                                    body={"values": [headers]}
-                                ).execute()
-                                next_row_index = 2  # Headers are now in row 1
-                            
-                            # Add new data row
-                            service.spreadsheets().values().update(
-                                spreadsheetId=sheet_id,
-                                range=f"'{tab_name}'!A{next_row_index}",
-                                valueInputOption="USER_ENTERED",
-                                body={"values": [row_data]}
-                            ).execute()
-                            
-                            logger.info(f"Appended new row for {formatted_month_year} to {tab_name}")
-                            
-                            # Prepare formatting for the new row
-                            formatting = self._prepare_manufacturing_table_formatting(
-                                mfg_sheet_id, 
-                                next_row_index + 1,  # +1 because we need to include the row we just added
-                                len(headers)
-                            )
-                            
-                            # Add to batch update
-                            all_tab_data[tab_name] = {
-                                'formatting': formatting
-                            }
-                        else:
-                            # Update existing row
-                            service.spreadsheets().values().update(
-                                spreadsheetId=sheet_id,
-                                range=f"'{tab_name}'!A{existing_row_index}",
-                                valueInputOption="USER_ENTERED",
-                                body={"values": [row_data]}
-                            ).execute()
-                            
-                            logger.info(f"Updated existing row for {formatted_month_year} in {tab_name}")
-                            
-                            # We don't need to add anything to all_tab_data since we've directly updated the values
-                        
-                except Exception as e:
-                    logger.error(f"Error updating Manufacturing at a Glance tab: {str(e)}")
-            
-            # Process basic visualization if enabled
-            if visualization_options.get('basic', True):
-                try:
-                    logger.info("Processing basic industry classification visualizations")
-                    
-                    # Update each index tab that passed validation
-                    for index, valid in validation_results.items():
-                        if valid and index in structured_data:
-                            # Get the sheet ID for this index
-                            index_sheet_id = sheet_ids.get(index)
-                            
-                            if not index_sheet_id:
-                                logger.warning(f"Sheet ID not found for index {index}")
-                                continue
-                            
-                            # Format data for this index
-                            tab_data, formatting = self._prepare_index_tab_data(
-                                index, 
-                                structured_data[index], 
-                                formatted_month_year,
-                                index_sheet_id
-                            )
-                            
-                            # MODIFIED: Read existing data to determine the last column
-                            range_to_read = f"'{index}'!1:1"  # Read the first row
-                            existing_values = service.spreadsheets().values().get(spreadsheetId=sheet_id, range=range_to_read).execute().get('values', [[]])[0]
-                            
-                            # Determine starting cell
-                            start_column_index = len(existing_values)  # Append to the end
-                            start_cell = self._get_column_letter(start_column_index) + '1' # Convert to letter
-                            
-                            # Append to batch update
-                            if tab_data:
-                                all_tab_data[index] = {
-                                    'data': tab_data,
-                                    'formatting': formatting,
-                                    'start_cell': start_cell # new start cell
-                                }
-                except Exception as e:
-                    logger.error(f"Error updating basic visualization: {str(e)}")
-            
-            # Process monthly heatmap summary if enabled
-            if visualization_options.get('heatmap', True):
-                self._process_monthly_heatmap_summary(visualization_options, service, sheet_id, sheet_ids)
-
-            # Process time series analysis if enabled
-            if visualization_options.get('timeseries', True):
-                try:
-                    logger.info("Processing time series analysis visualizations")
-                    
-                    # Get all indices from the database
-                    indices = get_all_indices()
-                    
-                    if not indices:
-                        logger.warning("No indices found in database for time series visualization")
-                    else:
-                        # Process each index
-                        for index_name in indices:
-                            try:
-                                # Get time series data for this index
-                                time_series_data = get_index_time_series(index_name, 36)  # Get up to 3 years
-                                
-                                if not time_series_data:
-                                    logger.warning(f"No time series data found for {index_name}")
-                                    continue
-                                
-                                # Prepare header and data rows
-                                header_row = ["Date", "PMI Value", "Direction", "Change from Previous Month"]
-                                
-                                data_rows = []
-                                for entry in time_series_data:
-                                    row = [
-                                        entry['month_year'],
-                                        entry['index_value'],
-                                        entry['direction'],
-                                        entry.get('change', '')  # This may be None for the first entry
-                                    ]
-                                    data_rows.append(row)
-                                
-                                # Get the sheet ID for the tab
-                                tab_name = f"{index_name} Analysis"
-                                tab_id = sheet_ids.get(tab_name)
-                                
-                                if not tab_id:
-                                    logger.warning(f"{tab_name} tab not found")
-                                    continue
-                                
-                                # Prepare formatting
-                                formatting = self._prepare_time_series_formatting(tab_id, len(data_rows) + 1, len(header_row))
-                                
-                                # Add to batch update
-                                all_tab_data[tab_name] = {
-                                    'data': [header_row] + data_rows,
-                                    'formatting': formatting
-                                }
-                            except Exception as e:
-                                logger.error(f"Error processing time series for {index_name}: {str(e)}")
-                except Exception as e:
-                    logger.error(f"Error updating time series visualizations: {str(e)}")
-            
-            # Process industry growth/contraction over time if enabled
-            if visualization_options.get('industry', True):
-                try:
-                    logger.info("Processing industry growth/contraction visualizations")
-                    
-                    # Get all indices from the database
-                    indices = get_all_indices()
-                    
-                    if not indices:
-                        logger.warning("No indices found in database for industry visualization")
-                    else:
-                        # Process each index
-                        for index_name in indices:
-                            try:
-                                # Get industry status data for this index
-                                industry_data = get_industry_status_over_time(index_name, 24)  # Get up to 2 years
-                                
-                                if not industry_data or not industry_data.get('industries'):
-                                    logger.warning(f"No industry data found for {index_name}")
-                                    continue
-                                
-                                # Get data for building the sheet
-                                dates = industry_data['dates']  # List of month/year strings
-                                industries = industry_data['industries']  # Dict with industry names as keys
-                                
-                                # Sort industries alphabetically
-                                sorted_industries = sorted(industries.keys())
-                                
-                                # Prepare header row - Industry name followed by months
-                                header_row = ["Industry"]
-                                header_row.extend(dates)
-                                
-                                # Prepare data rows
-                                data_rows = []
-                                for industry in sorted_industries:
-                                    row = [industry]
-                                    
-                                    # Add status for each month
-                                    for date in dates:
-                                        status_data = industries[industry].get(date, {'status': 'Neutral'})
-                                        status = status_data.get('status', 'Neutral')
-                                        row.append(status)
-                                        
-                                    data_rows.append(row)
-                                
-                                # Get the sheet ID for the tab
-                                tab_name = f"{index_name} Industries"
-                                tab_id = sheet_ids.get(tab_name)
-                                
-                                if not tab_id:
-                                    logger.warning(f"{tab_name} tab not found")
-                                    continue
-                                
-                                # Prepare formatting
-                                formatting = self._prepare_industry_data(tab_id, len(data_rows) + 1, len(header_row))
-                                
-                                # Add to batch update
-                                all_tab_data[tab_name] = {
-                                    'data': [header_row] + data_rows,
-                                    'formatting': formatting
-                                }
-                            except Exception as e:
-                                logger.error(f"Error processing industry data for {index_name}: {str(e)}")
-                except Exception as e:
-                    logger.error(f"Error updating industry visualizations: {str(e)}")
-
-           # Create or update the new format tabs
+            # ONLY CREATE THE THREE REQUESTED TABS
             try:
-                # Update the heatmap tab with values only (no direction)
+                # 1. Update the heatmap tab with values only (no direction)
                 monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
                 heatmap_result = self.update_heatmap_tab(service, sheet_id, monthly_data)
                 if heatmap_result:
@@ -1088,31 +736,27 @@ class GoogleSheetsFormatterTool(BaseTool):
                 else:
                     logger.warning("Failed to update heatmap tab with values only")
                 
-                # Create alphabetical growth tab
+                # 2. Create alphabetical growth tab
                 alpha_result = self.create_alphabetical_growth_tab(service, sheet_id, sheet_ids)
                 if alpha_result:
                     logger.info("Successfully created alphabetical growth tab")
                 else:
                     logger.warning("Failed to create alphabetical growth tab")
                 
-                # Create numerical growth tab
+                # 3. Create numerical growth tab
                 num_result = self.create_numerical_growth_tab(service, sheet_id, sheet_ids)
                 if num_result:
                     logger.info("Successfully created numerical growth tab")
                 else:
                     logger.warning("Failed to create numerical growth tab")
                 
-                logger.info("Successfully created/updated new format tabs")
+                logger.info("Successfully created/updated required tabs")
+                logger.info(f"Successfully updated Google Sheets")
+                return True
             except Exception as e:
-                logger.error(f"Error creating new tabs: {str(e)}")
+                logger.error(f"Error creating required tabs: {str(e)}")
                 logger.error(traceback.format_exc())
-                # Continue processing - don't let failure here break existing functionality
-            
-            # Update all tabs in a batch to minimize API calls
-            result = self._update_multiple_tabs_with_data(service, sheet_id, all_tab_data)
-            
-            logger.info(f"Successfully updated Google Sheets for {month_year}")
-            return result
+                return False
             
         except Exception as e:
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
@@ -1247,7 +891,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 with open("sheet_id.txt", "r") as f:
                     sheet_id = f.read().strip()
                     logger.info(f"Found saved sheet ID: {sheet_id}")
-                
+                    
                 # Verify the sheet exists and is accessible
                 try:
                     sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
@@ -1259,7 +903,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                         sheet_id = None
                     else:
                         logger.info(f"Successfully accessed existing sheet: {sheet_metadata['properties']['title']}")
-                
+                    
                     # Check if the default Sheet1 exists and delete it if needed
                     sheets = sheet_metadata.get('sheets', [])
                     sheet1_id = None
@@ -1270,34 +914,10 @@ class GoogleSheetsFormatterTool(BaseTool):
                     
                     # Check if all required tabs exist
                     existing_tabs = [sheet.get('properties', {}).get('title') for sheet in sheets]
-                    manufacturing_tab_exists = 'Manufacturing at a Glance' in existing_tabs
-                    missing_tabs = []
                     
-                    if not manufacturing_tab_exists:
-                        missing_tabs.append('Manufacturing at a Glance')
-                    
-                    # Add additional tabs for PMI heatmap and specialized views
-                    additional_tabs = [
-                        'PMI Heatmap Summary'
-                    ]
-                    
-                    for tab in additional_tabs:
-                        if tab not in existing_tabs:
-                            missing_tabs.append(tab)
-                    
-                    for index in ISM_INDICES:
-                        if index not in existing_tabs:
-                            missing_tabs.append(index)
-                        
-                        # Add analysis tab for each index
-                        analysis_tab = f"{index} Analysis"
-                        if analysis_tab not in existing_tabs:
-                            missing_tabs.append(analysis_tab)
-                            
-                        # Add industries tab for each index
-                        industries_tab = f"{index} Industries"
-                        if industries_tab not in existing_tabs:
-                            missing_tabs.append(industries_tab)
+                    # ONLY CHECK FOR THE THREE REQUIRED TABS
+                    required_tabs = ['PMI Heatmap Summary', 'Growth Alphabetical', 'Growth Numerical']
+                    missing_tabs = [tab for tab in required_tabs if tab not in existing_tabs]
                     
                     # Create any missing tabs
                     if missing_tabs:
@@ -1345,7 +965,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                     # Handle other types of exceptions
                     logger.error(f"Error accessing saved sheet: {str(e)}")
                     sheet_id = None
-      
+        
             # Create a new sheet if needed
             if not sheet_id:
                 logger.info("Creating new Google Sheet")
@@ -1364,17 +984,8 @@ class GoogleSheetsFormatterTool(BaseTool):
                     f.write(sheet_id)
                     logger.info(f"Saved sheet ID to {sheet_id_file}")
                 
-                # Create tabs for all required indices
+                # Create ONLY the three required tabs
                 requests = []
-                
-                # Add Manufacturing at a Glance tab
-                requests.append({
-                    'addSheet': {
-                        'properties': {
-                            'title': 'Manufacturing at a Glance'
-                        }
-                    }
-                })
                 
                 # Add PMI Heatmap Summary tab
                 requests.append({
@@ -1385,34 +996,23 @@ class GoogleSheetsFormatterTool(BaseTool):
                     }
                 })
                 
-                # Add tabs for each index
-                for index in ISM_INDICES:
-                    # Basic index tab
-                    requests.append({
-                        'addSheet': {
-                            'properties': {
-                                'title': index
-                            }
+                # Add Growth Alphabetical tab
+                requests.append({
+                    'addSheet': {
+                        'properties': {
+                            'title': 'Growth Alphabetical'
                         }
-                    })
-                    
-                    # Analysis tab
-                    requests.append({
-                        'addSheet': {
-                            'properties': {
-                                'title': f"{index} Analysis"
-                            }
+                    }
+                })
+                
+                # Add Growth Numerical tab
+                requests.append({
+                    'addSheet': {
+                        'properties': {
+                            'title': 'Growth Numerical'
                         }
-                    })
-                    
-                    # Industries tab
-                    requests.append({
-                        'addSheet': {
-                            'properties': {
-                                'title': f"{index} Industries"
-                            }
-                        }
-                    })
+                    }
+                })
                 
                 # Delete the default Sheet1 if it exists
                 sheet_metadata = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
@@ -1445,7 +1045,6 @@ class GoogleSheetsFormatterTool(BaseTool):
             return sheet_id
         except Exception as e:
             logger.error(f"Error finding or creating sheet: {str(e)}")
-            
             # Attempt to create new sheet as a last resort
             try:
                 logger.info("Creating new sheet as fallback after error")
@@ -1466,7 +1065,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             except Exception as e2:
                 logger.error(f"Final fallback creation failed: {str(e2)}")
                 return None
-                
+                    
     def _get_all_sheet_ids(self, service, spreadsheet_id):
         """Get a mapping of sheet names to sheet IDs."""
         try:
@@ -3751,8 +3350,8 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Refresh the sheet IDs mapping
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # Get all indices
-            indices = get_all_indices()
+             # Get all indices - FILTER OUT MANUFACTURING PMI
+            indices = [idx for idx in get_all_indices() if idx != 'Manufacturing PMI']
             
             # Get report dates
             from db_utils import get_db_connection
@@ -3938,8 +3537,11 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 category = row['category']
                                 
                                 # Standardize industry name
-                                std_industry = self._standardize_industry_name(db_industry, industry_standardization, all_standard_industries)
-                                
+                                std_industry = self._standardize_industry_name(
+                                    db_industry, 
+                                    industry_standardization,  # Pass the industry_standardization map
+                                    all_standard_industries    # Pass the list of standard industries
+)
                                 # Skip if invalid or already seen
                                 if not std_industry or std_industry not in all_standard_industries or std_industry in seen_industries:
                                     continue
@@ -4157,13 +3759,13 @@ class GoogleSheetsFormatterTool(BaseTool):
             industry_name: Original industry name from database
             standardization_map: Mapping of industry name variations to standard names
             standard_industry_list: List of standard industry names
-            
+                
         Returns:
             Standardized industry name
         """
         if not industry_name:
             return None
-            
+                
         # Clean the industry name
         clean_name = industry_name.strip()
         
@@ -4174,10 +3776,9 @@ class GoogleSheetsFormatterTool(BaseTool):
                 return standard_name
         
         # Try partial matches with keywords
-        for standard_name, variations in standard_industries_mapping.items():
-            for variation in variations:
-                if variation.lower() in clean_name.lower() or clean_name.lower() in variation.lower():
-                    return standard_name
+        for standard_name in standard_industry_list:
+            if standard_name.lower() in clean_name.lower() or clean_name.lower() in standard_name.lower():
+                return standard_name
         
         # Try best-match approach with overlapping words
         clean_words = set(clean_name.lower().split())
