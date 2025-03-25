@@ -3401,20 +3401,12 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(traceback.format_exc())
             return False
 
-    def create_alphabetical_growth_tab(self, service, sheet_id, sheet_ids):
+    def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
         """
-        Create the alphabetical growth/contraction tab.
-        
-        Args:
-            service: Google Sheets API service
-            sheet_id: Spreadsheet ID
-            sheet_ids: Dictionary mapping tab names to sheet IDs
-        
-        Returns:
-            Boolean indicating success
+        Create the numerical growth/contraction tab with vertical tables for each month.
         """
         try:
-            tab_name = 'Growth Alphabetical'
+            tab_name = 'Growth Numerical'
             
             # Check if tab exists
             tab_id = sheet_ids.get(tab_name)
@@ -3444,10 +3436,17 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Get all indices
             indices = get_all_indices()
             
-            # Get all report dates for columns
-            report_dates = get_all_report_dates()
-            # Sort by date - assuming report_date is in ISO format
-            report_dates.sort(key=lambda x: x['report_date'], reverse=True)
+            # Get report dates
+            from db_utils import get_db_connection
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT report_date, month_year 
+                FROM reports 
+                ORDER BY report_date DESC
+            """)
+            report_dates = [dict(row) for row in cursor.fetchall()]
             months = [date['month_year'] for date in report_dates]
             
             # Create array to hold all data for batch update
@@ -3457,7 +3456,6 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # For each index, create a section
             for index_num, index in enumerate(indices):
-                # Index number in the loop (for formatting)
                 section_start_row = current_row
                 
                 # Add index header with bold formatting
@@ -3472,7 +3470,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                             "startRowIndex": section_start_row,
                             "endRowIndex": section_start_row + 1,
                             "startColumnIndex": 0,
-                            "endColumnIndex": len(months) + 1
+                            "endColumnIndex": 20
                         },
                         "cell": {
                             "userEnteredFormat": {
@@ -3490,69 +3488,187 @@ class GoogleSheetsFormatterTool(BaseTool):
                     }
                 })
                 
-                # Add months header row
-                header_row = ["Industry"]
-                header_row.extend(months)
-                all_rows.append(header_row)
-                current_row += 1
+                # Get industry data for this index from the database 
+                industry_data_for_index = get_industry_status_over_time(index, len(months))
                 
-                # Add formatting for month header row
-                formatting_requests.append({
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": section_start_row + 1,
-                            "endRowIndex": section_start_row + 2,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": len(months) + 1
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                },
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                    }
-                })
+                # Get all industries for this index
+                all_industries = list(industry_data_for_index['industries'].keys() if industry_data_for_index and 'industries' in industry_data_for_index else [])
                 
-                # Get industry data for this index
-                industry_data = get_industry_status_over_time(index, len(months))
-                
-                # Check if we have industry data
-                if not industry_data or 'industries' not in industry_data:
-                    logger.warning(f"No industry data found for {index}")
+                # If no industries, skip this index
+                if not all_industries:
+                    logger.warning(f"No industries found for {index}")
                     # Add blank row between indices
                     all_rows.append([""])
                     current_row += 1
                     continue
                 
-                # Get all industries and sort alphabetically
-                all_industries = sorted(industry_data['industries'].keys())
-                industry_row_start = current_row
+                # Calculate the maximum height needed for all tables
+                max_industries = len(all_industries) + 1  # +1 for header
                 
-                # Create a row for each industry
-                for industry in all_industries:
-                    row_data = [industry]
+                # Create an array of rows of appropriate height
+                rows = [[""] * (len(months) * 2 + 2) for _ in range(max_industries + 2)]
+                
+                # First, add the reference table header
+                rows[0][0] = "REFERENCE"
+                
+                # Add the alphabetically sorted industries to the reference table
+                for i, industry in enumerate(all_industries):
+                    rows[i+1][0] = industry
+                
+                # Define positive and negative categories based on index type
+                pos_category = "Growing"
+                neg_category = "Declining"
+                
+                if index == "Supplier Deliveries":
+                    pos_category = "Slower"
+                    neg_category = "Faster"
+                elif index == "Inventories":
+                    pos_category = "Higher"
+                    neg_category = "Lower"
+                elif index == "Customers' Inventories":
+                    pos_category = "Too High"
+                    neg_category = "Too Low"
+                elif index == "Prices":
+                    pos_category = "Increasing"
+                    neg_category = "Decreasing"
+                
+                # Now add the monthly tables
+                for m_idx, month in enumerate(months):
+                    # Calculate column index for this month's table
+                    col_idx = (m_idx + 1) * 2
                     
-                    # Add status for each month
-                    for month in months:
-                        status_data = industry_data['industries'][industry].get(month, {})
-                        status = status_data.get('status', 'Neutral')
-                        row_data.append(status)
+                    # Add month header
+                    rows[0][col_idx] = month
                     
-                    all_rows.append(row_data)
-                    current_row += 1
+                    logger.info(f"Processing month: {month}")
+                    
+                    # Get the month-year string in format "Month YYYY"
+                    # This is needed to retrieve data from the database for this report period
+                    
+                    # Fetch the specific report's extracted data from database
+                    # We need to query the database to get the original extraction data
+                    try:
+                        cursor.execute("""
+                            SELECT report_date
+                            FROM reports
+                            WHERE month_year = ?
+                        """, (month,))
+                        report_date_row = cursor.fetchone()
+                        
+                        if report_date_row:
+                            report_date = report_date_row['report_date']
+                            
+                            # Now try to get the industry data from the database
+                            cursor.execute("""
+                                SELECT i.industry_name, i.status, i.category
+                                FROM industry_status i
+                                WHERE i.report_date = ? AND i.index_name = ?
+                                ORDER BY i.id
+                            """, (report_date, index))
+                            
+                            industry_status_rows = cursor.fetchall()
+                            
+                            # Build lists of positive and negative industries in DB order
+                            pos_industries = []
+                            neg_industries = []
+                            neutral_industries = []
+                            
+                            pos_status_seen = set()
+                            neg_status_seen = set()
+                            
+                            # Process industries preserving their order in the database
+                            for i, row in enumerate(industry_status_rows):
+                                industry = row['industry_name']
+                                status = row['status']
+                                category = row['category']
+                                
+                                # Skip if this industry was already seen in this category
+                                if category == pos_category and industry in pos_status_seen:
+                                    continue
+                                elif category == neg_category and industry in neg_status_seen:
+                                    continue
+                                    
+                                if category == pos_category:
+                                    pos_industries.append({
+                                        'industry': industry,
+                                        'status': status,
+                                        'growth_type': 1,
+                                        'original_order': i
+                                    })
+                                    pos_status_seen.add(industry)
+                                elif category == neg_category:
+                                    neg_industries.append({
+                                        'industry': industry,
+                                        'status': status,
+                                        'growth_type': -1,
+                                        'original_order': i
+                                    })
+                                    neg_status_seen.add(industry)
+                                else:
+                                    neutral_industries.append({
+                                        'industry': industry,
+                                        'status': status,
+                                        'growth_type': 0,
+                                        'original_order': i
+                                    })
+                        else:
+                            # No data found for this month
+                            pos_industries = []
+                            neg_industries = []
+                            neutral_industries = []
+                            
+                    except Exception as e:
+                        logger.error(f"Error getting industry status from DB: {str(e)}")
+                        pos_industries = []
+                        neg_industries = []
+                        neutral_industries = []
+                    
+                    # The neg_industries are already in the original order
+                    # We need to reverse them for the display
+                    neg_industries.reverse()
+                    
+                    logger.info(f"Positive industries from data: {[item['industry'] for item in pos_industries]}")
+                    logger.info(f"Negative industries from data (reversed): {[item['industry'] for item in neg_industries]}")
+                    
+                    # Build ranked industries list
+                    ranked_industries = []
+                    
+                    # Positive industries with descending ranks
+                    for i, item in enumerate(pos_industries):
+                        item['rank'] = len(pos_industries) - i
+                        ranked_industries.append(item)
+                    
+                    # Neutral industries all with rank 0
+                    for item in neutral_industries:
+                        item['rank'] = 0
+                        ranked_industries.append(item)
+                    
+                    # Negative industries with descending negative ranks
+                    for i, item in enumerate(neg_industries):
+                        item['rank'] = -1 - i
+                        ranked_industries.append(item)
+                    
+                    logger.info(f"Ranked industries: {ranked_industries}")
+                    
+                    # Add the sorted industries to the table
+                    for i, item in enumerate(ranked_industries):
+                        # Industry name in first column
+                        rows[i+1][col_idx] = item['industry']
+                        # Rank value in second column
+                        rows[i+1][col_idx+1] = item['rank']
+                
+                # Add all rows for this index to the main data
+                all_rows.extend(rows)
+                current_row += len(rows)
                 
                 # Add blank row between indices
                 all_rows.append([""])
                 current_row += 1
+                
+                # Add conditional formatting for the table
+                # Get the max positive and negative values for conditional formatting
+                max_positive = max([1, max([item['rank'] for item in ranked_industries if 'rank' in item and item['rank'] > 0], default=1)])
+                max_negative = min([-1, min([item['rank'] for item in ranked_industries if 'rank' in item and item['rank'] < 0], default=-1)])
                 
                 # Add conditional formatting for growing/contracting status
                 formatting_requests.append({
@@ -3751,7 +3867,16 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Refresh the sheet IDs mapping
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # Get all indices 
+            # Access the original extraction_data which contains the ordered industry data
+            # The extraction_data would be available in the data parameter of _run method
+            extraction_data = self.data.get('extraction_data', {})
+            
+            # Log to verify we have the data
+            logger.info(f"Extraction data available: {bool(extraction_data)}")
+            if extraction_data and 'industry_data' in extraction_data:
+                logger.info(f"Industry data available: {bool(extraction_data['industry_data'])}")
+                
+            # Get all indices
             indices = get_all_indices()
             
             # Get report dates
@@ -3806,19 +3931,11 @@ class GoogleSheetsFormatterTool(BaseTool):
                     }
                 })
                 
-                # Get industry data for this index
-                industry_data = get_industry_status_over_time(index, len(months))
-                
-                # Check if we have industry data
-                if not industry_data or 'industries' not in industry_data:
-                    logger.warning(f"No industry data found for {index}")
-                    # Add blank row between indices
-                    all_rows.append([""])
-                    current_row += 1
-                    continue
+                # Get industry data for this index from the database
+                industry_data_for_index = get_industry_status_over_time(index, len(months))
                 
                 # Get all industries for this index
-                all_industries = sorted(industry_data['industries'].keys())
+                all_industries = sorted(industry_data_for_index['industries'].keys())
                 
                 # If no industries, skip this index
                 if not all_industries:
@@ -3841,33 +3958,22 @@ class GoogleSheetsFormatterTool(BaseTool):
                 for i, industry in enumerate(all_industries):
                     rows[i+1][0] = industry
                 
-                # Define positive status terms for each index
-                positive_terms = {
-                    "New Orders": ["Growing"],
-                    "Production": ["Growing"],
-                    "Employment": ["Growing"],
-                    "Supplier Deliveries": ["Slower"],
-                    "Inventories": ["Higher"],
-                    "Customers' Inventories": ["Too High"],
-                    "Prices": ["Increasing"],
-                    "Backlog of Orders": ["Growing"],
-                    "New Export Orders": ["Growing"],
-                    "Imports": ["Growing"]
-                }
+                # Define positive and negative categories based on index type
+                pos_category = "Growing"
+                neg_category = "Declining"
                 
-                # Define negative status terms for each index
-                negative_terms = {
-                    "New Orders": ["Declining", "Contracting"],
-                    "Production": ["Declining", "Contracting"],
-                    "Employment": ["Declining", "Contracting"],
-                    "Supplier Deliveries": ["Faster"],
-                    "Inventories": ["Lower"],
-                    "Customers' Inventories": ["Too Low"],
-                    "Prices": ["Decreasing"],
-                    "Backlog of Orders": ["Declining", "Contracting"],
-                    "New Export Orders": ["Declining", "Contracting"],
-                    "Imports": ["Declining", "Contracting"]
-                }
+                if index == "Supplier Deliveries":
+                    pos_category = "Slower"
+                    neg_category = "Faster"
+                elif index == "Inventories":
+                    pos_category = "Higher"
+                    neg_category = "Lower"
+                elif index == "Customers' Inventories":
+                    pos_category = "Too High"
+                    neg_category = "Too Low"
+                elif index == "Prices":
+                    pos_category = "Increasing"
+                    neg_category = "Decreasing"
                 
                 # Now add the monthly tables
                 for m_idx, month in enumerate(months):
@@ -3877,64 +3983,110 @@ class GoogleSheetsFormatterTool(BaseTool):
                     # Add month header
                     rows[0][col_idx] = month
                     
-                    logger.info(f"Processing month: {month}")  # Log the month being processed
+                    logger.info(f"Processing month: {month}")
                     
-                    # Process each industry for this month and sort by growth rank
-                    month_industries = []
+                    # Get original ordered industry lists from extraction_data if available
+                    # This is the key part - accessing the original ordered data
+                    orig_pos_industries = []
+                    orig_neg_industries = []
                     
-                    # Get the industry names in the order they appear in the data
-                    industry_names = list(industry_data['industries'].keys())
-                    
-                    logger.info(f"Industry names in original order: {industry_names}")  # Log original order
-                    
-                    for industry in industry_names:
-                        status_data = industry_data['industries'][industry].get(month, {})
-                        status = status_data.get('status', 'Neutral')
+                    if extraction_data and 'industry_data' in extraction_data and index in extraction_data['industry_data']:
+                        index_data = extraction_data['industry_data'][index]
                         
-                        # Determine growth type based on the index-specific terms
-                        growth_type = 0  # Default: Neutral
-                        if index in positive_terms and status in positive_terms[index]:
-                            growth_type = 1  # Positive
-                        elif index in negative_terms and status in negative_terms[index]:
-                            growth_type = -1  # Negative
+                        # Get growing/positive industries in original order
+                        if pos_category in index_data:
+                            orig_pos_industries = index_data[pos_category]
+                            logger.info(f"Found original positive industries: {orig_pos_industries}")
                         
-                        month_industries.append({
-                            'industry': industry,
-                            'status': status,
-                            'growth_type': growth_type,
-                            'original_order': len(month_industries)  # Preserve original order for sorting
-                        })
+                        # Get declining/negative industries in original order
+                        if neg_category in index_data:
+                            orig_neg_industries = index_data[neg_category]
+                            logger.info(f"Found original negative industries: {orig_neg_industries}")
                     
-                    logger.info(f"Month industries (before sorting): {month_industries}")  # Log before sorting
+                    # If we have the original ordered lists, use them directly
+                    if orig_pos_industries or orig_neg_industries:
+                        # Build pos_industries list preserving original order
+                        pos_industries = []
+                        for i, industry in enumerate(orig_pos_industries):
+                            pos_industries.append({
+                                'industry': industry,
+                                'status': pos_category,
+                                'growth_type': 1,
+                                'original_order': i
+                            })
+                        
+                        # Build neg_industries list - we'll reverse this later
+                        neg_industries = []
+                        for i, industry in enumerate(orig_neg_industries):
+                            neg_industries.append({
+                                'industry': industry,
+                                'status': neg_category,
+                                'growth_type': -1,
+                                'original_order': i
+                            })
+                        
+                        # Reversing the negative industries list to display in reverse order
+                        neg_industries.reverse()
+                        
+                    # Otherwise, fall back to using data from the database
+                    else:
+                        # Process each industry for this month and sort by growth rank
+                        pos_industries = []
+                        neutral_industries = []
+                        neg_industries = []
+                        
+                        for industry in all_industries:
+                            status_data = industry_data_for_index['industries'][industry].get(month, {})
+                            status = status_data.get('status', 'Neutral')
+                            
+                            if status == pos_category:
+                                pos_industries.append({
+                                    'industry': industry,
+                                    'status': status,
+                                    'growth_type': 1
+                                })
+                            elif status == neg_category:
+                                neg_industries.append({
+                                    'industry': industry,
+                                    'status': status,
+                                    'growth_type': -1
+                                })
+                            else:
+                                neutral_industries.append({
+                                    'industry': industry,
+                                    'status': status,
+                                    'growth_type': 0
+                                })
                     
-                    # Sort industries by growth type
-                    pos_industries = [item for item in month_industries if item['growth_type'] > 0]
-                    neutral_industries = [item for item in month_industries if item['growth_type'] == 0]
-                    neg_industries = [item for item in month_industries if item['growth_type'] < 0]
+                    logger.info(f"Positive industries from data: {[item['industry'] for item in pos_industries]}")
+                    logger.info(f"Negative industries from data (reversed): {[item['industry'] for item in neg_industries]}")
                     
-                    logger.info(f"Positive industries: {pos_industries}")  # Log positive industries
-                    logger.info(f"Neutral industries: {neutral_industries}")  # Log neutral industries
-                    logger.info(f"Negative industries: {neg_industries}")  # Log negative industries
-                    
-                    # Assign ranks: start with positive, then neutral, then negative
+                    # Build ranked industries list
                     ranked_industries = []
                     
-                    # Positive industries: keep original order
+                    # Positive industries with descending ranks
                     for i, item in enumerate(pos_industries):
                         item['rank'] = len(pos_industries) - i
                         ranked_industries.append(item)
                     
-                    # Neutral industries: all get rank 0
+                    # Neutral industries all with rank 0
                     for item in neutral_industries:
                         item['rank'] = 0
                         ranked_industries.append(item)
                     
-                    # Negative industries: reverse order
-                    for i, item in enumerate(reversed(neg_industries)):
+                    # Negative industries with descending negative ranks
+                    for i, item in enumerate(neg_industries):
                         item['rank'] = -1 - i
                         ranked_industries.append(item)
                     
-                    logger.info(f"Ranked industries: {ranked_industries}")  # Log ranked industries
+                    logger.info(f"Ranked industries: {ranked_industries}")
+                    
+                    # Add the sorted industries to the table
+                    for i, item in enumerate(ranked_industries):
+                        # Industry name in first column
+                        rows[i+1][col_idx] = item['industry']
+                        # Rank value in second column
+                        rows[i+1][col_idx+1] = item['rank']
                     
                     # Add the sorted industries to the table
                     for i, item in enumerate(ranked_industries):
