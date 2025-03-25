@@ -3713,7 +3713,15 @@ class GoogleSheetsFormatterTool(BaseTool):
 
     def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
         """
-        Create the numerical growth/contraction tab with vertical tables for each month.
+        Create the numerical growth/contraction tab with industries ranked by growth/contraction.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            sheet_ids: Dictionary mapping tab names to sheet IDs
+        
+        Returns:
+            Boolean indicating success
         """
         try:
             tab_name = 'Growth Numerical'
@@ -3759,6 +3767,57 @@ class GoogleSheetsFormatterTool(BaseTool):
             report_dates = [dict(row) for row in cursor.fetchall()]
             months = [date['month_year'] for date in report_dates]
             
+            # The 18 standard industries - COMPLETE LIST
+            all_standard_industries = [
+                "Apparel, Leather & Allied Products",
+                "Chemical Products",
+                "Computer & Electronic Products",
+                "Electrical Equipment, Appliances & Components",
+                "Fabricated Metal Products",
+                "Food, Beverage & Tobacco Products",
+                "Furniture & Related Products",
+                "Machinery",
+                "Miscellaneous Manufacturing",
+                "Nonmetallic Mineral Products",
+                "Paper Products",
+                "Petroleum & Coal Products",
+                "Plastics & Rubber Products",
+                "Primary Metals",
+                "Printing & Related Support Activities",
+                "Textile Mills",
+                "Transportation Equipment",
+                "Wood Products"
+            ]
+            
+            # Mapping from DB industry names to standard names
+            standard_industries_mapping = {
+                "Apparel, Leather & Allied Products": ["Apparel", "Apparel, Leather", "Apparel & Leather"],
+                "Chemical Products": ["Chemical", "Chemicals"],
+                "Computer & Electronic Products": ["Computer", "Computer & Electronic", "Electronics"],
+                "Electrical Equipment, Appliances & Components": ["Electrical", "Electrical Equipment", "Appliances"],
+                "Fabricated Metal Products": ["Fabricated Metal", "Metal Products", "Fabricated"],
+                "Food, Beverage & Tobacco Products": ["Food", "Food & Beverage", "Food, Beverage & Tobacco"],
+                "Furniture & Related Products": ["Furniture", "Furniture & Related"],
+                "Machinery": ["Machinery"],
+                "Miscellaneous Manufacturing": ["Miscellaneous"],
+                "Nonmetallic Mineral Products": ["Nonmetallic", "Mineral Products", "Nonmetallic Mineral"],
+                "Paper Products": ["Paper"],
+                "Petroleum & Coal Products": ["Petroleum", "Petroleum & Coal", "Coal Products"],
+                "Plastics & Rubber Products": ["Plastics", "Rubber", "Plastics & Rubber"],
+                "Primary Metals": ["Primary Metal", "Metals"],
+                "Printing & Related Support Activities": ["Printing", "Related Support"],
+                "Textile Mills": ["Textile", "Textiles"],
+                "Transportation Equipment": ["Transportation", "Transportation Equipment"],
+                "Wood Products": ["Wood"]
+            }
+            
+            # Create a reverse lookup for standardizing DB entries
+            industry_standardization = {}
+            for standard, variations in standard_industries_mapping.items():
+                for variation in variations:
+                    industry_standardization[variation.lower()] = standard
+                industry_standardization[standard.lower()] = standard
+            
             # Create array to hold all data for batch update
             all_rows = []
             formatting_requests = []
@@ -3780,7 +3839,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                             "startRowIndex": section_start_row,
                             "endRowIndex": section_start_row + 1,
                             "startColumnIndex": 0,
-                            "endColumnIndex": 20
+                            "endColumnIndex": len(months) * 2 + 2  # Enough columns for all tables
                         },
                         "cell": {
                             "userEnteredFormat": {
@@ -3798,32 +3857,35 @@ class GoogleSheetsFormatterTool(BaseTool):
                     }
                 })
                 
-                # Get industry data for this index from the database 
-                industry_data_for_index = get_industry_status_over_time(index, len(months))
+                # Create row for month headers
+                month_header_row = ["REFERENCE"]  # First cell is REFERENCE
+                for month in months:
+                    month_header_row.append(month)  # Month name
+                    month_header_row.append("Rank")  # Rank column
                 
-                # Get all industries for this index
-                all_industries = list(industry_data_for_index['industries'].keys() if industry_data_for_index and 'industries' in industry_data_for_index else [])
+                all_rows.append(month_header_row)
+                current_row += 1
                 
-                # If no industries, skip this index
-                if not all_industries:
-                    logger.warning(f"No industries found for {index}")
-                    # Add blank row between indices
-                    all_rows.append([""])
-                    current_row += 1
-                    continue
-                
-                # Calculate the maximum height needed for all tables
-                max_industries = len(all_industries) + 1  # +1 for header
-                
-                # Create an array of rows of appropriate height
-                rows = [[""] * (len(months) * 2 + 2) for _ in range(max_industries + 2)]
-                
-                # First, add the reference table header
-                rows[0][0] = "REFERENCE"
-                
-                # Add the alphabetically sorted industries to the reference table
-                for i, industry in enumerate(all_industries):
-                    rows[i+1][0] = industry
+                # Add formatting for month header row (bold)
+                formatting_requests.append({
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": current_row - 1,
+                            "endRowIndex": current_row,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": len(months) * 2 + 1
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold"
+                    }
+                })
                 
                 # Define positive and negative categories based on index type
                 pos_category = "Growing"
@@ -3842,22 +3904,12 @@ class GoogleSheetsFormatterTool(BaseTool):
                     pos_category = "Increasing"
                     neg_category = "Decreasing"
                 
-                # Now add the monthly tables
-                for m_idx, month in enumerate(months):
-                    # Calculate column index for this month's table
-                    col_idx = (m_idx + 1) * 2
-                    
-                    # Add month header
-                    rows[0][col_idx] = month
-                    
-                    logger.info(f"Processing month: {month}")
-                    
-                    # Get the month-year string in format "Month YYYY"
-                    # This is needed to retrieve data from the database for this report period
-                    
-                    # Fetch the specific report's extracted data from database
-                    # We need to query the database to get the original extraction data
+                # Process each month to determine rankings
+                month_rankings = []
+                
+                for month in months:
                     try:
+                        # Get report date for this month
                         cursor.execute("""
                             SELECT report_date
                             FROM reports
@@ -3868,225 +3920,169 @@ class GoogleSheetsFormatterTool(BaseTool):
                         if report_date_row:
                             report_date = report_date_row['report_date']
                             
-                            # Now try to get the industry data from the database
+                            # Get industries for this index and month
                             cursor.execute("""
-                                SELECT i.industry_name, i.status, i.category
-                                FROM industry_status i
-                                WHERE i.report_date = ? AND i.index_name = ?
-                                ORDER BY i.id
+                                SELECT industry_name, status, category
+                                FROM industry_status
+                                WHERE report_date = ? AND index_name = ?
+                                ORDER BY id
                             """, (report_date, index))
                             
-                            industry_status_rows = cursor.fetchall()
-                            
-                            # Build lists of positive and negative industries in DB order
+                            # Process into positive and negative categories
                             pos_industries = []
                             neg_industries = []
-                            neutral_industries = []
+                            seen_industries = set()
                             
-                            pos_status_seen = set()
-                            neg_status_seen = set()
-                            
-                            # Process industries preserving their order in the database
-                            for i, row in enumerate(industry_status_rows):
-                                industry = row['industry_name']
-                                status = row['status']
+                            for i, row in enumerate(cursor.fetchall()):
+                                db_industry = row['industry_name']
                                 category = row['category']
                                 
-                                # Skip if this industry was already seen in this category
-                                if category == pos_category and industry in pos_status_seen:
-                                    continue
-                                elif category == neg_category and industry in neg_status_seen:
+                                # Standardize industry name
+                                std_industry = self._standardize_industry_name(db_industry, industry_standardization, all_standard_industries)
+                                
+                                # Skip if invalid or already seen
+                                if not std_industry or std_industry not in all_standard_industries or std_industry in seen_industries:
                                     continue
                                     
+                                seen_industries.add(std_industry)
+                                
                                 if category == pos_category:
-                                    pos_industries.append({
-                                        'industry': industry,
-                                        'status': status,
-                                        'growth_type': 1,
-                                        'original_order': i
-                                    })
-                                    pos_status_seen.add(industry)
+                                    pos_industries.append((std_industry, i))
                                 elif category == neg_category:
-                                    neg_industries.append({
-                                        'industry': industry,
-                                        'status': status,
-                                        'growth_type': -1,
-                                        'original_order': i
-                                    })
-                                    neg_status_seen.add(industry)
-                                else:
-                                    neutral_industries.append({
-                                        'industry': industry,
-                                        'status': status,
-                                        'growth_type': 0,
-                                        'original_order': i
-                                    })
+                                    neg_industries.append((std_industry, i))
+                            
+                            # Build the full ranking map
+                            ranking_map = {}
+                            
+                            # Positive industries get positive ranks (highest first)
+                            for i, (industry, order) in enumerate(pos_industries):
+                                rank = len(pos_industries) - i
+                                ranking_map[industry] = rank
+                            
+                            # Negative industries get negative ranks (most negative last)
+                            neg_industries.reverse()  # Reverse to maintain original DBs order
+                            for i, (industry, order) in enumerate(neg_industries):
+                                rank = -1 - i
+                                ranking_map[industry] = rank
+                            
+                            # Add neutral industries (all standard industries not seen)
+                            for industry in all_standard_industries:
+                                if industry not in ranking_map:
+                                    ranking_map[industry] = 0
+                            
+                            # Find min/max for conditional formatting
+                            rank_values = list(ranking_map.values())
+                            max_rank = max(rank_values)
+                            min_rank = min(rank_values)
+                            
+                            # Store month data
+                            month_rankings.append({
+                                'month': month,
+                                'rankings': ranking_map,
+                                'max_rank': max_rank,
+                                'min_rank': min_rank
+                            })
                         else:
-                            # No data found for this month
-                            pos_industries = []
-                            neg_industries = []
-                            neutral_industries = []
+                            # No data for this month
+                            neutral_map = {industry: 0 for industry in all_standard_industries}
+                            month_rankings.append({
+                                'month': month,
+                                'rankings': neutral_map,
+                                'max_rank': 0,
+                                'min_rank': 0
+                            })
                             
                     except Exception as e:
-                        logger.error(f"Error getting industry status from DB: {str(e)}")
-                        pos_industries = []
-                        neg_industries = []
-                        neutral_industries = []
-                    
-                    # The neg_industries are already in the original order
-                    # We need to reverse them for the display
-                    neg_industries.reverse()
-                    
-                    logger.info(f"Positive industries from data: {[item['industry'] for item in pos_industries]}")
-                    logger.info(f"Negative industries from data (reversed): {[item['industry'] for item in neg_industries]}")
-                    
-                    # Build ranked industries list
-                    ranked_industries = []
-                    
-                    # Positive industries with descending ranks
-                    for i, item in enumerate(pos_industries):
-                        item['rank'] = len(pos_industries) - i
-                        ranked_industries.append(item)
-                    
-                    # Neutral industries all with rank 0
-                    for item in neutral_industries:
-                        item['rank'] = 0
-                        ranked_industries.append(item)
-                    
-                    # Negative industries with descending negative ranks
-                    for i, item in enumerate(neg_industries):
-                        item['rank'] = -1 - i
-                        ranked_industries.append(item)
-                    
-                    logger.info(f"Ranked industries: {ranked_industries}")
-                    
-                    # Add the sorted industries to the table
-                    for i, item in enumerate(ranked_industries):
-                        # Industry name in first column
-                        rows[i+1][col_idx] = item['industry']
-                        # Rank value in second column
-                        rows[i+1][col_idx+1] = item['rank']
+                        logger.error(f"Error processing rankings for {month}: {str(e)}")
+                        # Create neutral rankings as fallback
+                        neutral_map = {industry: 0 for industry in all_standard_industries}
+                        month_rankings.append({
+                            'month': month,
+                            'rankings': neutral_map,
+                            'max_rank': 0,
+                            'min_rank': 0
+                        })
                 
-                # Add all rows for this index to the main data
-                all_rows.extend(rows)
-                current_row += len(rows)
+                # Now create rows for each month, sorted by ranking
+                for month_idx, month_data in enumerate(month_rankings):
+                    # Add conditional formatting for the rank column
+                    if month_data['max_rank'] != month_data['min_rank']:
+                        formatting_requests.append({
+                            "addConditionalFormatRule": {
+                                "rule": {
+                                    "ranges": [
+                                        {
+                                            "sheetId": tab_id,
+                                            "startRowIndex": current_row,
+                                            "endRowIndex": current_row + len(all_standard_industries),
+                                            "startColumnIndex": month_idx * 2 + 2,  # Rank column
+                                            "endColumnIndex": month_idx * 2 + 3
+                                        }
+                                    ],
+                                    "gradientRule": {
+                                        "minpoint": {
+                                            "color": {
+                                                "red": 0.9,
+                                                "green": 0.2,
+                                                "blue": 0.2
+                                            },
+                                            "type": "NUMBER",
+                                            "value": str(month_data['min_rank'])
+                                        },
+                                        "midpoint": {
+                                            "color": {
+                                                "red": 1.0,
+                                                "green": 1.0,
+                                                "blue": 0.2
+                                            },
+                                            "type": "NUMBER",
+                                            "value": "0"
+                                        },
+                                        "maxpoint": {
+                                            "color": {
+                                                "red": 0.2,
+                                                "green": 0.9,
+                                                "blue": 0.2
+                                            },
+                                            "type": "NUMBER",
+                                            "value": str(month_data['max_rank'])
+                                        }
+                                    }
+                                },
+                                "index": index_num * len(months) + month_idx
+                            }
+                        })
+                
+                # Get all industries sorted by first month's ranking
+                if month_rankings:
+                    first_month = month_rankings[0]['rankings']
+                    sorted_industries = sorted(
+                        all_standard_industries,
+                        key=lambda ind: first_month.get(ind, 0),
+                        reverse=True
+                    )
+                else:
+                    sorted_industries = all_standard_industries
+                
+                # Add rows for all industries in sorted order
+                for industry in sorted_industries:
+                    industry_row = [industry]  # First column is industry name
+                    
+                    # Add data for each month
+                    for month_data in month_rankings:
+                        rankings = month_data['rankings']
+                        rank = rankings.get(industry, 0)
+                        industry_row.append(industry)  # Industry column
+                        industry_row.append(rank)      # Rank column
+                    
+                    all_rows.append(industry_row)
+                    current_row += 1
                 
                 # Add blank row between indices
                 all_rows.append([""])
                 current_row += 1
-                
-                # Add conditional formatting for the table
-                # Get the max positive and negative values for conditional formatting
-                max_positive = max([1, max([item['rank'] for item in ranked_industries if 'rank' in item and item['rank'] > 0], default=1)])
-                max_negative = min([-1, min([item['rank'] for item in ranked_industries if 'rank' in item and item['rank'] < 0], default=-1)])
-                
-                # Add conditional formatting for rank columns
-                for m_idx in range(len(months)):
-                    col_idx = (m_idx + 1) * 2 + 1  # Rank column
-                    
-                    # Format for positive values (green gradient)
-                    formatting_requests.append({
-                        "addConditionalFormatRule": {
-                            "rule": {
-                                "ranges": [
-                                    {
-                                        "sheetId": tab_id,
-                                        "startRowIndex": section_start_row + 1,  # Skip header
-                                        "endRowIndex": section_start_row + max_industries + 1,
-                                        "startColumnIndex": col_idx,
-                                        "endColumnIndex": col_idx + 1
-                                    }
-                                ],
-                                "gradientRule": {
-                                    "minpoint": {
-                                        "color": {
-                                            "red": 1.0,
-                                            "green": 1.0,
-                                            "blue": 0.0  # Yellow
-                                        },
-                                        "type": "NUMBER",
-                                        "value": "0"
-                                    },
-                                    "maxpoint": {
-                                        "color": {
-                                            "red": 0.0,
-                                            "green": 0.8,
-                                            "blue": 0.0  # Green
-                                        },
-                                        "type": "NUMBER",
-                                        "value": str(max_positive)
-                                    }
-                                }
-                            },
-                            "index": index_num * 3 + m_idx * 2
-                        }
-                    })
-                    
-                    # Format for negative values (red gradient)
-                    formatting_requests.append({
-                        "addConditionalFormatRule": {
-                            "rule": {
-                                "ranges": [
-                                    {
-                                        "sheetId": tab_id,
-                                        "startRowIndex": section_start_row + 1,  # Skip header
-                                        "endRowIndex": section_start_row + max_industries + 1,
-                                        "startColumnIndex": col_idx,
-                                        "endColumnIndex": col_idx + 1
-                                    }
-                                ],
-                                "gradientRule": {
-                                    "minpoint": {
-                                        "color": {
-                                            "red": 0.8,
-                                            "green": 0.0,
-                                            "blue": 0.0  # Red
-                                        },
-                                        "type": "NUMBER",
-                                        "value": str(max_negative)
-                                    },
-                                    "maxpoint": {
-                                        "color": {
-                                            "red": 1.0,
-                                            "green": 1.0,
-                                            "blue": 0.0  # Yellow
-                                        },
-                                        "type": "NUMBER",
-                                        "value": "0"
-                                    }
-                                }
-                            },
-                            "index": index_num * 3 + m_idx * 2 + 1
-                        }
-                    })
-                    
-                    # Format headers
-                    formatting_requests.append({
-                        "repeatCell": {
-                            "range": {
-                                "sheetId": tab_id,
-                                "startRowIndex": section_start_row + 1,
-                                "endRowIndex": section_start_row + 2,
-                                "startColumnIndex": 0,
-                                "endColumnIndex": (len(months) + 1) * 2
-                            },
-                            "cell": {
-                                "userEnteredFormat": {
-                                    "textFormat": {
-                                        "bold": True
-                                    },
-                                    "backgroundColor": {
-                                        "red": 0.9,
-                                        "green": 0.9,
-                                        "blue": 0.9
-                                    }
-                                }
-                            },
-                            "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                        }
-                    })
             
-            # Add borders and formatting for the whole sheet
+            # Add borders, freeze first row and column
             formatting_requests.append({
                 "updateBorders": {
                     "range": {
@@ -4094,7 +4090,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                         "startRowIndex": 0,
                         "endRowIndex": current_row,
                         "startColumnIndex": 0,
-                        "endColumnIndex": (len(months) + 1) * 2
+                        "endColumnIndex": len(months) * 2 + 1
                     },
                     "top": {"style": "SOLID"},
                     "bottom": {"style": "SOLID"},
@@ -4105,6 +4101,20 @@ class GoogleSheetsFormatterTool(BaseTool):
                 }
             })
             
+            # Freeze header rows and first column
+            formatting_requests.append({
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenRowCount": 2,  # Freeze index header and month headers
+                            "frozenColumnCount": 1  # Freeze industry name column
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
+                }
+            })
+            
             # Auto-resize columns
             formatting_requests.append({
                 "autoResizeDimensions": {
@@ -4112,7 +4122,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                         "sheetId": tab_id,
                         "dimension": "COLUMNS",
                         "startIndex": 0,
-                        "endIndex": (len(months) + 1) * 2
+                        "endIndex": len(months) * 2 + 1
                     }
                 }
             })
@@ -4139,6 +4149,55 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(traceback.format_exc())
             return False
     
+    def _standardize_industry_name(self, industry_name, standardization_map, standard_industry_list):
+        """
+        Standardize industry names to match the official industry names.
+        
+        Args:
+            industry_name: Original industry name from database
+            standardization_map: Mapping of industry name variations to standard names
+            standard_industry_list: List of standard industry names
+            
+        Returns:
+            Standardized industry name
+        """
+        if not industry_name:
+            return None
+            
+        # Clean the industry name
+        clean_name = industry_name.strip()
+        
+        # Try exact match first (case insensitive)
+        if clean_name.lower() in standardization_map:
+            standard_name = standardization_map[clean_name.lower()]
+            if standard_name in standard_industry_list:
+                return standard_name
+        
+        # Try partial matches with keywords
+        for standard_name, variations in standard_industries_mapping.items():
+            for variation in variations:
+                if variation.lower() in clean_name.lower() or clean_name.lower() in variation.lower():
+                    return standard_name
+        
+        # Try best-match approach with overlapping words
+        clean_words = set(clean_name.lower().split())
+        best_match = None
+        best_score = 0
+        
+        for standard_name in standard_industry_list:
+            standard_words = set(standard_name.lower().split())
+            match_score = len(clean_words.intersection(standard_words))
+            if match_score > best_score:
+                best_score = match_score
+                best_match = standard_name
+        
+        # Return best match if we found one with at least one word in common
+        if best_score > 0:
+            return best_match
+        
+        # If all else fails, return the original name
+        return clean_name
+
     def remove_deprecated_tabs(service, sheet_id, tabs_to_keep):
         """
         Remove deprecated tabs, keeping only specified tabs.
