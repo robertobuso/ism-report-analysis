@@ -3312,7 +3312,7 @@ class GoogleSheetsFormatterTool(BaseTool):
 
     def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
         """
-        Create the numerical growth/contraction tab with industries ranked by growth/contraction.
+        Create the numerical growth/contraction tab with proper sorting for each month.
         
         Args:
             service: Google Sheets API service
@@ -3350,7 +3350,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Refresh the sheet IDs mapping
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-             # Get all indices - FILTER OUT MANUFACTURING PMI
+            # Get all indices - FILTER OUT MANUFACTURING PMI
             indices = [idx for idx in get_all_indices() if idx != 'Manufacturing PMI']
             
             # Get report dates
@@ -3455,37 +3455,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                         "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
                     }
                 })
-                
-                # Create row for month headers
-                month_header_row = ["REFERENCE"]  # First cell is REFERENCE
-                for month in months:
-                    month_header_row.append(month)  # Month name
-                    month_header_row.append("Rank")  # Rank column
-                
-                all_rows.append(month_header_row)
-                current_row += 1
-                
-                # Add formatting for month header row (bold)
-                formatting_requests.append({
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": current_row - 1,
-                            "endRowIndex": current_row,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": len(months) * 2 + 1
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold"
-                    }
-                })
-                
+
                 # Define positive and negative categories based on index type
                 pos_category = "Growing"
                 neg_category = "Declining"
@@ -3539,9 +3509,10 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 # Standardize industry name
                                 std_industry = self._standardize_industry_name(
                                     db_industry, 
-                                    industry_standardization,  # Pass the industry_standardization map
-                                    all_standard_industries    # Pass the list of standard industries
-)
+                                    industry_standardization,
+                                    all_standard_industries
+                                )
+                                
                                 # Skip if invalid or already seen
                                 if not std_industry or std_industry not in all_standard_industries or std_industry in seen_industries:
                                     continue
@@ -3604,10 +3575,40 @@ class GoogleSheetsFormatterTool(BaseTool):
                             'max_rank': 0,
                             'min_rank': 0
                         })
+                        
+                # Create header row for REFERENCE column and all months
+                header_row = ["REFERENCE"]  # First column is REFERENCE
+                for month in months:
+                    header_row.append(month)  # Month column
+                    header_row.append("Rank")  # Rank column
+                    
+                all_rows.append(header_row)
+                current_row += 1
                 
-                # Now create rows for each month, sorted by ranking
+                # Add formatting for header row
+                formatting_requests.append({
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": current_row - 1,
+                            "endRowIndex": current_row,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": len(month_rankings) * 2 + 1
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold"
+                    }
+                })
+
+                # For each month, add conditional formatting for the rank column
                 for month_idx, month_data in enumerate(month_rankings):
-                    # Add conditional formatting for the rank column
+                    # Add conditional formatting for the rank column if there's a spread between min and max
                     if month_data['max_rank'] != month_data['min_rank']:
                         formatting_requests.append({
                             "addConditionalFormatRule": {
@@ -3654,56 +3655,77 @@ class GoogleSheetsFormatterTool(BaseTool):
                                 "index": index_num * len(months) + month_idx
                             }
                         })
+
+                # Create the REFERENCE column with alphabetically sorted industries
+                reference_industries = sorted(all_standard_industries)
                 
-                # Get all industries sorted by first month's ranking
-                if month_rankings:
-                    first_month = month_rankings[0]['rankings']
-                    sorted_industries = sorted(
+                # For each month, pre-sort the industries by rank before adding to rows
+                # This replaces the sort requests approach
+                for month_idx, month_data in enumerate(month_rankings):
+                    rankings = month_data['rankings']
+                    
+                    # Sort industries by rank for this month (descending order)
+                    month_sorted_industries = sorted(
                         all_standard_industries,
-                        key=lambda ind: first_month.get(ind, 0),
-                        reverse=True
+                        key=lambda ind: rankings.get(ind, 0),
+                        reverse=True  # Highest rank first
                     )
-                else:
-                    sorted_industries = all_standard_industries
+                    
+                    # Prepare data for this month's columns
+                    month_column_data = []
+                    for industry in month_sorted_industries:
+                        rank = rankings.get(industry, 0)
+                        month_column_data.append({
+                            'industry': industry,
+                            'rank': rank
+                        })
+                    
+                    # Store the sorted data for this month
+                    month_data['sorted_data'] = month_column_data
                 
-                # Add rows for all industries in sorted order
-                for industry in sorted_industries:
-                    industry_row = [industry]  # First column is industry name
+                # Now create rows with REFERENCE and all months' data
+                for i, ref_industry in enumerate(reference_industries):
+                    row = [ref_industry]  # Start with reference industry
                     
                     # Add data for each month
                     for month_data in month_rankings:
-                        rankings = month_data['rankings']
-                        rank = rankings.get(industry, 0)
-                        industry_row.append(industry)  # Industry column
-                        industry_row.append(rank)      # Rank column
+                        # Get the i-th sorted industry for this month
+                        month_sorted = month_data['sorted_data']
+                        if i < len(month_sorted):
+                            row.append(month_sorted[i]['industry'])
+                            row.append(month_sorted[i]['rank'])
+                        else:
+                            # Fallback if somehow there are fewer industries
+                            row.append("")
+                            row.append("")
                     
-                    all_rows.append(industry_row)
+                    all_rows.append(row)
                     current_row += 1
                 
                 # Add blank row between indices
                 all_rows.append([""])
                 current_row += 1
+                
+                # Add borders, freeze first row and column
+                formatting_requests.append({
+                    "updateBorders": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": section_start_row,
+                            "endRowIndex": current_row - 1,  # Exclude the blank row
+                            "startColumnIndex": 0,
+                            "endColumnIndex": len(months) * 2 + 1
+                        },
+                        "top": {"style": "SOLID"},
+                        "bottom": {"style": "SOLID"},
+                        "left": {"style": "SOLID"},
+                        "right": {"style": "SOLID"},
+                        "innerHorizontal": {"style": "SOLID"},
+                        "innerVertical": {"style": "SOLID"}
+                    }
+                })
             
-            # Add borders, freeze first row and column
-            formatting_requests.append({
-                "updateBorders": {
-                    "range": {
-                        "sheetId": tab_id,
-                        "startRowIndex": 0,
-                        "endRowIndex": current_row,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": len(months) * 2 + 1
-                    },
-                    "top": {"style": "SOLID"},
-                    "bottom": {"style": "SOLID"},
-                    "left": {"style": "SOLID"},
-                    "right": {"style": "SOLID"},
-                    "innerHorizontal": {"style": "SOLID"},
-                    "innerVertical": {"style": "SOLID"}
-                }
-            })
-            
-            # Freeze header rows and first column
+            # Freeze header rows and first column for entire sheet
             formatting_requests.append({
                 "updateSheetProperties": {
                     "properties": {
@@ -3729,7 +3751,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 }
             })
             
-            # Update the sheet
+             # Update the sheet with our pre-sorted data
             service.spreadsheets().values().update(
                 spreadsheetId=sheet_id,
                 range=f"'{tab_name}'!A1",
@@ -3737,7 +3759,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 body={"values": all_rows}
             ).execute()
             
-            # Apply all the formatting
+            # Apply formatting (but not sorting requests)
             if formatting_requests:
                 service.spreadsheets().batchUpdate(
                     spreadsheetId=sheet_id,
@@ -3750,7 +3772,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error creating numerical growth tab: {str(e)}")
             logger.error(traceback.format_exc())
             return False
-    
+
     def _standardize_industry_name(self, industry_name, standardization_map, standard_industry_list):
         """
         Standardize industry names to match the official industry names.

@@ -307,6 +307,30 @@ def get_industry_status(index_name):
         logger.error(f"Error getting industry status: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/industry_alphabetical/<index_name>')
+def get_industry_alphabetical(index_name):
+    try:
+        # Get industry status data for the specified index (last 12 months)
+        industry_data = get_industry_status_over_time(index_name, 12)
+        
+        # Return as JSON
+        return jsonify(industry_data)
+    except Exception as e:
+        logger.error(f"Error getting alphabetical industry status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/industry_numerical/<index_name>')
+def get_industry_numerical(index_name):
+    try:
+        # Get industry status data for the specified index (last 12 months)
+        industry_data = get_industry_status_over_time(index_name, 12)
+        
+        # Return as JSON with additional ranking information
+        return jsonify(industry_data)
+    except Exception as e:
+        logger.error(f"Error getting numerical industry status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy"})

@@ -5,206 +5,412 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Initialize heatmap_data from Flask template data
+        const heatmap_data = {{ heatmap_data|tojson|safe }};
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Now updateKpiCards will work
+            updateKpiCards();
+        });
+    </script>
+
     <style>
-        .container { max-width: 1200px; }
-        .mt-5 { margin-top: 3rem !important; }
-        .card { margin-bottom: 20px; }
-        .heatmap-table { width: 100%; border-collapse: collapse; }
-        .heatmap-table th, .heatmap-table td { 
-            padding: 8px; 
-            text-align: center; 
-            border: 1px solid #ddd;
+        body {
+            background-color: #f8f9fa;
+            color: #343a40;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
         }
-        .heatmap-table th { 
-            background-color: #e6e6e6; 
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        .heatmap-table th:first-child {
-            position: sticky;
-            left: 0;
-            z-index: 20;
-            background-color: #e6e6e6;
-        }
-        .heatmap-table td:first-child {
-            position: sticky;
-            left: 0;
-            z-index: 5;
-            background-color: #f9f9f9;
-            font-weight: bold;
-            text-align: left;
-        }
-        .heatmap-container {
-            max-height: 80vh; /* 80% of viewport height */
-            overflow-y: auto;
-            overflow-x: auto;
-            margin-bottom: 20px;
-            width: 100%;
-        }
-        .card {
-            width: 100%;
-        }
+        
         .container {
-            max-width: 1800px; /* Much wider container */
+            max-width: 1400px;
+            padding: 20px;
         }
+        
+        /* Header styling */
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .dashboard-header h1 {
+            font-weight: 600;
+            font-size: 2rem;
+            margin: 0;
+            color: #212529;
+        }
+        
+        /* KPI Cards styling */
+        .kpi-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            padding: 20px;
+            height: 100%;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .kpi-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+        }
+        
+        .kpi-title {
+            color: #6c757d;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .kpi-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: #212529;
+        }
+        
+        .kpi-direction {
+            font-size: 0.9rem;
+        }
+        
+        .text-growing {
+            color: #28a745;
+        }
+        
+        .text-contracting {
+            color: #dc3545;
+        }
+        
+        /* Tab navigation */
+        .nav-tabs {
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 25px;
+        }
+        
         .nav-tabs .nav-link {
+            border: none;
+            border-bottom: 3px solid transparent;
             color: #495057;
+            font-weight: 500;
+            padding: 0.75rem 1rem;
+            margin-right: 1rem;
+            transition: color 0.2s ease, border-color 0.2s ease;
         }
+        
+        .nav-tabs .nav-link:hover {
+            border-color: #dee2e6;
+            color: #212529;
+        }
+        
         .nav-tabs .nav-link.active {
-            font-weight: bold;
+            color: #007bff;
+            border-color: #007bff;
+            background-color: transparent;
+        }
+        
+        /* Table styling */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .data-table th {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-weight: 600;
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .data-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .data-table tr:hover {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        
+        /* Status colors - make them brighter */
+        .bg-growing {
+            background-color: #2ecc71 !important; /* Brighter green */
+            color: white !important;
+        }
+        
+        .bg-contracting {
+            background-color: #e74c3c !important; /* Brighter red */
+            color: white !important;
+        }
+        
+        .bg-neutral {
+            background-color: #f39c12 !important;
+            color: white !important;
+        }
+        
+        /* Content card styling */
+        .content-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        
+        .content-card-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .content-card-header h5 {
+            margin: 0;
+            font-weight: 600;
+            color: #343a40;
+        }
+        
+        .content-card-body {
+            padding: 20px;
+        }
+        
+        /* Filter selectors */
+        .filter-container {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .filter-select {
+            min-width: 200px;
+        }
+        
+        /* Button styling */
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+            padding: 8px 16px;
+            font-weight: 500;
+        }
+        
+        .btn-primary:hover {
+            background-color: #0069d9;
+            border-color: #0062cc;
         }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="container">
+        <!-- Dashboard Header -->
+        <div class="dashboard-header">
             <h1>ISM Manufacturing Report Dashboard</h1>
-            <div>
-                <a href="{{ url_for('upload_view') }}" class="btn btn-outline-primary">Upload Reports</a>
+            <button class="btn btn-primary" onclick="location.href='{{ url_for('upload_view') }}'">
+                Upload Reports
+            </button>
+        </div>
+        
+        <!-- KPI Cards Row -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="kpi-card text-center">
+                    <div class="kpi-title">Manufacturing PMI</div>
+                    <div class="kpi-value" id="mainPmiValue">--</div>
+                    <div class="kpi-direction" id="mainPmiDirection">--</div>
+                    <div class="mt-2">
+                        <span class="badge rounded-pill" id="mainPmiChange"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card text-center">
+                    <div class="kpi-title">New Orders</div>
+                    <div class="kpi-value" id="newOrdersValue">--</div>
+                    <div class="kpi-direction" id="newOrdersDirection">--</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card text-center">
+                    <div class="kpi-title">Production</div>
+                    <div class="kpi-value" id="productionValue">--</div>
+                    <div class="kpi-direction" id="productionDirection">--</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card text-center">
+                    <div class="kpi-title">Employment</div>
+                    <div class="kpi-value" id="employmentValue">--</div>
+                    <div class="kpi-direction" id="employmentDirection">--</div>
+                </div>
             </div>
         </div>
         
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <div class="alert alert-info">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
+        <!-- Filters and Controls -->
+        <div class="filter-container">
+            <div class="filter-select">
+                <label for="timeRangeFilter" class="form-label">Time Range:</label>
+                <select class="form-select" id="timeRangeFilter">
+                    <option value="6">Last 6 Months</option>
+                    <option value="12" selected>Last 12 Months</option>
+                    <option value="24">Last 24 Months</option>
+                    <option value="36">Last 36 Months</option>
+                    <option value="all">All Available Data</option>
+                </select>
+            </div>
+            <div class="filter-select">
+                <label for="indexSelect" class="form-label">Select Index:</label>
+                <select class="form-select" id="indexSelect">
+                    {% for index in indices %}
+                        <option value="{{ index }}">{{ index }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
         
-        <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap" 
-                    type="button" role="tab" aria-controls="heatmap" aria-selected="true">
-                    Heatmap Summary
+                <button class="nav-link" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
+                    Heatmap
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends" 
-                    type="button" role="tab" aria-controls="trends" aria-selected="false">
+                <button class="nav-link active" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
+                    Growth Alphabetical
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
+                    Growth Numerical
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
                     Index Trends
                 </button>
             </li>
         </ul>
         
+        <!-- Tab Content -->
         <div class="tab-content" id="dashboardTabsContent">
             <!-- Heatmap Tab -->
-            <div class="tab-pane fade show active" id="heatmap" role="tabpanel" aria-labelledby="heatmap-tab">
-                <div class="card">
-                    <div class="card-header">
+            <div class="tab-pane fade" id="heatmap" role="tabpanel">
+                <div class="content-card">
+                    <div class="content-card-header">
                         <h5>Manufacturing PMI Heatmap Summary</h5>
+                        <button id="exportHeatmapBtn" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-download"></i> Export Data
+                        </button>
                     </div>
-                    <div class="card-body">
+                    <div class="content-card-body">
                         <div class="heatmap-container">
-                            <table class="heatmap-table">
-                                <thead>
-                                    <tr>
-                                        <th>Month</th>
-                                        {% for index in ['Manufacturing PMI', 'New Orders', 'Production', 'Employment', 
-                                                       'Supplier Deliveries', 'Inventories', 'Customers\' Inventories', 
-                                                       'Prices', 'Backlog of Orders', 'New Export Orders', 'Imports'] %}
-                                            <th>{{ index }}</th>
-                                        {% endfor %}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for data in heatmap_data %}
-                                    <tr>
-                                        <td>{{ data.month_year }}</td>
-                                        {% for index in ['Manufacturing PMI', 'New Orders', 'Production', 'Employment', 
-                                                       'Supplier Deliveries', 'Inventories', 'Customers\' Inventories', 
-                                                       'Prices', 'Backlog of Orders', 'New Export Orders', 'Imports'] %}
-                                            {% if index in data.indices %}
-                                                {% set value = data.indices[index].value %}
-                                                {% set direction = data.indices[index].direction %}
-                                                
-                                                <!-- Calculate color based on the value using green-yellow-red gradient matching the screenshot -->
-                                                {% if value is defined %}
-                                                    {% if value|float >= 55 %}
-                                                        <!-- Bright green for high values (≥55) -->
-                                                        {% set r = 0 %}
-                                                        {% set g = 255 %}
-                                                        {% set b = 0 %}
-                                                    {% elif value|float >= 50 %}
-                                                        <!-- Gradient from yellow to green (50-55) -->
-                                                        {% set ratio = (value|float - 50) / 5 %}  <!-- 0 at 50, 1 at 55 -->
-                                                        {% set r = (255 - (255 * ratio))|int %}
-                                                        {% set g = 255 %}
-                                                        {% set b = 0 %}
-                                                    {% elif value|float >= 49 %}
-                                                        <!-- Yellow for values near 50 (49-50) -->
-                                                        {% set r = 255 %}
-                                                        {% set g = 255 %}
-                                                        {% set b = 0 %}
-                                                    {% elif value|float >= 45 %}
-                                                        <!-- Gradient from red to yellow (45-49) -->
-                                                        {% set ratio = (value|float - 45) / 4 %}  <!-- 0 at 45, 1 at 49 -->
-                                                        {% set r = 255 %}
-                                                        {% set g = (255 * ratio)|int %}
-                                                        {% set b = 0 %}
-                                                    {% else %}
-                                                        <!-- Bright red for low values (<45) -->
-                                                        {% set r = 255 %}
-                                                        {% set g = 0 %}
-                                                        {% set b = 0 %}
-                                                    {% endif %}
-                                                    
-                                                    <!-- Set text color based on background brightness -->
-                                                    {% if (r * 0.299 + g * 0.587 + b * 0.114) > 150 %}
-                                                        {% set textColor = 'black' %}
-                                                    {% else %}
-                                                        {% set textColor = 'white' %}
-                                                    {% endif %}
-                                                {% else %}
-                                                    {% set r = 200 %}
-                                                    {% set g = 200 %}
-                                                    {% set b = 200 %}
-                                                    {% set textColor = 'black' %}
-                                                {% endif %}
-                                                
-                                                <!-- Dark text for light backgrounds, light text for dark backgrounds -->
-                                                {% set textColor = 'black' if value >= 48 else 'white' %}
-                                                
-                                                <td style="background-color: rgb({{ r }}, {{ g }}, {{ b }}); color: {{ textColor }}">
-                                                    {{ value }} ({{ direction }})
-                                                </td>
-                                            {% else %}
-                                                <td>N/A</td>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                            <!-- Heatmap table content here -->
                         </div>
-                        <p class="text-muted small">
-                            <strong>Color legend:</strong> 
-                            <span style="background-color: rgb(0, 255, 0); padding: 2px 6px; border-radius: 2px;">Dark Green</span> indicates strong expansion (≥55), 
-                            <span style="background-color: rgb(150, 255, 0); padding: 2px 6px; border-radius: 2px;">Light Green</span> indicates moderate expansion (50-55),
-                            <span style="background-color: rgb(255, 255, 0); padding: 2px 6px; border-radius: 2px;">Yellow</span> indicates values near neutral (49-50),
-                            <span style="background-color: rgb(255, 150, 0); padding: 2px 6px; border-radius: 2px;">Orange</span> indicates moderate contraction (45-49), and
-                            <span style="background-color: rgb(255, 0, 0); padding: 2px 6px; border-radius: 2px; color: white;">Red</span> indicates strong contraction (<45).
-                        </p>
                     </div>
                 </div>
             </div>
             
-            <!-- Trends Tab -->
-            <div class="tab-pane fade" id="trends" role="tabpanel" aria-labelledby="trends-tab">
+            <!-- Growth Alphabetical Tab -->
+            <div class="tab-pane fade show active" id="growth-alpha" role="tabpanel">
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <h5>Industry Growth Status (Alphabetical)</h5>
+                        <div class="d-flex align-items-center">
+                            <input type="text" class="form-control form-control-sm me-2" id="alphaIndustryFilter" placeholder="Filter industries...">
+                            <button id="exportAlphaBtn" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-download"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    <div class="content-card-body p-0">
+                        <div class="table-responsive">
+                            <table class="data-table" id="alphaGrowthTable">
+                                <!-- Table content will be loaded dynamically -->
+                                <thead>
+                                    <tr id="alphaHeaderRow">
+                                        <th>Industry</th>
+                                        <th>February 2025</th>
+                                        <th>January 2025</th>
+                                        <th>November 2024</th>
+                                        <th>October 2024</th>
+                                        <th>September 2024</th>
+                                        <th>August 2024</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alphaTableBody">
+                                    <!-- Sample row (will be replaced by dynamic data) -->
+                                    <tr>
+                                        <td>Chemical</td>
+                                        <td class="bg-contracting">Contracting</td>
+                                        <td class="bg-contracting">Contracting</td>
+                                        <td class="bg-contracting">Contracting</td>
+                                        <td class="bg-contracting">Contracting</td>
+                                        <td class="bg-contracting">Contracting</td>
+                                        <td class="bg-contracting">Contracting</td>
+                                    </tr>
+                                    <!-- More rows here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Growth Numerical Tab -->
+            <div class="tab-pane fade" id="growth-num" role="tabpanel" aria-labelledby="growth-num-tab">
                 <div class="card">
-                    <div class="card-header">
-                        <h5>Manufacturing PMI Trends</h5>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>Industry Growth Status (By Rank)</h5>
+                        <select id="numIndexSelect" class="form-select form-select-sm w-auto">
+                            {% for index in indices %}
+                                <option value="{{ index }}">{{ index }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <label for="indexSelect" class="form-label">Select Index:</label>
-                                <select class="form-select" id="indexSelect">
+                        <div class="table-responsive" style="max-height: 80vh;">
+                            <table id="numGrowthTable" class="table table-striped table-hover">
+                                <!-- Table content will be loaded dynamically -->
+                                <thead>
+                                    <tr id="numHeaderRow">
+                                        <th>Industry</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="numTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+             <!-- Trends Tab -->
+            <div class="tab-pane fade" id="trends" role="tabpanel">
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <h5>Manufacturing PMI Trends</h5>
+                        <button id="exportTrendsBtn" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-download"></i> Export Data
+                        </button>
+                    </div>
+                    <div class="content-card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">Select Indices to Compare:</label>
+                                <div class="d-flex flex-wrap" id="indexCheckboxes">
                                     {% for index in indices %}
-                                        <option value="{{ index }}">{{ index }}</option>
+                                        <div class="form-check me-3 mb-2">
+                                            <input class="form-check-input index-checkbox" type="checkbox" 
+                                                id="check_{{ index|replace(' ', '_') }}" 
+                                                value="{{ index }}" 
+                                                {% if index == 'Manufacturing PMI' %}checked{% endif %}>
+                                            <label class="form-check-label" for="check_{{ index|replace(' ', '_') }}">
+                                                {{ index }}
+                                            </label>
+                                        </div>
                                     {% endfor %}
-                                </select>
+                                </div>
                             </div>
                         </div>
                         <div style="height: 400px;">
@@ -231,20 +437,78 @@
             }
         });
         
+        // Replace existing trend chart JavaScript
         let trendChart = null;
-        
+        // Update the trends chart with brighter colors
+        const colors = [
+            'rgba(46, 204, 113, 1)', // Bright green
+            'rgba(52, 152, 219, 1)', // Bright blue
+            'rgba(231, 76, 60, 1)',  // Bright red
+            'rgba(241, 196, 15, 1)', // Bright yellow
+            'rgba(155, 89, 182, 1)', // Bright purple
+            'rgba(230, 126, 34, 1)'  // Bright orange
+        ];
+
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize chart with Manufacturing PMI selected by default
+            updateChart();
+            
+            // Add event listeners to checkboxes
+            document.querySelectorAll('.index-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateChart);
+            });
+        });
+
         function fetchTrendData(indexName) {
-            fetch(`/api/index_trends/${encodeURIComponent(indexName)}`)
+            return fetch(`/api/index_trends/${encodeURIComponent(indexName)}`)
                 .then(response => response.json())
-                .then(data => {
-                    renderTrendChart(data, indexName);
-                })
                 .catch(error => {
                     console.error('Error fetching trend data:', error);
+                    return [];
                 });
         }
-        
-        function renderTrendChart(data, indexName) {
+
+        function updateChart() {
+            // Get all selected indices
+            const selectedIndices = Array.from(document.querySelectorAll('.index-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (selectedIndices.length === 0) {
+                // If nothing selected, select Manufacturing PMI
+                const defaultCheck = document.getElementById('check_Manufacturing_PMI');
+                if (defaultCheck) {
+                    defaultCheck.checked = true;
+                    selectedIndices.push('Manufacturing PMI');
+                }
+            }
+            
+            // Fetch data for all selected indices
+            Promise.all(selectedIndices.map(index => 
+                fetchTrendData(index)
+                    .then(data => ({ index, data }))
+            ))
+            .then(results => renderMultiTrendChart(results))
+            .catch(error => console.error('Error updating chart:', error));
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Select Manufacturing PMI checkbox by default
+            const manufacturingPmiCheckbox = document.getElementById('check_Manufacturing_PMI');
+            if (manufacturingPmiCheckbox) {
+                manufacturingPmiCheckbox.checked = true;
+            }
+            
+            // Add event listeners to checkboxes
+            document.querySelectorAll('.index-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', updateChart);
+            });
+            
+            // Initial chart update
+            updateChart();
+        });
+
+        function renderMultiTrendChart(indexDataArray) {
             const ctx = document.getElementById('trendChart').getContext('2d');
             
             // Destroy previous chart if it exists
@@ -252,86 +516,350 @@
                 trendChart.destroy();
             }
             
-            // Prepare data for chart
-            const labels = data.map(item => item.month_year);
-            const values = data.map(item => item.index_value);
-            const directions = data.map(item => item.direction);
+            if (indexDataArray.length === 0) return;
             
-            // Create color array based on values (above/below 50)
-            const backgroundColors = values.map(value => 
-                value >= 50 ? 'rgba(75, 192, 192, 0.2)' : 'rgba(255, 99, 132, 0.2)'
-            );
-            const borderColors = values.map(value => 
-                value >= 50 ? 'rgba(75, 192, 192, 1)' : 'rgba(255, 99, 132, 1)'
-            );
+            // Use the first index's dates for the x-axis
+            const labels = indexDataArray[0].data.map(item => item.month_year);
             
-            // Create chart
+            // Create datasets for each selected index
+            const datasets = indexDataArray.map((result, i) => {
+                const colorIndex = i % colors.length;
+                return {
+                    label: result.index,
+                    data: result.data.map(item => item.index_value),
+                    borderColor: colors[colorIndex],
+                    backgroundColor: colors[colorIndex].replace('1)', '0.1)'),
+                    tension: 0.2,
+                    fill: false,
+                    pointRadius: 5,
+                    pointHoverRadius: 8
+                };
+            });
+            
+            // Add the 50-line reference dataset
+            datasets.push({
+                label: 'Expansion/Contraction Line',
+                data: Array(labels.length).fill(50),
+                borderColor: 'rgba(0, 0, 0, 0.5)',
+                borderWidth: 2,
+                borderDash: [6, 6],
+                pointRadius: 0,
+                fill: false
+            });
+            
+            // Create chart with improved styling
             trendChart = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: indexName,
-                        data: values,
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                        tension: 0.2,
-                        pointBackgroundColor: borderColors,
-                        pointBorderColor: '#fff',
-                        pointRadius: 6,
-                        fill: true
-                    }]
-                },
+                data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const index = context.dataIndex;
-                                    return `Value: ${values[index]} (${directions[index]})`;
-                                }
-                            }
-                        },
-                        annotation: {
-                            annotations: {
-                                line1: {
-                                    type: 'line',
-                                    yMin: 50,
-                                    yMax: 50,
-                                    borderColor: 'rgba(0, 0, 0, 0.5)',
-                                    borderWidth: 2,
-                                    borderDash: [6, 6],
-                                    label: {
-                                        content: 'Expansion/Contraction Line (50)',
-                                        enabled: true,
-                                        position: 'start'
-                                    }
-                                }
-                            }
-                        }
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
                     },
                     scales: {
                         y: {
                             beginAtZero: false,
-                            min: Math.max(30, Math.min(...values) - 5),
-                            max: Math.min(70, Math.max(...values) + 5),
+                            suggestedMin: 40,
+                            suggestedMax: 65,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
                             title: {
                                 display: true,
-                                text: 'Index Value'
+                                text: 'Index Value',
+                                font: {
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
                             }
                         },
                         x: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            },
                             title: {
                                 display: true,
-                                text: 'Month'
+                                text: 'Month',
+                                font: {
+                                    weight: 'bold'
+                                }
+                            },
+                            ticks: {
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const index = context.datasetIndex;
+                                    const dataIndex = context.dataIndex;
+                                    // Skip the reference line
+                                    if (index >= indexDataArray.length) return false;
+                                    
+                                    const datasetLabel = context.dataset.label;
+                                    const value = context.parsed.y;
+                                    const direction = indexDataArray[index].data[dataIndex].direction;
+                                    return `${datasetLabel}: ${value} (${direction})`;
+                                }
+                            },
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleFont: {
+                                size: 13
+                            },
+                            bodyFont: {
+                                size: 12
+                            },
+                            padding: 10,
+                            cornerRadius: 6
+                        },
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                font: {
+                                    size: 12
+                                }
                             }
                         }
                     }
                 }
             });
         }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set up index selectors for growth tables
+            const alphaSelect = document.getElementById('alphaIndexSelect');
+            const numSelect = document.getElementById('numIndexSelect');
+            
+            if (alphaSelect) {
+                alphaSelect.addEventListener('change', () => loadGrowthTable('alpha', alphaSelect.value));
+                // Load initial data once tab is shown
+                const alphaTab = document.getElementById('growth-alpha-tab');
+                alphaTab.addEventListener('shown.bs.tab', () => {
+                    if (!document.getElementById('alphaTableBody').hasChildNodes()) {
+                        loadGrowthTable('alpha', alphaSelect.value);
+                    }
+                });
+            }
+            
+            if (numSelect) {
+                numSelect.addEventListener('change', () => loadGrowthTable('num', numSelect.value));
+                // Load initial data once tab is shown
+                const numTab = document.getElementById('growth-num-tab');
+                numTab.addEventListener('shown.bs.tab', () => {
+                    if (!document.getElementById('numTableBody').hasChildNodes()) {
+                        loadGrowthTable('num', numSelect.value);
+                    }
+                });
+            }
+        });
+
+        function loadGrowthTable(tableType, indexName) {
+            const isAlpha = tableType === 'alpha';
+            const tableId = isAlpha ? 'alphaTableBody' : 'numTableBody';
+            const headerRowId = isAlpha ? 'alphaHeaderRow' : 'numHeaderRow';
+            
+            // Show loading indicator
+            document.getElementById(tableId).innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
+            
+            fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const industries = isAlpha 
+                        ? Object.keys(data.industries).sort() 
+                        : Object.keys(data.industries).sort((a, b) => {
+                            // For numerical, sort by the most recent month's status
+                            const recentMonthA = getRecentMonthValue(data.industries[a], data.dates);
+                            const recentMonthB = getRecentMonthValue(data.industries[b], data.dates);
+                            return recentMonthB - recentMonthA; // Descending order
+                        });
+                        
+                    // Update header row
+                    const headerRow = document.getElementById(headerRowId);
+                    headerRow.innerHTML = '<th>Industry</th>'; // Reset
+                    data.dates.forEach(date => {
+                        headerRow.innerHTML += `<th>${date}</th>`;
+                    });
+                    
+                    // Build table body
+                    const tableBody = document.getElementById(tableId);
+                    tableBody.innerHTML = ''; // Reset
+                    
+                    industries.forEach(industry => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${industry}</td>`;
+                        
+                        data.dates.forEach(date => {
+                            const status = data.industries[industry][date] || { status: 'Not Reported', category: 'Not Reported' };
+                            let cellClass = '';
+                            
+                            // Set class based on status - using our new brighter classes
+                            if (status.status === 'Growing' || status.status === 'Increasing') {
+                                cellClass = 'bg-growing';
+                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
+                                cellClass = 'bg-contracting';
+                            } else if (status.status === 'Neutral') {
+                                cellClass = 'bg-neutral';
+                            }
+                            
+                            row.innerHTML += `<td class="${cellClass}">${status.status}</td>`;
+                        });
+                        
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching industry status:', error);
+                    document.getElementById(tableId).innerHTML = 
+                        '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
+                });
+        }
+
+        function getRecentMonthValue(industryData, dateArray) {
+            // Find most recent month with data
+            for (let i = 0; i < dateArray.length; i++) {
+                const date = dateArray[i];
+                if (industryData[date]) {
+                    const status = industryData[date].status;
+                    if (status === 'Growing' || status === 'Increasing') {
+                        return 3;
+                    } else if (status === 'Neutral') {
+                        return 2;
+                    } else if (status === 'Contracting' || status === 'Decreasing') {
+                        return 1;
+                    }
+                }
+            }
+            return 0; // Not reported
+        }
+  
+        function updateKpiCards() {
+            try {
+                // Check if heatmap_data exists and has at least one record
+                if (typeof heatmap_data === 'undefined' || !heatmap_data || heatmap_data.length === 0) {
+                    console.warn("No heatmap data available for KPI cards");
+                    return;
+                }
+                
+                // Get the most recent month's data
+                const latestData = heatmap_data[0];
+                
+                // Update Manufacturing PMI
+                if (latestData.indices && latestData.indices['Manufacturing PMI']) {
+                    const pmiData = latestData.indices['Manufacturing PMI'];
+                    const pmiValue = pmiData.value;
+                    const pmiDirection = pmiData.direction;
+                    
+                    document.getElementById('mainPmiValue').textContent = pmiValue;
+                    
+                    const directionElem = document.getElementById('mainPmiDirection');
+                    directionElem.textContent = pmiDirection;
+                    
+                    if (pmiDirection === 'Growing') {
+                        directionElem.className = 'kpi-direction text-growing';
+                    } else if (pmiDirection === 'Contracting') {
+                        directionElem.className = 'kpi-direction text-contracting';
+                    } else {
+                        directionElem.className = 'kpi-direction text-muted';
+                    }
+                    
+                    // Add change if available in data
+                    if (heatmap_data.length > 1) {
+                        const prevData = heatmap_data[1];
+                        if (prevData.indices && prevData.indices['Manufacturing PMI']) {
+                            const prevValue = parseFloat(prevData.indices['Manufacturing PMI'].value);
+                            const currentValue = parseFloat(pmiValue);
+                            
+                            if (!isNaN(prevValue) && !isNaN(currentValue)) {
+                                const change = (currentValue - prevValue).toFixed(1);
+                                const changeElem = document.getElementById('mainPmiChange');
+                                
+                                if (parseFloat(change) > 0) {
+                                    changeElem.textContent = `+${change} from previous`;
+                                    changeElem.className = 'badge rounded-pill bg-success';
+                                } else if (parseFloat(change) < 0) {
+                                    changeElem.textContent = `${change} from previous`;
+                                    changeElem.className = 'badge rounded-pill bg-danger';
+                                } else {
+                                    changeElem.textContent = 'No change';
+                                    changeElem.className = 'badge rounded-pill bg-secondary';
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Update other KPIs
+                updateSingleKpi('New Orders', 'newOrdersValue', 'newOrdersDirection', latestData);
+                updateSingleKpi('Production', 'productionValue', 'productionDirection', latestData);
+                updateSingleKpi('Employment', 'employmentValue', 'employmentDirection', latestData);
+            } catch (error) {
+                console.error("Error updating KPI cards:", error);
+            }
+        }
+
+        function updateSingleKpi(indexName, valueId, directionId, latestData) {
+            try {
+                if (latestData.indices && latestData.indices[indexName]) {
+                    const data = latestData.indices[indexName];
+                    const value = data.value;
+                    const direction = data.direction;
+                    
+                    document.getElementById(valueId).textContent = value;
+                    
+                    const directionElem = document.getElementById(directionId);
+                    directionElem.textContent = direction;
+                    
+                    if (direction === 'Growing' || direction === 'Increasing') {
+                        directionElem.className = 'kpi-direction text-growing';
+                    } else if (direction === 'Contracting' || direction === 'Decreasing') {
+                        directionElem.className = 'kpi-direction text-contracting';
+                    } else {
+                        directionElem.className = 'kpi-direction text-muted';
+                    }
+                }
+            } catch (error) {
+                console.error(`Error updating ${indexName} KPI:`, error);
+            }
+        }
+        
+        function updateSingleKpi(indexName, valueId, directionId, latestData) {
+            if (latestData.indices[indexName]) {
+                const data = latestData.indices[indexName];
+                const value = data.value;
+                const direction = data.direction;
+                
+                document.getElementById(valueId).textContent = value;
+                
+                const directionElem = document.getElementById(directionId);
+                directionElem.textContent = direction;
+                
+                if (direction === 'Growing' || direction === 'Increasing') {
+                    directionElem.className = 'small text-success';
+                } else if (direction === 'Contracting' || direction === 'Decreasing') {
+                    directionElem.className = 'small text-danger';
+                } else {
+                    directionElem.className = 'small text-muted';
+                }
+            }
+        }
+
+        // Call on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            updateKpiCards();
+        });
+
     </script>
 </body>
 </html>
