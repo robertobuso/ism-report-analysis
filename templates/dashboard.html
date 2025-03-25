@@ -202,6 +202,59 @@
             background-color: #0069d9;
             border-color: #0062cc;
         }
+
+        .heatmap-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        .heatmap-container table {
+            min-width: 100%;
+            border-collapse: collapse;
+        }
+
+        .heatmap-container th, .heatmap-container td {
+            padding: 8px 12px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+        }
+
+        .heatmap-container th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .heatmap-container td:first-child {
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background-color: #f8f9fa;
+            z-index: 5;
+        }
+
+        /* Make sure the brighter colors are properly defined */
+        .bg-growing {
+            background-color: #2ecc71 !important; /* Brighter green */
+            color: white !important;
+        }
+
+        .bg-contracting {
+            background-color: #e74c3c !important; /* Brighter red */
+            color: white !important;
+        }
+
+        .bg-neutral {
+            background-color: #f39c12 !important;
+            color: white !important;
+        }
+
+        /* Add more contrast to the rank cells in numerical table */
+        #numTableBody td:nth-child(even) {
+            font-weight: bold;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -424,22 +477,7 @@
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Fetch initial trend data when page loads
-            const indexSelect = document.getElementById('indexSelect');
-            if (indexSelect) {
-                fetchTrendData(indexSelect.value);
-                
-                // Update chart when index selection changes
-                indexSelect.addEventListener('change', function() {
-                    fetchTrendData(this.value);
-                });
-            }
-        });
-        
-        // Replace existing trend chart JavaScript
-        let trendChart = null;
-        // Update the trends chart with brighter colors
+        // Shared colors array for charts
         const colors = [
             'rgba(46, 204, 113, 1)', // Bright green
             'rgba(52, 152, 219, 1)', // Bright blue
@@ -448,18 +486,395 @@
             'rgba(155, 89, 182, 1)', // Bright purple
             'rgba(230, 126, 34, 1)'  // Bright orange
         ];
-
-
+        
+        // Chart reference for trends
+        let trendChart = null;
+        
+        // Main initialization function
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize chart with Manufacturing PMI selected by default
-            updateChart();
+            // Initialize KPI cards
+            updateKpiCards();
             
-            // Add event listeners to checkboxes
+            // Set up trend chart
+            const defaultCheck = document.getElementById('check_Manufacturing_PMI');
+            if (defaultCheck) {
+                defaultCheck.checked = true;
+            }
+            
             document.querySelectorAll('.index-checkbox').forEach(checkbox => {
                 checkbox.addEventListener('change', updateChart);
             });
+            
+            updateChart();
+            
+            // Set up index selectors
+            const indexSelect = document.getElementById('indexSelect');
+            if (indexSelect) {
+                fetchTrendData(indexSelect.value);
+                indexSelect.addEventListener('change', function() {
+                    fetchTrendData(this.value);
+                });
+            }
+            
+            // Set up tab event listeners
+            setupTabEventListeners();
         });
-
+        
+        // Set up tab event listeners
+        function setupTabEventListeners() {
+            // Heatmap tab
+            const heatmapTab = document.getElementById('heatmap-tab');
+            if (heatmapTab) {
+                heatmapTab.addEventListener('shown.bs.tab', loadHeatmapData);
+            }
+            
+            // Alphabetical growth tab
+            const growthAlphaTab = document.getElementById('growth-alpha-tab');
+            const indexSelect = document.getElementById('indexSelect');
+            if (growthAlphaTab && indexSelect) {
+                growthAlphaTab.addEventListener('shown.bs.tab', () => {
+                    if (!document.getElementById('alphaTableBody').hasChildNodes()) {
+                        loadGrowthTable('alpha', indexSelect.value);
+                    }
+                });
+            }
+            
+            // Numerical growth tab
+            const numGrowthTab = document.getElementById('growth-num-tab');
+            const numIndexSelect = document.getElementById('numIndexSelect');
+            if (numGrowthTab && numIndexSelect) {
+                numGrowthTab.addEventListener('shown.bs.tab', () => {
+                    loadNumericalGrowthTable(numIndexSelect.value);
+                });
+                
+                numIndexSelect.addEventListener('change', () => {
+                    loadNumericalGrowthTable(numIndexSelect.value);
+                });
+            }
+        }
+        
+        // KPI Cards Functions
+        function updateKpiCards() {
+            try {
+                // Check if heatmap_data exists and has at least one record
+                if (typeof heatmap_data === 'undefined' || !heatmap_data || heatmap_data.length === 0) {
+                    console.warn("No heatmap data available for KPI cards");
+                    return;
+                }
+                
+                // Get the most recent month's data
+                const latestData = heatmap_data[0];
+                
+                // Update Manufacturing PMI
+                if (latestData.indices && latestData.indices['Manufacturing PMI']) {
+                    const pmiData = latestData.indices['Manufacturing PMI'];
+                    const pmiValue = pmiData.value;
+                    const pmiDirection = pmiData.direction;
+                    
+                    document.getElementById('mainPmiValue').textContent = pmiValue;
+                    
+                    const directionElem = document.getElementById('mainPmiDirection');
+                    directionElem.textContent = pmiDirection;
+                    
+                    if (pmiDirection === 'Growing') {
+                        directionElem.className = 'kpi-direction text-growing';
+                    } else if (pmiDirection === 'Contracting') {
+                        directionElem.className = 'kpi-direction text-contracting';
+                    } else {
+                        directionElem.className = 'kpi-direction text-muted';
+                    }
+                    
+                    // Add change if available in data
+                    if (heatmap_data.length > 1) {
+                        const prevData = heatmap_data[1];
+                        if (prevData.indices && prevData.indices['Manufacturing PMI']) {
+                            const prevValue = parseFloat(prevData.indices['Manufacturing PMI'].value);
+                            const currentValue = parseFloat(pmiValue);
+                            
+                            if (!isNaN(prevValue) && !isNaN(currentValue)) {
+                                const change = (currentValue - prevValue).toFixed(1);
+                                const changeElem = document.getElementById('mainPmiChange');
+                                
+                                if (parseFloat(change) > 0) {
+                                    changeElem.textContent = `+${change} from previous`;
+                                    changeElem.className = 'badge rounded-pill bg-success';
+                                } else if (parseFloat(change) < 0) {
+                                    changeElem.textContent = `${change} from previous`;
+                                    changeElem.className = 'badge rounded-pill bg-danger';
+                                } else {
+                                    changeElem.textContent = 'No change';
+                                    changeElem.className = 'badge rounded-pill bg-secondary';
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Update other KPIs
+                updateSingleKpi('New Orders', 'newOrdersValue', 'newOrdersDirection', latestData);
+                updateSingleKpi('Production', 'productionValue', 'productionDirection', latestData);
+                updateSingleKpi('Employment', 'employmentValue', 'employmentDirection', latestData);
+            } catch (error) {
+                console.error("Error updating KPI cards:", error);
+            }
+        }
+    
+        function updateSingleKpi(indexName, valueId, directionId, latestData) {
+            if (latestData.indices[indexName]) {
+                const data = latestData.indices[indexName];
+                const value = data.value;
+                const direction = data.direction;
+                
+                document.getElementById(valueId).textContent = value;
+                
+                const directionElem = document.getElementById(directionId);
+                directionElem.textContent = direction;
+                
+                if (direction === 'Growing' || direction === 'Increasing') {
+                    directionElem.className = 'kpi-direction text-growing';
+                } else if (direction === 'Contracting' || direction === 'Decreasing') {
+                    directionElem.className = 'kpi-direction text-contracting';
+                } else {
+                    directionElem.className = 'kpi-direction text-muted';
+                }
+            }
+        }
+        
+        // Heatmap Functions
+        function loadHeatmapData() {
+            const heatmapContainer = document.querySelector('.heatmap-container');
+            if (!heatmapContainer.hasChildNodes()) {
+                // Create table for heatmap
+                const table = document.createElement('table');
+                table.className = 'table table-bordered';
+                
+                // Create header row with months
+                const headerRow = document.createElement('tr');
+                headerRow.innerHTML = '<th>Index</th>';
+                
+                // Use the monthly data already available in heatmap_data
+                const months = heatmap_data.slice(0, 12).map(data => data.month_year);
+                
+                months.forEach(month => {
+                    headerRow.innerHTML += `<th>${month}</th>`;
+                });
+                
+                const thead = document.createElement('thead');
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                // Create tbody and rows for each index
+                const tbody = document.createElement('tbody');
+                
+                // Get all unique indices
+                const allIndices = new Set();
+                heatmap_data.forEach(data => {
+                    Object.keys(data.indices).forEach(index => allIndices.add(index));
+                });
+                
+                // Create row for each index
+                Array.from(allIndices).sort().forEach(index => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${index}</td>`;
+                    
+                    // Add data for each month
+                    months.forEach(month => {
+                        const monthData = heatmap_data.find(data => data.month_year === month);
+                        const indexData = monthData && monthData.indices[index];
+                        
+                        if (indexData) {
+                            const value = indexData.value;
+                            const direction = indexData.direction;
+                            const cellClass = direction === 'Growing' ? 'bg-growing' : 
+                                            direction === 'Contracting' ? 'bg-contracting' : '';
+                            
+                            row.innerHTML += `<td class="${cellClass}">${value}</td>`;
+                        } else {
+                            row.innerHTML += `<td>-</td>`;
+                        }
+                    });
+                    
+                    tbody.appendChild(row);
+                });
+                
+                table.appendChild(tbody);
+                heatmapContainer.appendChild(table);
+            }
+        }
+        
+        // Growth Table Functions
+        function loadGrowthTable(tableType, indexName) {
+            const isAlpha = tableType === 'alpha';
+            const tableId = isAlpha ? 'alphaTableBody' : 'numTableBody';
+            const headerRowId = isAlpha ? 'alphaHeaderRow' : 'numHeaderRow';
+            
+            // Show loading indicator
+            document.getElementById(tableId).innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
+            
+            fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const industries = isAlpha 
+                        ? Object.keys(data.industries).sort() 
+                        : Object.keys(data.industries).sort((a, b) => {
+                            // For numerical, sort by the most recent month's status
+                            const recentMonthA = getRecentMonthValue(data.industries[a], data.dates);
+                            const recentMonthB = getRecentMonthValue(data.industries[b], data.dates);
+                            return recentMonthB - recentMonthA; // Descending order
+                        });
+                        
+                    // Update header row
+                    const headerRow = document.getElementById(headerRowId);
+                    headerRow.innerHTML = '<th>Industry</th>'; // Reset
+                    data.dates.forEach(date => {
+                        headerRow.innerHTML += `<th>${date}</th>`;
+                    });
+                    
+                    // Build table body
+                    const tableBody = document.getElementById(tableId);
+                    tableBody.innerHTML = ''; // Reset
+                    
+                    industries.forEach(industry => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${industry}</td>`;
+                        
+                        data.dates.forEach(date => {
+                            const status = data.industries[industry][date] || { status: 'Not Reported', category: 'Not Reported' };
+                            let cellClass = '';
+                            
+                            // Set class based on status - using our new brighter classes
+                            if (status.status === 'Growing' || status.status === 'Increasing') {
+                                cellClass = 'bg-growing';  // Use this brighter class
+                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
+                                cellClass = 'bg-contracting';  // Use this brighter class
+                            } else if (status.status === 'Neutral') {
+                                cellClass = 'bg-neutral';
+                            }
+                            
+                            row.innerHTML += `<td class="${cellClass}">${status.status}</td>`;
+                        });
+                        
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching industry status:', error);
+                    document.getElementById(tableId).innerHTML = 
+                        '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
+                });
+        }
+        
+        // Helper function for growth table sorting
+        function getRecentMonthValue(industryData, dateArray) {
+            // Find most recent month with data
+            for (let i = 0; i < dateArray.length; i++) {
+                const date = dateArray[i];
+                if (industryData[date]) {
+                    const status = industryData[date].status;
+                    if (status === 'Growing' || status === 'Increasing') {
+                        return 3;
+                    } else if (status === 'Neutral') {
+                        return 2;
+                    } else if (status === 'Contracting' || status === 'Decreasing') {
+                        return 1;
+                    }
+                }
+            }
+            return 0; // Not reported
+        }
+        
+        // Numerical Growth Table
+        function loadNumericalGrowthTable(indexName) {
+            const tableBody = document.getElementById('numTableBody');
+            const headerRow = document.getElementById('numHeaderRow');
+            
+            // Show loading indicator
+            tableBody.innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
+            
+            fetch(`/api/industry_numerical/${encodeURIComponent(indexName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Reset header row
+                    headerRow.innerHTML = '<th>Industry</th>';
+                    
+                    // Add month columns
+                    data.dates.forEach(date => {
+                        headerRow.innerHTML += `<th>${date}</th><th>Rank</th>`;
+                    });
+                    
+                    // Get all industries
+                    const industries = Object.keys(data.industries);
+                    
+                    // Get the most recent date
+                    const mostRecentDate = data.dates[0];
+                    
+                    // Create a sorting map for rankings based on most recent month
+                    const rankMap = {};
+                    industries.forEach(industry => {
+                        const status = data.industries[industry][mostRecentDate];
+                        if (status) {
+                            // Calculate a rank value based on status
+                            if (status.status === 'Growing' || status.status === 'Increasing') {
+                                rankMap[industry] = 3;
+                            } else if (status.status === 'Neutral') {
+                                rankMap[industry] = 2;
+                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
+                                rankMap[industry] = 1;
+                            } else {
+                                rankMap[industry] = 0;
+                            }
+                        } else {
+                            rankMap[industry] = 0;
+                        }
+                    });
+                    
+                    // Sort industries by rank (descending)
+                    const sortedIndustries = industries.sort((a, b) => rankMap[b] - rankMap[a]);
+    
+                    // Build table rows
+                    tableBody.innerHTML = '';
+                    sortedIndustries.forEach(industry => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${industry}</td>`;
+                        
+                        // Add status and rank for each date
+                        data.dates.forEach(date => {
+                            const status = data.industries[industry][date];
+                            let statusCell = '';
+                            let rankCell = '';
+                            
+                            if (status) {
+                                let cellClass = '';
+                                if (status.status === 'Growing' || status.status === 'Increasing') {
+                                    cellClass = 'bg-growing';
+                                    rankCell = '+' + (rankMap[industry] || 0);
+                                } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
+                                    cellClass = 'bg-contracting';
+                                    rankCell = '-' + (rankMap[industry] || 0);
+                                } else if (status.status === 'Neutral') {
+                                    cellClass = 'bg-neutral';
+                                    rankCell = '0';
+                                }
+                                
+                                statusCell = `<td class="${cellClass}">${status.status}</td>`;
+                            } else {
+                                statusCell = '<td>Not Reported</td>';
+                                rankCell = '<td>0</td>';
+                            }
+                            
+                            row.innerHTML += statusCell + `<td>${rankCell}</td>`;
+                        });
+                        
+                        tableBody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching numerical growth data:', error);
+                    tableBody.innerHTML = '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
+                });
+        }
+        
+        // Trend Chart Functions
         function fetchTrendData(indexName) {
             return fetch(`/api/index_trends/${encodeURIComponent(indexName)}`)
                 .then(response => response.json())
@@ -468,7 +883,7 @@
                     return [];
                 });
         }
-
+    
         function updateChart() {
             // Get all selected indices
             const selectedIndices = Array.from(document.querySelectorAll('.index-checkbox:checked'))
@@ -491,23 +906,7 @@
             .then(results => renderMultiTrendChart(results))
             .catch(error => console.error('Error updating chart:', error));
         }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            // Select Manufacturing PMI checkbox by default
-            const manufacturingPmiCheckbox = document.getElementById('check_Manufacturing_PMI');
-            if (manufacturingPmiCheckbox) {
-                manufacturingPmiCheckbox.checked = true;
-            }
-            
-            // Add event listeners to checkboxes
-            document.querySelectorAll('.index-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('change', updateChart);
-            });
-            
-            // Initial chart update
-            updateChart();
-        });
-
+    
         function renderMultiTrendChart(indexDataArray) {
             const ctx = document.getElementById('trendChart').getContext('2d');
             
@@ -636,230 +1035,6 @@
                 }
             });
         }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            // Set up index selectors for growth tables
-            const alphaSelect = document.getElementById('alphaIndexSelect');
-            const numSelect = document.getElementById('numIndexSelect');
-            
-            if (alphaSelect) {
-                alphaSelect.addEventListener('change', () => loadGrowthTable('alpha', alphaSelect.value));
-                // Load initial data once tab is shown
-                const alphaTab = document.getElementById('growth-alpha-tab');
-                alphaTab.addEventListener('shown.bs.tab', () => {
-                    if (!document.getElementById('alphaTableBody').hasChildNodes()) {
-                        loadGrowthTable('alpha', alphaSelect.value);
-                    }
-                });
-            }
-            
-            if (numSelect) {
-                numSelect.addEventListener('change', () => loadGrowthTable('num', numSelect.value));
-                // Load initial data once tab is shown
-                const numTab = document.getElementById('growth-num-tab');
-                numTab.addEventListener('shown.bs.tab', () => {
-                    if (!document.getElementById('numTableBody').hasChildNodes()) {
-                        loadGrowthTable('num', numSelect.value);
-                    }
-                });
-            }
-        });
-
-        function loadGrowthTable(tableType, indexName) {
-            const isAlpha = tableType === 'alpha';
-            const tableId = isAlpha ? 'alphaTableBody' : 'numTableBody';
-            const headerRowId = isAlpha ? 'alphaHeaderRow' : 'numHeaderRow';
-            
-            // Show loading indicator
-            document.getElementById(tableId).innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
-            
-            fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
-                .then(response => response.json())
-                .then(data => {
-                    const industries = isAlpha 
-                        ? Object.keys(data.industries).sort() 
-                        : Object.keys(data.industries).sort((a, b) => {
-                            // For numerical, sort by the most recent month's status
-                            const recentMonthA = getRecentMonthValue(data.industries[a], data.dates);
-                            const recentMonthB = getRecentMonthValue(data.industries[b], data.dates);
-                            return recentMonthB - recentMonthA; // Descending order
-                        });
-                        
-                    // Update header row
-                    const headerRow = document.getElementById(headerRowId);
-                    headerRow.innerHTML = '<th>Industry</th>'; // Reset
-                    data.dates.forEach(date => {
-                        headerRow.innerHTML += `<th>${date}</th>`;
-                    });
-                    
-                    // Build table body
-                    const tableBody = document.getElementById(tableId);
-                    tableBody.innerHTML = ''; // Reset
-                    
-                    industries.forEach(industry => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `<td>${industry}</td>`;
-                        
-                        data.dates.forEach(date => {
-                            const status = data.industries[industry][date] || { status: 'Not Reported', category: 'Not Reported' };
-                            let cellClass = '';
-                            
-                            // Set class based on status - using our new brighter classes
-                            if (status.status === 'Growing' || status.status === 'Increasing') {
-                                cellClass = 'bg-growing';
-                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
-                                cellClass = 'bg-contracting';
-                            } else if (status.status === 'Neutral') {
-                                cellClass = 'bg-neutral';
-                            }
-                            
-                            row.innerHTML += `<td class="${cellClass}">${status.status}</td>`;
-                        });
-                        
-                        tableBody.appendChild(row);
-                    });
-                })
-                .catch(error => {
-                    console.error('Error fetching industry status:', error);
-                    document.getElementById(tableId).innerHTML = 
-                        '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
-                });
-        }
-
-        function getRecentMonthValue(industryData, dateArray) {
-            // Find most recent month with data
-            for (let i = 0; i < dateArray.length; i++) {
-                const date = dateArray[i];
-                if (industryData[date]) {
-                    const status = industryData[date].status;
-                    if (status === 'Growing' || status === 'Increasing') {
-                        return 3;
-                    } else if (status === 'Neutral') {
-                        return 2;
-                    } else if (status === 'Contracting' || status === 'Decreasing') {
-                        return 1;
-                    }
-                }
-            }
-            return 0; // Not reported
-        }
-  
-        function updateKpiCards() {
-            try {
-                // Check if heatmap_data exists and has at least one record
-                if (typeof heatmap_data === 'undefined' || !heatmap_data || heatmap_data.length === 0) {
-                    console.warn("No heatmap data available for KPI cards");
-                    return;
-                }
-                
-                // Get the most recent month's data
-                const latestData = heatmap_data[0];
-                
-                // Update Manufacturing PMI
-                if (latestData.indices && latestData.indices['Manufacturing PMI']) {
-                    const pmiData = latestData.indices['Manufacturing PMI'];
-                    const pmiValue = pmiData.value;
-                    const pmiDirection = pmiData.direction;
-                    
-                    document.getElementById('mainPmiValue').textContent = pmiValue;
-                    
-                    const directionElem = document.getElementById('mainPmiDirection');
-                    directionElem.textContent = pmiDirection;
-                    
-                    if (pmiDirection === 'Growing') {
-                        directionElem.className = 'kpi-direction text-growing';
-                    } else if (pmiDirection === 'Contracting') {
-                        directionElem.className = 'kpi-direction text-contracting';
-                    } else {
-                        directionElem.className = 'kpi-direction text-muted';
-                    }
-                    
-                    // Add change if available in data
-                    if (heatmap_data.length > 1) {
-                        const prevData = heatmap_data[1];
-                        if (prevData.indices && prevData.indices['Manufacturing PMI']) {
-                            const prevValue = parseFloat(prevData.indices['Manufacturing PMI'].value);
-                            const currentValue = parseFloat(pmiValue);
-                            
-                            if (!isNaN(prevValue) && !isNaN(currentValue)) {
-                                const change = (currentValue - prevValue).toFixed(1);
-                                const changeElem = document.getElementById('mainPmiChange');
-                                
-                                if (parseFloat(change) > 0) {
-                                    changeElem.textContent = `+${change} from previous`;
-                                    changeElem.className = 'badge rounded-pill bg-success';
-                                } else if (parseFloat(change) < 0) {
-                                    changeElem.textContent = `${change} from previous`;
-                                    changeElem.className = 'badge rounded-pill bg-danger';
-                                } else {
-                                    changeElem.textContent = 'No change';
-                                    changeElem.className = 'badge rounded-pill bg-secondary';
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Update other KPIs
-                updateSingleKpi('New Orders', 'newOrdersValue', 'newOrdersDirection', latestData);
-                updateSingleKpi('Production', 'productionValue', 'productionDirection', latestData);
-                updateSingleKpi('Employment', 'employmentValue', 'employmentDirection', latestData);
-            } catch (error) {
-                console.error("Error updating KPI cards:", error);
-            }
-        }
-
-        function updateSingleKpi(indexName, valueId, directionId, latestData) {
-            try {
-                if (latestData.indices && latestData.indices[indexName]) {
-                    const data = latestData.indices[indexName];
-                    const value = data.value;
-                    const direction = data.direction;
-                    
-                    document.getElementById(valueId).textContent = value;
-                    
-                    const directionElem = document.getElementById(directionId);
-                    directionElem.textContent = direction;
-                    
-                    if (direction === 'Growing' || direction === 'Increasing') {
-                        directionElem.className = 'kpi-direction text-growing';
-                    } else if (direction === 'Contracting' || direction === 'Decreasing') {
-                        directionElem.className = 'kpi-direction text-contracting';
-                    } else {
-                        directionElem.className = 'kpi-direction text-muted';
-                    }
-                }
-            } catch (error) {
-                console.error(`Error updating ${indexName} KPI:`, error);
-            }
-        }
-        
-        function updateSingleKpi(indexName, valueId, directionId, latestData) {
-            if (latestData.indices[indexName]) {
-                const data = latestData.indices[indexName];
-                const value = data.value;
-                const direction = data.direction;
-                
-                document.getElementById(valueId).textContent = value;
-                
-                const directionElem = document.getElementById(directionId);
-                directionElem.textContent = direction;
-                
-                if (direction === 'Growing' || direction === 'Increasing') {
-                    directionElem.className = 'small text-success';
-                } else if (direction === 'Contracting' || direction === 'Decreasing') {
-                    directionElem.className = 'small text-danger';
-                } else {
-                    directionElem.className = 'small text-muted';
-                }
-            }
-        }
-
-        // Call on page load
-        window.addEventListener('DOMContentLoaded', function() {
-            updateKpiCards();
-        });
-
     </script>
 </body>
 </html>

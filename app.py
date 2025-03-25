@@ -331,6 +331,29 @@ def get_industry_numerical(index_name):
         logger.error(f"Error getting numerical industry status: {str(e)}")
         return jsonify({"error": str(e)}), 500
     
+@app.route('/api/heatmap_data/<int:months>')
+@app.route('/api/heatmap_data/all')
+def api_heatmap_data(months=None):
+    try:
+        if months == 'all':
+            months = None
+        heatmap_data = get_pmi_data_by_month(months)
+        return jsonify(heatmap_data)
+    except Exception as e:
+        logger.error(f"Error getting heatmap data: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/industry_status/<index_name>')
+def s(index_name):
+    try:
+        # Get industry status data for the specified index (last 12 months)
+        months = request.args.get('months', 12, type=int)
+        industry_data = get_industry_status_over_time(index_name, months)
+        return jsonify(industry_data)
+    except Exception as e:
+        logger.error(f"Error getting industry status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy"})
