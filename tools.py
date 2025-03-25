@@ -3401,6 +3401,316 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(traceback.format_exc())
             return False
 
+    def create_alphabetical_growth_tab(self, service, sheet_id, sheet_ids):
+        """
+        Create the alphabetical growth/contraction tab.
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            sheet_ids: Dictionary mapping tab names to sheet IDs
+        
+        Returns:
+            Boolean indicating success
+        """
+        try:
+            tab_name = 'Growth Alphabetical'
+            
+            # Check if tab exists
+            tab_id = sheet_ids.get(tab_name)
+            if not tab_id:
+                # Create the tab if it doesn't exist
+                add_sheet_request = {
+                    'requests': [{
+                        'addSheet': {
+                            'properties': {
+                                'title': tab_name
+                            }
+                        }
+                    }]
+                }
+                response = service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body=add_sheet_request
+                ).execute()
+                
+                # Get the new sheet ID
+                tab_id = response['replies'][0]['addSheet']['properties']['sheetId']
+                logger.info(f"Created new tab '{tab_name}' with ID {tab_id}")
+                
+                # Refresh the sheet IDs mapping
+                sheet_ids = self._get_all_sheet_ids(service, sheet_id)
+            
+            # Get all indices
+            indices = get_all_indices()
+            
+            # Get all report dates for columns
+            report_dates = get_all_report_dates()
+            # Sort by date - assuming report_date is in ISO format
+            report_dates.sort(key=lambda x: x['report_date'], reverse=True)
+            months = [date['month_year'] for date in report_dates]
+            
+            # Create array to hold all data for batch update
+            all_rows = []
+            formatting_requests = []
+            current_row = 0
+            
+            # For each index, create a section
+            for index_num, index in enumerate(indices):
+                # Index number in the loop (for formatting)
+                section_start_row = current_row
+                
+                # Add index header with bold formatting
+                all_rows.append([f"INDEX: {index}"])
+                current_row += 1
+                
+                # Add formatting for index header
+                formatting_requests.append({
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": section_start_row,
+                            "endRowIndex": section_start_row + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": len(months) + 1
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                },
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.9,
+                                    "blue": 0.9
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                    }
+                })
+                
+                # Add months header row
+                header_row = ["Industry"]
+                header_row.extend(months)
+                all_rows.append(header_row)
+                current_row += 1
+                
+                # Add formatting for month header row
+                formatting_requests.append({
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": section_start_row + 1,
+                            "endRowIndex": section_start_row + 2,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": len(months) + 1
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                },
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.9,
+                                    "blue": 0.9
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                    }
+                })
+                
+                # Get industry data for this index
+                industry_data = get_industry_status_over_time(index, len(months))
+                
+                # Check if we have industry data
+                if not industry_data or 'industries' not in industry_data:
+                    logger.warning(f"No industry data found for {index}")
+                    # Add blank row between indices
+                    all_rows.append([""])
+                    current_row += 1
+                    continue
+                
+                # Get all industries and sort alphabetically
+                all_industries = sorted(industry_data['industries'].keys())
+                industry_row_start = current_row
+                
+                # Create a row for each industry
+                for industry in all_industries:
+                    row_data = [industry]
+                    
+                    # Add status for each month
+                    for month in months:
+                        status_data = industry_data['industries'][industry].get(month, {})
+                        status = status_data.get('status', 'Neutral')
+                        row_data.append(status)
+                    
+                    all_rows.append(row_data)
+                    current_row += 1
+                
+                # Add blank row between indices
+                all_rows.append([""])
+                current_row += 1
+                
+                # Add conditional formatting for growing/contracting status
+                formatting_requests.append({
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": tab_id,
+                                    "startRowIndex": industry_row_start,
+                                    "endRowIndex": current_row - 1,  # Exclude the blank row
+                                    "startColumnIndex": 1,
+                                    "endColumnIndex": len(months) + 1
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_EQ",
+                                    "values": [{"userEnteredValue": "Growing"}]
+                                },
+                                "format": {
+                                    "backgroundColor": {
+                                        "red": 0.7,
+                                        "green": 0.9,
+                                        "blue": 0.7
+                                    }
+                                }
+                            }
+                        },
+                        "index": index_num * 3  # Ensure unique indices for each rule
+                    }
+                })
+                
+                formatting_requests.append({
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": tab_id,
+                                    "startRowIndex": industry_row_start,
+                                    "endRowIndex": current_row - 1,
+                                    "startColumnIndex": 1,
+                                    "endColumnIndex": len(months) + 1
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_EQ",
+                                    "values": [{"userEnteredValue": "Contracting"}]
+                                },
+                                "format": {
+                                    "backgroundColor": {
+                                        "red": 0.9,
+                                        "green": 0.7,
+                                        "blue": 0.7
+                                    }
+                                }
+                            }
+                        },
+                        "index": index_num * 3 + 1
+                    }
+                })
+                
+                formatting_requests.append({
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": tab_id,
+                                    "startRowIndex": industry_row_start,
+                                    "endRowIndex": current_row - 1,
+                                    "startColumnIndex": 1,
+                                    "endColumnIndex": len(months) + 1
+                                }
+                            ],
+                            "booleanRule": {
+                                "condition": {
+                                    "type": "TEXT_EQ",
+                                    "values": [{"userEnteredValue": "Neutral"}]
+                                },
+                                "format": {
+                                    "backgroundColor": {
+                                        "red": 0.9,
+                                        "green": 0.9,
+                                        "blue": 0.7
+                                    }
+                                }
+                            }
+                        },
+                        "index": index_num * 3 + 2
+                    }
+                })
+            
+            # Add borders, freeze, and auto-resize
+            formatting_requests.append({
+                "updateBorders": {
+                    "range": {
+                        "sheetId": tab_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": current_row,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": len(months) + 1
+                    },
+                    "top": {"style": "SOLID"},
+                    "bottom": {"style": "SOLID"},
+                    "left": {"style": "SOLID"},
+                    "right": {"style": "SOLID"},
+                    "innerHorizontal": {"style": "SOLID"},
+                    "innerVertical": {"style": "SOLID"}
+                }
+            })
+            
+            # Freeze first column (industry names)
+            formatting_requests.append({
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": tab_id,
+                        "gridProperties": {
+                            "frozenColumnCount": 1
+                        }
+                    },
+                    "fields": "gridProperties.frozenColumnCount"
+                }
+            })
+            
+            # Auto-resize columns
+            formatting_requests.append({
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": tab_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": 0,
+                        "endIndex": len(months) + 1
+                    }
+                }
+            })
+            
+            # Update the sheet
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f"'{tab_name}'!A1",
+                valueInputOption="RAW",
+                body={"values": all_rows}
+            ).execute()
+            
+            # Apply all the formatting
+            if formatting_requests:
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={"requests": formatting_requests}
+                ).execute()
+            
+            logger.info(f"Successfully created/updated '{tab_name}' tab")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating alphabetical growth tab: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
     def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
         """
         Create the numerical growth/contraction tab with vertical tables for each month.
@@ -3669,443 +3979,6 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Get the max positive and negative values for conditional formatting
                 max_positive = max([1, max([item['rank'] for item in ranked_industries if 'rank' in item and item['rank'] > 0], default=1)])
                 max_negative = min([-1, min([item['rank'] for item in ranked_industries if 'rank' in item and item['rank'] < 0], default=-1)])
-                
-                # Add conditional formatting for growing/contracting status
-                formatting_requests.append({
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": industry_row_start,
-                                    "endRowIndex": current_row - 1,  # Exclude the blank row
-                                    "startColumnIndex": 1,
-                                    "endColumnIndex": len(months) + 1
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Growing"}]
-                                },
-                                "format": {
-                                    "backgroundColor": {
-                                        "red": 0.7,
-                                        "green": 0.9,
-                                        "blue": 0.7
-                                    }
-                                }
-                            }
-                        },
-                        "index": index_num * 3  # Ensure unique indices for each rule
-                    }
-                })
-                
-                formatting_requests.append({
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": industry_row_start,
-                                    "endRowIndex": current_row - 1,
-                                    "startColumnIndex": 1,
-                                    "endColumnIndex": len(months) + 1
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Contracting"}]
-                                },
-                                "format": {
-                                    "backgroundColor": {
-                                        "red": 0.9,
-                                        "green": 0.7,
-                                        "blue": 0.7
-                                    }
-                                }
-                            }
-                        },
-                        "index": index_num * 3 + 1
-                    }
-                })
-                
-                formatting_requests.append({
-                    "addConditionalFormatRule": {
-                        "rule": {
-                            "ranges": [
-                                {
-                                    "sheetId": tab_id,
-                                    "startRowIndex": industry_row_start,
-                                    "endRowIndex": current_row - 1,
-                                    "startColumnIndex": 1,
-                                    "endColumnIndex": len(months) + 1
-                                }
-                            ],
-                            "booleanRule": {
-                                "condition": {
-                                    "type": "TEXT_EQ",
-                                    "values": [{"userEnteredValue": "Neutral"}]
-                                },
-                                "format": {
-                                    "backgroundColor": {
-                                        "red": 0.9,
-                                        "green": 0.9,
-                                        "blue": 0.7
-                                    }
-                                }
-                            }
-                        },
-                        "index": index_num * 3 + 2
-                    }
-                })
-            
-            # Add borders, freeze, and auto-resize
-            formatting_requests.append({
-                "updateBorders": {
-                    "range": {
-                        "sheetId": tab_id,
-                        "startRowIndex": 0,
-                        "endRowIndex": current_row,
-                        "startColumnIndex": 0,
-                        "endColumnIndex": len(months) + 1
-                    },
-                    "top": {"style": "SOLID"},
-                    "bottom": {"style": "SOLID"},
-                    "left": {"style": "SOLID"},
-                    "right": {"style": "SOLID"},
-                    "innerHorizontal": {"style": "SOLID"},
-                    "innerVertical": {"style": "SOLID"}
-                }
-            })
-            
-            # Freeze first column (industry names)
-            formatting_requests.append({
-                "updateSheetProperties": {
-                    "properties": {
-                        "sheetId": tab_id,
-                        "gridProperties": {
-                            "frozenColumnCount": 1
-                        }
-                    },
-                    "fields": "gridProperties.frozenColumnCount"
-                }
-            })
-            
-            # Auto-resize columns
-            formatting_requests.append({
-                "autoResizeDimensions": {
-                    "dimensions": {
-                        "sheetId": tab_id,
-                        "dimension": "COLUMNS",
-                        "startIndex": 0,
-                        "endIndex": len(months) + 1
-                    }
-                }
-            })
-            
-            # Update the sheet
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=f"'{tab_name}'!A1",
-                valueInputOption="RAW",
-                body={"values": all_rows}
-            ).execute()
-            
-            # Apply all the formatting
-            if formatting_requests:
-                service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={"requests": formatting_requests}
-                ).execute()
-            
-            logger.info(f"Successfully created/updated '{tab_name}' tab")
-            return True
-        except Exception as e:
-            logger.error(f"Error creating alphabetical growth tab: {str(e)}")
-            logger.error(traceback.format_exc())
-            return False
-
-    def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
-        """
-        Create the numerical growth/contraction tab with vertical tables for each month.
-        
-        Args:
-            service: Google Sheets API service
-            sheet_id: Spreadsheet ID
-            sheet_ids: Dictionary mapping tab names to sheet IDs
-        
-        Returns:
-            Boolean indicating success
-        """
-        try:
-            tab_name = 'Growth Numerical'
-            
-            # Check if tab exists
-            tab_id = sheet_ids.get(tab_name)
-            if not tab_id:
-                # Create the tab if it doesn't exist
-                add_sheet_request = {
-                    'requests': [{
-                        'addSheet': {
-                            'properties': {
-                                'title': tab_name
-                            }
-                        }
-                    }]
-                }
-                response = service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body=add_sheet_request
-                ).execute()
-                
-                # Get the new sheet ID
-                tab_id = response['replies'][0]['addSheet']['properties']['sheetId']
-                logger.info(f"Created new tab '{tab_name}' with ID {tab_id}")
-                
-                # Refresh the sheet IDs mapping
-                sheet_ids = self._get_all_sheet_ids(service, sheet_id)
-            
-            # Access the original extraction_data which contains the ordered industry data
-            # The extraction_data would be available in the data parameter of _run method
-            extraction_data = self.data.get('extraction_data', {})
-            
-            # Log to verify we have the data
-            logger.info(f"Extraction data available: {bool(extraction_data)}")
-            if extraction_data and 'industry_data' in extraction_data:
-                logger.info(f"Industry data available: {bool(extraction_data['industry_data'])}")
-                
-            # Get all indices
-            indices = get_all_indices()
-            
-            # Get report dates
-            from db_utils import get_db_connection
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT report_date, month_year 
-                FROM reports 
-                ORDER BY report_date DESC
-            """)
-            report_dates = [dict(row) for row in cursor.fetchall()]
-            months = [date['month_year'] for date in report_dates]
-            
-            # Create array to hold all data for batch update
-            all_rows = []
-            formatting_requests = []
-            current_row = 0
-            
-            # For each index, create a section
-            for index_num, index in enumerate(indices):
-                section_start_row = current_row
-                
-                # Add index header with bold formatting
-                all_rows.append([f"INDEX: {index}"])
-                current_row += 1
-                
-                # Add formatting for index header
-                formatting_requests.append({
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": tab_id,
-                            "startRowIndex": section_start_row,
-                            "endRowIndex": section_start_row + 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": 20  # Enough columns for all tables
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "textFormat": {
-                                    "bold": True
-                                },
-                                "backgroundColor": {
-                                    "red": 0.9,
-                                    "green": 0.9,
-                                    "blue": 0.9
-                                }
-                            }
-                        },
-                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
-                    }
-                })
-                
-                # Get industry data for this index from the database
-                industry_data_for_index = get_industry_status_over_time(index, len(months))
-                
-                # Get all industries for this index
-                all_industries = sorted(industry_data_for_index['industries'].keys())
-                
-                # If no industries, skip this index
-                if not all_industries:
-                    logger.warning(f"No industries found for {index}")
-                    # Add blank row between indices
-                    all_rows.append([""])
-                    current_row += 1
-                    continue
-                
-                # Calculate the maximum height needed for all tables
-                max_industries = len(all_industries) + 1  # +1 for header
-                
-                # Create an array of rows of appropriate height
-                rows = [[""] * (len(months) * 2 + 2) for _ in range(max_industries + 2)]  # +2 for headers and spacing
-                
-                # First, add the reference table header
-                rows[0][0] = "REFERENCE"
-                
-                # Add the alphabetically sorted industries to the reference table
-                for i, industry in enumerate(all_industries):
-                    rows[i+1][0] = industry
-                
-                # Define positive and negative categories based on index type
-                pos_category = "Growing"
-                neg_category = "Declining"
-                
-                if index == "Supplier Deliveries":
-                    pos_category = "Slower"
-                    neg_category = "Faster"
-                elif index == "Inventories":
-                    pos_category = "Higher"
-                    neg_category = "Lower"
-                elif index == "Customers' Inventories":
-                    pos_category = "Too High"
-                    neg_category = "Too Low"
-                elif index == "Prices":
-                    pos_category = "Increasing"
-                    neg_category = "Decreasing"
-                
-                # Now add the monthly tables
-                for m_idx, month in enumerate(months):
-                    # Calculate column index for this month's table
-                    col_idx = (m_idx + 1) * 2
-                    
-                    # Add month header
-                    rows[0][col_idx] = month
-                    
-                    logger.info(f"Processing month: {month}")
-                    
-                    # Get original ordered industry lists from extraction_data if available
-                    # This is the key part - accessing the original ordered data
-                    orig_pos_industries = []
-                    orig_neg_industries = []
-                    
-                    if extraction_data and 'industry_data' in extraction_data and index in extraction_data['industry_data']:
-                        index_data = extraction_data['industry_data'][index]
-                        
-                        # Get growing/positive industries in original order
-                        if pos_category in index_data:
-                            orig_pos_industries = index_data[pos_category]
-                            logger.info(f"Found original positive industries: {orig_pos_industries}")
-                        
-                        # Get declining/negative industries in original order
-                        if neg_category in index_data:
-                            orig_neg_industries = index_data[neg_category]
-                            logger.info(f"Found original negative industries: {orig_neg_industries}")
-                    
-                    # If we have the original ordered lists, use them directly
-                    if orig_pos_industries or orig_neg_industries:
-                        # Build pos_industries list preserving original order
-                        pos_industries = []
-                        for i, industry in enumerate(orig_pos_industries):
-                            pos_industries.append({
-                                'industry': industry,
-                                'status': pos_category,
-                                'growth_type': 1,
-                                'original_order': i
-                            })
-                        
-                        # Build neg_industries list - we'll reverse this later
-                        neg_industries = []
-                        for i, industry in enumerate(orig_neg_industries):
-                            neg_industries.append({
-                                'industry': industry,
-                                'status': neg_category,
-                                'growth_type': -1,
-                                'original_order': i
-                            })
-                        
-                        # Reversing the negative industries list to display in reverse order
-                        neg_industries.reverse()
-                        
-                    # Otherwise, fall back to using data from the database
-                    else:
-                        # Process each industry for this month and sort by growth rank
-                        pos_industries = []
-                        neutral_industries = []
-                        neg_industries = []
-                        
-                        for industry in all_industries:
-                            status_data = industry_data_for_index['industries'][industry].get(month, {})
-                            status = status_data.get('status', 'Neutral')
-                            
-                            if status == pos_category:
-                                pos_industries.append({
-                                    'industry': industry,
-                                    'status': status,
-                                    'growth_type': 1
-                                })
-                            elif status == neg_category:
-                                neg_industries.append({
-                                    'industry': industry,
-                                    'status': status,
-                                    'growth_type': -1
-                                })
-                            else:
-                                neutral_industries.append({
-                                    'industry': industry,
-                                    'status': status,
-                                    'growth_type': 0
-                                })
-                    
-                    logger.info(f"Positive industries from data: {[item['industry'] for item in pos_industries]}")
-                    logger.info(f"Negative industries from data (reversed): {[item['industry'] for item in neg_industries]}")
-                    
-                    # Build ranked industries list
-                    ranked_industries = []
-                    
-                    # Positive industries with descending ranks
-                    for i, item in enumerate(pos_industries):
-                        item['rank'] = len(pos_industries) - i
-                        ranked_industries.append(item)
-                    
-                    # Neutral industries all with rank 0
-                    for item in neutral_industries:
-                        item['rank'] = 0
-                        ranked_industries.append(item)
-                    
-                    # Negative industries with descending negative ranks
-                    for i, item in enumerate(neg_industries):
-                        item['rank'] = -1 - i
-                        ranked_industries.append(item)
-                    
-                    logger.info(f"Ranked industries: {ranked_industries}")
-                    
-                    # Add the sorted industries to the table
-                    for i, item in enumerate(ranked_industries):
-                        # Industry name in first column
-                        rows[i+1][col_idx] = item['industry']
-                        # Rank value in second column
-                        rows[i+1][col_idx+1] = item['rank']
-                    
-                    # Add the sorted industries to the table
-                    for i, item in enumerate(ranked_industries):
-                        # Industry name in first column
-                        rows[i+1][col_idx] = item['industry']
-                        # Rank value in second column
-                        rows[i+1][col_idx+1] = item['rank']
-                    
-                # Add the rows to the sheet data
-                all_rows.extend(rows)
-                current_row += len(rows)
-                
-                # Add blank row between indices
-                all_rows.append([""])
-                current_row += 1
-                
-                # Get the max positive and negative values for conditional formatting
-                max_positive = max([1, max([item['rank'] for item in ranked_industries if item['rank'] > 0], default=1)])
-                max_negative = min([-1, min([item['rank'] for item in ranked_industries if item['rank'] < 0], default=-1)])
                 
                 # Add conditional formatting for rank columns
                 for m_idx in range(len(months)):
