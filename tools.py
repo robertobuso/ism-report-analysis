@@ -3841,6 +3841,34 @@ class GoogleSheetsFormatterTool(BaseTool):
                 for i, industry in enumerate(all_industries):
                     rows[i+1][0] = industry
                 
+                # Define positive status terms for each index
+                positive_terms = {
+                    "New Orders": ["Growing"],
+                    "Production": ["Growing"],
+                    "Employment": ["Growing"],
+                    "Supplier Deliveries": ["Slower"],
+                    "Inventories": ["Higher"],
+                    "Customers' Inventories": ["Too High"],
+                    "Prices": ["Increasing"],
+                    "Backlog of Orders": ["Growing"],
+                    "New Export Orders": ["Growing"],
+                    "Imports": ["Growing"]
+                }
+                
+                # Define negative status terms for each index
+                negative_terms = {
+                    "New Orders": ["Declining", "Contracting"],
+                    "Production": ["Declining", "Contracting"],
+                    "Employment": ["Declining", "Contracting"],
+                    "Supplier Deliveries": ["Faster"],
+                    "Inventories": ["Lower"],
+                    "Customers' Inventories": ["Too Low"],
+                    "Prices": ["Decreasing"],
+                    "Backlog of Orders": ["Declining", "Contracting"],
+                    "New Export Orders": ["Declining", "Contracting"],
+                    "Imports": ["Declining", "Contracting"]
+                }
+                
                 # Now add the monthly tables
                 for m_idx, month in enumerate(months):
                     # Calculate column index for this month's table
@@ -3849,59 +3877,72 @@ class GoogleSheetsFormatterTool(BaseTool):
                     # Add month header
                     rows[0][col_idx] = month
                     
+                    logger.info(f"Processing month: {month}")  # Log the month being processed
+                    
                     # Process each industry for this month and sort by growth rank
                     month_industries = []
-                    for industry in all_industries:
+                    
+                    # Get the industry names in the order they appear in the data
+                    industry_names = list(industry_data['industries'].keys())
+                    
+                    logger.info(f"Industry names in original order: {industry_names}")  # Log original order
+                    
+                    for industry in industry_names:
                         status_data = industry_data['industries'][industry].get(month, {})
                         status = status_data.get('status', 'Neutral')
                         
-                        # Determine growth rank and sort order
-                        if status == 'Growing':
-                            growth_type = 1  # Growing
-                        elif status == 'Contracting':
-                            growth_type = -1  # Contracting
-                        else:  # Neutral
-                            growth_type = 0
-                            
+                        # Determine growth type based on the index-specific terms
+                        growth_type = 0  # Default: Neutral
+                        if index in positive_terms and status in positive_terms[index]:
+                            growth_type = 1  # Positive
+                        elif index in negative_terms and status in negative_terms[index]:
+                            growth_type = -1  # Negative
+                        
                         month_industries.append({
                             'industry': industry,
                             'status': status,
-                            'growth_type': growth_type
+                            'growth_type': growth_type,
+                            'original_order': len(month_industries)  # Preserve original order for sorting
                         })
                     
-                    # Sort by growth type: Growing (1) first, then Neutral (0), then Contracting (-1)
-                    # For same growth type, sort alphabetically
-                    month_industries.sort(key=lambda x: (x['growth_type'] * -1, x['industry']))
+                    logger.info(f"Month industries (before sorting): {month_industries}")  # Log before sorting
                     
-                    # Count industries of each type
-                    growing_count = sum(1 for item in month_industries if item['growth_type'] > 0)
-                    neutral_count = sum(1 for item in month_industries if item['growth_type'] == 0)
-                    contracting_count = sum(1 for item in month_industries if item['growth_type'] < 0)
+                    # Sort industries by growth type
+                    pos_industries = [item for item in month_industries if item['growth_type'] > 0]
+                    neutral_industries = [item for item in month_industries if item['growth_type'] == 0]
+                    neg_industries = [item for item in month_industries if item['growth_type'] < 0]
                     
-                    # Assign numerical ranks
-                    # Starts at growing_count and goes down to 1 for growing
-                    # Is 0 for neutral
-                    # Starts at -1 and goes down to -contracting_count for contracting
-                    current_growing_rank = growing_count
-                    current_contracting_rank = -1
+                    logger.info(f"Positive industries: {pos_industries}")  # Log positive industries
+                    logger.info(f"Neutral industries: {neutral_industries}")  # Log neutral industries
+                    logger.info(f"Negative industries: {neg_industries}")  # Log negative industries
                     
-                    for item in month_industries:
-                        if item['growth_type'] > 0:  # Growing
-                            item['rank'] = current_growing_rank
-                            current_growing_rank -= 1
-                        elif item['growth_type'] < 0:  # Contracting
-                            item['rank'] = current_contracting_rank
-                            current_contracting_rank -= 1
-                        else:  # Neutral
-                            item['rank'] = 0
+                    # Assign ranks: start with positive, then neutral, then negative
+                    ranked_industries = []
+                    
+                    # Positive industries: keep original order
+                    for i, item in enumerate(pos_industries):
+                        item['rank'] = len(pos_industries) - i
+                        ranked_industries.append(item)
+                    
+                    # Neutral industries: all get rank 0
+                    for item in neutral_industries:
+                        item['rank'] = 0
+                        ranked_industries.append(item)
+                    
+                    # Negative industries: reverse order
+                    for i, item in enumerate(reversed(neg_industries)):
+                        item['rank'] = -1 - i
+                        ranked_industries.append(item)
+                    
+                    logger.info(f"Ranked industries: {ranked_industries}")  # Log ranked industries
                     
                     # Add the sorted industries to the table
-                    for i, item in enumerate(month_industries):
+                    for i, item in enumerate(ranked_industries):
                         # Industry name in first column
                         rows[i+1][col_idx] = item['industry']
                         # Rank value in second column
                         rows[i+1][col_idx+1] = item['rank']
-                
+                    
                 # Add the rows to the sheet data
                 all_rows.extend(rows)
                 current_row += len(rows)
@@ -3909,6 +3950,10 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Add blank row between indices
                 all_rows.append([""])
                 current_row += 1
+                
+                # Get the max positive and negative values for conditional formatting
+                max_positive = max([1, max([item['rank'] for item in ranked_industries if item['rank'] > 0], default=1)])
+                max_negative = min([-1, min([item['rank'] for item in ranked_industries if item['rank'] < 0], default=-1)])
                 
                 # Add conditional formatting for rank columns
                 for m_idx in range(len(months)):
@@ -3944,7 +3989,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                                             "blue": 0.0  # Green
                                         },
                                         "type": "NUMBER",
-                                        "value": str(growing_count)
+                                        "value": str(max_positive)
                                     }
                                 }
                             },
@@ -3973,7 +4018,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                                             "blue": 0.0  # Red
                                         },
                                         "type": "NUMBER",
-                                        "value": str(-contracting_count)
+                                        "value": str(max_negative)
                                     },
                                     "maxpoint": {
                                         "color": {
