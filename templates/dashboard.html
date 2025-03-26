@@ -12,6 +12,15 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Now updateKpiCards will work
             updateKpiCards();
+
+            // Initialize the heatmap if it's the active tab
+            if (document.getElementById('heatmap-tab').classList.contains('active')) {
+                loadHeatmapData();
+            }
+            
+            // Setup tab event listeners
+            setupTabEventListeners();
+
         });
     </script>
 
@@ -284,6 +293,9 @@
                     <div class="kpi-title">New Orders</div>
                     <div class="kpi-value" id="newOrdersValue">--</div>
                     <div class="kpi-direction" id="newOrdersDirection">--</div>
+                    <div class="mt-2">
+                        <span class="badge rounded-pill" id="newOrdersChange"></span>
+                    </div>
                 </div>
             </div>
             <div class="col-md-3">
@@ -291,6 +303,9 @@
                     <div class="kpi-title">Production</div>
                     <div class="kpi-value" id="productionValue">--</div>
                     <div class="kpi-direction" id="productionDirection">--</div>
+                    <div class="mt-2">
+                        <span class="badge rounded-pill" id="productionChange"></span>
+                    </div>
                 </div>
             </div>
             <div class="col-md-3">
@@ -298,41 +313,22 @@
                     <div class="kpi-title">Employment</div>
                     <div class="kpi-value" id="employmentValue">--</div>
                     <div class="kpi-direction" id="employmentDirection">--</div>
+                    <div class="mt-2">
+                        <span class="badge rounded-pill" id="employmentChange"></span>
+                    </div>
                 </div>
-            </div>
-        </div>
-        
-        <!-- Filters and Controls -->
-        <div class="filter-container">
-            <div class="filter-select">
-                <label for="timeRangeFilter" class="form-label">Time Range:</label>
-                <select class="form-select" id="timeRangeFilter">
-                    <option value="6">Last 6 Months</option>
-                    <option value="12" selected>Last 12 Months</option>
-                    <option value="24">Last 24 Months</option>
-                    <option value="36">Last 36 Months</option>
-                    <option value="all">All Available Data</option>
-                </select>
-            </div>
-            <div class="filter-select">
-                <label for="indexSelect" class="form-label">Select Index:</label>
-                <select class="form-select" id="indexSelect">
-                    {% for index in indices %}
-                        <option value="{{ index }}">{{ index }}</option>
-                    {% endfor %}
-                </select>
             </div>
         </div>
         
         <!-- Navigation Tabs -->
         <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
+                <button class="nav-link active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
                     Heatmap
                 </button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
+                <button class="nav-link" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
                     Growth Alphabetical
                 </button>
             </li>
@@ -351,7 +347,7 @@
         <!-- Tab Content -->
         <div class="tab-content" id="dashboardTabsContent">
             <!-- Heatmap Tab -->
-            <div class="tab-pane fade" id="heatmap" role="tabpanel">
+            <div class="tab-pane fade show active" id="heatmap" role="tabpanel">
                 <div class="content-card">
                     <div class="content-card-header">
                         <h5>Manufacturing PMI Heatmap Summary</h5>
@@ -368,7 +364,7 @@
             </div>
             
             <!-- Growth Alphabetical Tab -->
-            <div class="tab-pane fade show active" id="growth-alpha" role="tabpanel">
+            <div class="tab-pane fade show" id="growth-alpha" role="tabpanel">
                 <div class="content-card">
                     <div class="content-card-header">
                         <h5>Industry Growth Status (Alphabetical)</h5>
@@ -492,9 +488,23 @@
         
         // Main initialization function
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize KPI cards
+            // Update KPI cards
             updateKpiCards();
             
+            // Remove the original filter container if it's empty or not needed
+            const filterContainer = document.querySelector('.filter-container');
+            if (filterContainer) {
+                // If we've moved the only filter element elsewhere, remove the container
+                if (filterContainer.children.length === 0) {
+                    filterContainer.remove();
+                }
+            }
+            
+            // Initialize the heatmap if it's the active tab
+            if (document.getElementById('heatmap-tab').classList.contains('active')) {
+                loadHeatmapData();
+            }
+
             // Set up trend chart
             const defaultCheck = document.getElementById('check_Manufacturing_PMI');
             if (defaultCheck) {
@@ -516,7 +526,7 @@
                 });
             }
             
-            // Set up tab event listeners
+            // Setup tab event listeners
             setupTabEventListeners();
         });
         
@@ -525,34 +535,39 @@
             // Heatmap tab
             const heatmapTab = document.getElementById('heatmap-tab');
             if (heatmapTab) {
-                heatmapTab.addEventListener('shown.bs.tab', loadHeatmapData);
-            }
-            
-            // Alphabetical growth tab
-            const growthAlphaTab = document.getElementById('growth-alpha-tab');
-            const indexSelect = document.getElementById('indexSelect');
-            if (growthAlphaTab && indexSelect) {
-                growthAlphaTab.addEventListener('shown.bs.tab', () => {
-                    if (!document.getElementById('alphaTableBody').hasChildNodes()) {
-                        loadGrowthTable('alpha', indexSelect.value);
-                    }
+                heatmapTab.addEventListener('shown.bs.tab', function() {
+                    // Force redraw by emptying the container first
+                    const heatmapContainer = document.querySelector('.heatmap-container');
+                    heatmapContainer.innerHTML = '';
+                    loadHeatmapData();
                 });
             }
             
-            // Numerical growth tab
-            const numGrowthTab = document.getElementById('growth-num-tab');
-            const numIndexSelect = document.getElementById('numIndexSelect');
-            if (numGrowthTab && numIndexSelect) {
-                numGrowthTab.addEventListener('shown.bs.tab', () => {
-                    loadNumericalGrowthTable(numIndexSelect.value);
-                });
-                
-                numIndexSelect.addEventListener('change', () => {
-                    loadNumericalGrowthTable(numIndexSelect.value);
-                });
-            }
+            // Other tabs (where the index filter makes sense)
+            const otherTabs = ['growth-alpha-tab', 'growth-num-tab', 'trends-tab'];
+            otherTabs.forEach(tabId => {
+                const tab = document.getElementById(tabId);
+                if (tab) {
+                    tab.addEventListener('shown.bs.tab', function() {
+                        // Show the index filter when on other tabs
+                        const indexFilterContainer = document.querySelector('.filter-select:nth-of-type(2)');
+                        if (indexFilterContainer) {
+                            indexFilterContainer.style.display = '';
+                        }
+                        
+                        // Other existing tab logic...
+                        if (tabId === 'growth-alpha-tab') {
+                            if (!document.getElementById('alphaTableBody').hasChildNodes()) {
+                                loadGrowthTable('alpha', document.getElementById('indexSelect').value);
+                            }
+                        } else if (tabId === 'growth-num-tab') {
+                            loadNumericalGrowthTable(document.getElementById('numIndexSelect').value);
+                        }
+                    });
+                }
+            });
         }
-        
+  
         // KPI Cards Functions
         function updateKpiCards() {
             try {
@@ -637,71 +652,215 @@
                 } else {
                     directionElem.className = 'kpi-direction text-muted';
                 }
+                
+                // Add change pill based on the valueId
+                const changeId = valueId.replace('Value', 'Change');
+                const changeElem = document.getElementById(changeId);
+                
+                if (changeElem && heatmap_data.length > 1) {
+                    const prevData = heatmap_data[1];
+                    if (prevData.indices && prevData.indices[indexName]) {
+                        const prevValue = parseFloat(prevData.indices[indexName].value);
+                        const currentValue = parseFloat(value);
+                        
+                        if (!isNaN(prevValue) && !isNaN(currentValue)) {
+                            const change = (currentValue - prevValue).toFixed(1);
+                            
+                            if (parseFloat(change) > 0) {
+                                changeElem.textContent = `+${change} from previous`;
+                                changeElem.className = 'badge rounded-pill bg-success';
+                            } else if (parseFloat(change) < 0) {
+                                changeElem.textContent = `${change} from previous`;
+                                changeElem.className = 'badge rounded-pill bg-danger';
+                            } else {
+                                changeElem.textContent = 'No change';
+                                changeElem.className = 'badge rounded-pill bg-secondary';
+                            }
+                        }
+                    }
+                }
             }
         }
-        
+
         // Heatmap Functions
         function loadHeatmapData() {
             const heatmapContainer = document.querySelector('.heatmap-container');
-            if (!heatmapContainer.hasChildNodes()) {
-                // Create table for heatmap
-                const table = document.createElement('table');
-                table.className = 'table table-bordered';
+            // Clear any existing content to ensure fresh rendering
+            heatmapContainer.innerHTML = '';
+            
+            // Check if we have heatmap data
+            if (!heatmap_data || heatmap_data.length === 0) {
+                heatmapContainer.innerHTML = '<p class="text-center text-muted">No heatmap data available</p>';
+                return;
+            }
+            
+            // Create table for heatmap
+            const table = document.createElement('table');
+            table.className = 'table table-bordered';
+            
+            // Create header row with months
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th>Index</th>';
+            
+            // Use the monthly data already available in heatmap_data
+            const months = heatmap_data.slice(0, 12).map(data => data.month_year);
+            
+            months.forEach(month => {
+                headerRow.innerHTML += `<th>${month}</th>`;
+            });
+            
+            const thead = document.createElement('thead');
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Create tbody and rows for each index
+            const tbody = document.createElement('tbody');
+            
+            // Get all unique indices
+            const allIndices = new Set();
+            heatmap_data.forEach(data => {
+                Object.keys(data.indices).forEach(index => allIndices.add(index));
+            });
+            
+            // Set fixed scale boundaries
+            const minScale = 40;  // Threshold for bright red
+            const midScale = 50;  // Neutral threshold - light green
+            const maxScale = 60;  // Threshold for bright green
+            
+            // Create row for each index
+            Array.from(allIndices).sort().forEach(index => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${index}</td>`;
                 
-                // Create header row with months
-                const headerRow = document.createElement('tr');
-                headerRow.innerHTML = '<th>Index</th>';
-                
-                // Use the monthly data already available in heatmap_data
-                const months = heatmap_data.slice(0, 12).map(data => data.month_year);
-                
+                // Add data for each month
                 months.forEach(month => {
-                    headerRow.innerHTML += `<th>${month}</th>`;
-                });
-                
-                const thead = document.createElement('thead');
-                thead.appendChild(headerRow);
-                table.appendChild(thead);
-                
-                // Create tbody and rows for each index
-                const tbody = document.createElement('tbody');
-                
-                // Get all unique indices
-                const allIndices = new Set();
-                heatmap_data.forEach(data => {
-                    Object.keys(data.indices).forEach(index => allIndices.add(index));
-                });
-                
-                // Create row for each index
-                Array.from(allIndices).sort().forEach(index => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td>${index}</td>`;
+                    const monthData = heatmap_data.find(data => data.month_year === month);
+                    const indexData = monthData && monthData.indices[index];
                     
-                    // Add data for each month
-                    months.forEach(month => {
-                        const monthData = heatmap_data.find(data => data.month_year === month);
-                        const indexData = monthData && monthData.indices[index];
-                        
-                        if (indexData) {
-                            const value = indexData.value;
-                            const direction = indexData.direction;
-                            const cellClass = direction === 'Growing' ? 'bg-growing' : 
-                                            direction === 'Contracting' ? 'bg-contracting' : '';
-                            
-                            row.innerHTML += `<td class="${cellClass}">${value}</td>`;
+                    if (indexData) {
+                        const value = parseFloat(indexData.value);
+                        if (!isNaN(value)) {
+                            const cellColor = calculateGlobalCellColor(value, minScale, midScale, maxScale);
+                            row.innerHTML += `<td style="background-color: ${cellColor}">${value}</td>`;
                         } else {
                             row.innerHTML += `<td>-</td>`;
                         }
-                    });
-                    
-                    tbody.appendChild(row);
+                    } else {
+                        row.innerHTML += `<td>-</td>`;
+                    }
                 });
                 
-                table.appendChild(tbody);
-                heatmapContainer.appendChild(table);
+                tbody.appendChild(row);
+            });
+            
+            table.appendChild(tbody);
+            heatmapContainer.appendChild(table);
+            
+            // Add time range filter below the table
+            const timeRangeControlDiv = document.createElement('div');
+            timeRangeControlDiv.className = 'mt-4 d-flex justify-content-end';
+            
+            // If we're using a clone instead of moving the actual element
+            const timeRangeClone = document.createElement('div');
+            timeRangeClone.className = 'filter-select';
+            timeRangeClone.innerHTML = `
+                <label for="heatmapTimeRange" class="form-label">Time Range:</label>
+                <select class="form-select" id="heatmapTimeRange">
+                    <option value="6">Last 6 Months</option>
+                    <option value="12" selected>Last 12 Months</option>
+                    <option value="24">Last 24 Months</option>
+                    <option value="36">Last 36 Months</option>
+                    <option value="all">All Available Data</option>
+                </select>
+            `;
+            
+            // Add event listener for the time range filter
+            timeRangeClone.querySelector('select').addEventListener('change', function() {
+                // Update the original time range filter value to maintain sync
+                const originalFilter = document.getElementById('timeRangeFilter');
+                if (originalFilter) {
+                    originalFilter.value = this.value;
+                }
+                
+                // Reload heatmap with new time range
+                loadHeatmapData();
+            });
+            
+            timeRangeControlDiv.appendChild(timeRangeClone);
+            heatmapContainer.appendChild(timeRangeControlDiv);
+            
+            console.log("Heatmap loaded successfully with time range control below");
+        }
+
+        // Helper function to calculate cell color based on global scale
+        function calculateGlobalCellColor(value, min, mid, max) {
+            // Convert RGB values to hex color
+            function rgbToHex(r, g, b) {
+                return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+            }
+            
+            // Parse hex color to RGB
+            function hexToRgb(hex) {
+                const bigint = parseInt(hex.substring(1), 16);
+                const r = (bigint >> 16) & 255;
+                const g = (bigint >> 8) & 255;
+                const b = bigint & 255;
+                return [r, g, b];
+            }
+            
+            // Define color ranges with more vibrant reds
+            const brightRed = [220, 53, 69];         // Bootstrap's danger red - more vibrant
+            const midRed = [235, 120, 100];          // Intermediate red (closer to orange-red)
+            const lightGreen = hexToRgb("#B5DFB2");  // Light green for exactly 50
+            const brightGreen = [40, 167, 69];       // Bootstrap's success green
+            
+            // Handle out-of-range values directly
+            if (value <= min) {
+                return rgbToHex(...brightRed);  // Bright red for values at or below 40
+            }
+            
+            if (value >= max) {
+                return rgbToHex(...brightGreen);  // Bright green for values at or above 60
+            }
+            
+            // Handle value = 50 explicitly
+            if (value === mid) {
+                return "#B5DFB2";  // Light green for exactly 50
+            }
+            
+            // Enhanced gradient for red range (40-50)
+            if (value < mid) {
+                // Create a non-linear gradient that emphasizes differences in the red range
+                // Use a two-step gradient: bright red -> mid red -> light green
+                const halfwayPoint = min + (mid - min) / 2;  // 45 is halfway between 40 and 50
+                
+                if (value <= halfwayPoint) {
+                    // First half: bright red to mid red (40-45)
+                    const ratio = (value - min) / (halfwayPoint - min);
+                    const r = Math.round(brightRed[0] + ratio * (midRed[0] - brightRed[0]));
+                    const g = Math.round(brightRed[1] + ratio * (midRed[1] - brightRed[1]));
+                    const b = Math.round(brightRed[2] + ratio * (midRed[2] - brightRed[2]));
+                    return rgbToHex(r, g, b);
+                } else {
+                    // Second half: mid red to light green (45-50)
+                    const ratio = (value - halfwayPoint) / (mid - halfwayPoint);
+                    const r = Math.round(midRed[0] + ratio * (lightGreen[0] - midRed[0]));
+                    const g = Math.round(midRed[1] + ratio * (lightGreen[1] - midRed[1]));
+                    const b = Math.round(midRed[2] + ratio * (lightGreen[2] - midRed[2]));
+                    return rgbToHex(r, g, b);
+                }
+            } 
+            // Above midpoint: Gradient from light green to bright green
+            else {
+                const ratio = (value - mid) / (max - mid);
+                const r = Math.round(lightGreen[0] + ratio * (brightGreen[0] - lightGreen[0]));
+                const g = Math.round(lightGreen[1] + ratio * (brightGreen[1] - lightGreen[1]));
+                const b = Math.round(lightGreen[2] + ratio * (brightGreen[2] - lightGreen[2]));
+                
+                return rgbToHex(r, g, b);
             }
         }
-        
+
         // Growth Table Functions
         function loadGrowthTable(tableType, indexName) {
             const isAlpha = tableType === 'alpha';
