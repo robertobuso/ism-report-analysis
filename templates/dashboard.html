@@ -18,6 +18,13 @@
             if (document.getElementById('heatmap-tab').classList.contains('active')) {
                 loadHeatmapData();
             }
+
+            // Initialize the numerical tab if it's active on page load
+            if (document.getElementById('growth-num-tab').classList.contains('active')) {
+                initializeNumericalGrowthTab();
+                const numIndexSelect = document.getElementById('numIndexSelect');
+                loadNumericalGrowthTable(numIndexSelect ? numIndexSelect.value : 'All');
+            }
             
             // Setup tab event listeners
             setupTabEventListeners();
@@ -657,7 +664,6 @@
             setupTabEventListeners();
         });
         
-
         function initAlphaIndexSelect() {
             const alphaIndexSelect = document.getElementById('alphaIndexSelect');
             if (alphaIndexSelect) {
@@ -730,22 +736,13 @@
                     });
                 }
             
-             // Growth Numerical tab
+            // Growth Numerical tab
             const numTab = document.getElementById('growth-num-tab');
             if (numTab) {
                 numTab.addEventListener('shown.bs.tab', function() {
-                    // Get the selected index (default to first index if none selected)
-                    const numIndexSelect = document.getElementById('numIndexSelect');
-                    const selectedIndex = numIndexSelect ? numIndexSelect.value : 'New Orders';
-                    loadNumericalGrowthTable(selectedIndex);
-                    
-                    // Add event listener to the index selector if it exists
-                    if (numIndexSelect && !numIndexSelect.hasAttribute('data-event-bound')) {
-                        numIndexSelect.addEventListener('change', function() {
-                            loadNumericalGrowthTable(this.value);
-                        });
-                        numIndexSelect.setAttribute('data-event-bound', 'true');
-                    }
+                    // Initialize the dropdown first
+                    initializeNumericalGrowthTab();
+                    // The loadNumericalGrowthTable call is now handled inside populateDropdown
                 });
             }
             
@@ -1169,273 +1166,243 @@
             // Show loading indicator
             container.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading data...</p></div>';
             
-            fetch(`/api/industry_numerical/${encodeURIComponent(indexName)}`)
+            // Handle "All" indices case
+            if (indexName === "All") {
+                loadAllIndices(container);
+                return;
+            }
+            
+            // Use the correct endpoint for industry status
+            fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
                 .then(response => response.json())
                 .then(data => {
-                    // Clear the container
-                    container.innerHTML = '';
-                    
-                    // Get all industries from the data
-                    const allIndustries = Object.keys(data.industries);
-                    const referenceIndustries = [...allIndustries].sort(); // Alphabetical for reference column
-                    
-                    // Process data for each month
-                    const monthsData = data.dates.map(date => {
-                        // Categorize industries by status
-                        const growing = [];
-                        const neutral = [];
-                        const declining = [];
-                        
-                        allIndustries.forEach(industry => {
-                            const status = data.industries[industry][date];
-                            
-                            if (!status) {
-                                neutral.push(industry);
-                            } else if (status.status === 'Growing' || status.status === 'Increasing') {
-                                growing.push(industry);
-                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
-                                declining.push(industry);
-                            } else {
-                                neutral.push(industry);
-                            }
-                        });
-                        
-                        // Sort each category alphabetically
-                        growing.sort();
-                        neutral.sort();
-                        declining.sort();
-                        
-                        // Assign ranks
-                        const rankMap = {};
-                        
-                        // Positive ranks for growing (highest first)
-                        growing.forEach((industry, i) => {
-                            rankMap[industry] = growing.length - i;
-                        });
-                        
-                        // Zero for neutral
-                        neutral.forEach(industry => {
-                            rankMap[industry] = 0;
-                        });
-                        
-                        // Negative ranks for declining (most negative last)
-                        declining.forEach((industry, i) => {
-                            rankMap[industry] = -(i + 1);
-                        });
-                        
-                        // Create an array of industries sorted by rank
-                        const sortedByRank = [
-                            ...growing,
-                            ...neutral,
-                            ...declining
-                        ];
-                        
-                        return {
-                            date: date,
-                            rankMap: rankMap,
-                            sortedIndustries: sortedByRank
-                        };
-                    });
-                    
-                    // Create the table
-                    const table = document.createElement('table');
-                    table.className = 'table table-striped table-hover';
-                    table.id = 'numGrowthTable';
-                    
-                    // Create header row
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-                    headerRow.innerHTML = '<th>REFERENCE</th>';
-                    
-                    // Add column headers for each month
-                    data.dates.forEach(date => {
-                        headerRow.innerHTML += `<th>${date}</th><th>Rank</th>`;
-                    });
-                    
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-                    
-                    // Create table body
-                    const tbody = document.createElement('tbody');
-                    
-                    // For each reference industry (alphabetical order)
-                    referenceIndustries.forEach(industry => {
-                        const row = document.createElement('tr');
-                        
-                        // Reference column
-                        const refCell = document.createElement('td');
-                        refCell.textContent = industry;
-                        refCell.className = 'reference-cell';
-                        row.appendChild(refCell);
-                        
-                        // For each month
-                        monthsData.forEach(monthData => {
-                            const status = data.industries[industry][monthData.date];
-                            const rank = monthData.rankMap[industry];
-                            
-                            // Create industry cell with appropriate color
-                            const industryCell = document.createElement('td');
-                            industryCell.textContent = industry;
-                            
-                            if (rank > 0) {
-                                industryCell.className = 'bg-growing';
-                            } else if (rank < 0) {
-                                industryCell.className = 'bg-contracting';
-                            } else {
-                                industryCell.className = 'bg-neutral';
-                            }
-                            
-                            // Create rank cell with gradient color
-                            const rankCell = document.createElement('td');
-                            rankCell.textContent = rank;
-                            rankCell.className = 'text-center';
-                            
-                            // Apply color gradient based on rank
-                            if (rank > 0) {
-                                const intensity = Math.min(rank, 5) / 5;
-                                rankCell.style.backgroundColor = `rgba(46, 204, 113, ${intensity})`;
-                            } else if (rank < 0) {
-                                const intensity = Math.min(Math.abs(rank), 5) / 5;
-                                rankCell.style.backgroundColor = `rgba(231, 76, 60, ${intensity})`;
-                            } else {
-                                rankCell.style.backgroundColor = 'rgba(241, 196, 15, 0.5)';
-                            }
-                            
-                            // Add visual separator between months
-                            rankCell.style.borderRight = '8px solid #f8f9fa';
-                            
-                            row.appendChild(industryCell);
-                            row.appendChild(rankCell);
-                        });
-                        
-                        tbody.appendChild(row);
-                    });
-                    
-                    table.appendChild(tbody);
-                    
-                    // Create second table sorted by rank for each month
-                    const rankedTable = document.createElement('table');
-                    rankedTable.className = 'table table-striped table-hover mt-5';
-                    rankedTable.id = 'numRankedTable';
-                    
-                    // Create header for ranked table
-                    const rankedThead = document.createElement('thead');
-                    const rankedHeaderRow = document.createElement('tr');
-                    rankedHeaderRow.innerHTML = '<th>REFERENCE</th>';
-                    
-                    // Add column headers for each month
-                    data.dates.forEach(date => {
-                        rankedHeaderRow.innerHTML += `<th>${date}</th><th>Rank</th>`;
-                    });
-                    
-                    rankedThead.appendChild(rankedHeaderRow);
-                    rankedTable.appendChild(rankedThead);
-                    
-                    // Create ranked table body
-                    const rankedTbody = document.createElement('tbody');
-                    
-                    // Determine the maximum number of rows needed
-                    const maxRows = Math.max(...monthsData.map(m => m.sortedIndustries.length));
-                    
-                    // Create rows
-                    for (let i = 0; i < maxRows; i++) {
-                        const row = document.createElement('tr');
-                        
-                        // Reference column (empty for alignment)
-                        const refCell = document.createElement('td');
-                        refCell.className = 'reference-cell';
-                        refCell.innerHTML = '&nbsp;'; // Empty cell with spacing
-                        row.appendChild(refCell);
-                        
-                        // For each month, add the industry at this rank position
-                        monthsData.forEach(monthData => {
-                            const industry = i < monthData.sortedIndustries.length ? 
-                                        monthData.sortedIndustries[i] : null;
-                            
-                            if (industry) {
-                                const rank = monthData.rankMap[industry];
-                                
-                                // Create industry cell with appropriate color
-                                const industryCell = document.createElement('td');
-                                industryCell.textContent = industry;
-                                
-                                if (rank > 0) {
-                                    industryCell.className = 'bg-growing';
-                                } else if (rank < 0) {
-                                    industryCell.className = 'bg-contracting';
-                                } else {
-                                    industryCell.className = 'bg-neutral';
-                                }
-                                
-                                // Create rank cell with gradient color
-                                const rankCell = document.createElement('td');
-                                rankCell.textContent = rank;
-                                rankCell.className = 'text-center';
-                                
-                                // Apply color gradient based on rank
-                                if (rank > 0) {
-                                    const intensity = Math.min(rank, 5) / 5;
-                                    rankCell.style.backgroundColor = `rgba(46, 204, 113, ${intensity})`;
-                                } else if (rank < 0) {
-                                    const intensity = Math.min(Math.abs(rank), 5) / 5;
-                                    rankCell.style.backgroundColor = `rgba(231, 76, 60, ${intensity})`;
-                                } else {
-                                    rankCell.style.backgroundColor = 'rgba(241, 196, 15, 0.5)';
-                                }
-                                
-                                // Add visual separator between months
-                                rankCell.style.borderRight = '8px solid #f8f9fa';
-                                
-                                row.appendChild(industryCell);
-                                row.appendChild(rankCell);
-                            } else {
-                                // Empty cells for alignment
-                                const emptyCell = document.createElement('td');
-                                row.appendChild(emptyCell);
-                                
-                                const emptyRankCell = document.createElement('td');
-                                emptyRankCell.style.borderRight = '8px solid #f8f9fa';
-                                row.appendChild(emptyRankCell);
-                            }
-                        });
-                        
-                        rankedTbody.appendChild(row);
-                    }
-                    
-                    rankedTable.appendChild(rankedTbody);
-                    
-                    // Add tables to container
-                    const alphabeticalDiv = document.createElement('div');
-                    alphabeticalDiv.className = 'table-responsive';
-                    alphabeticalDiv.style.maxHeight = '35vh';
-                    alphabeticalDiv.appendChild(table);
-                    
-                    const rankedDiv = document.createElement('div');
-                    rankedDiv.className = 'table-responsive';
-                    rankedDiv.style.maxHeight = '35vh';
-                    rankedDiv.appendChild(rankedTable);
-                    
-                    // Add headers for each table
-                    const alphaHeader = document.createElement('h6');
-                    alphaHeader.className = 'mt-3 mb-2';
-                    alphaHeader.textContent = 'Alphabetical View';
-                    
-                    const rankedHeader = document.createElement('h6');
-                    rankedHeader.className = 'mt-4 mb-2';
-                    rankedHeader.textContent = 'Ranked View (Matches Google Sheet)';
-                    
-                    container.appendChild(alphaHeader);
-                    container.appendChild(alphabeticalDiv);
-                    container.appendChild(rankedHeader);
-                    container.appendChild(rankedDiv);
-                    
-                    // Add styling
-                    addNumericalTableStyles();
+                    console.log("Industry data for", indexName, ":", data); // Debug output
+                    renderSingleIndexView(container, indexName, data);
                 })
                 .catch(error => {
                     console.error('Error fetching numerical growth data:', error);
                     container.innerHTML = '<div class="alert alert-danger">Error loading data. Please try again.</div>';
                 });
+        }
+
+        function loadAllIndices(container) {
+            // Get all indices from the dropdown except "All"
+            const dropdown = document.getElementById('numIndexSelect');
+            
+            // Basic validation
+            if (!dropdown || dropdown.options.length <= 1) {
+                container.innerHTML = '<div class="alert alert-danger">No indices available.</div>';
+                return;
+            }
+            
+            const allIndices = Array.from(dropdown.options)
+                .filter(option => option.value !== "All" && option.value !== "Manufacturing PMI")
+                .map(option => option.value);
+            
+            if (allIndices.length === 0) {
+                container.innerHTML = '<div class="alert alert-warning">No indices available.</div>';
+                return;
+            }
+            
+            // Create container for all indices
+            container.innerHTML = '<div id="allIndicesContainer"></div>';
+            const allIndicesContainer = document.getElementById('allIndicesContainer');
+            
+            // Process each index
+            allIndices.forEach(indexName => {
+                // Create a container for this index
+                const indexContainer = document.createElement('div');
+                indexContainer.className = 'index-container mb-5';
+                indexContainer.innerHTML = `<div class="text-center"><div class="spinner-border spinner-border-sm"></div> Loading ${indexName}...</div>`;
+                allIndicesContainer.appendChild(indexContainer);
+                
+                // Fetch using correct endpoint
+                fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        renderSingleIndexView(indexContainer, indexName, data);
+                    })
+                    .catch(error => {
+                        console.error(`Error loading ${indexName}:`, error);
+                        indexContainer.innerHTML = `<div class="alert alert-danger">Error loading ${indexName}</div>`;
+                    });
+            });
+        }
+
+        function renderSingleIndexView(container, indexName, data) {
+            // Clear the container if it's already populated
+            container.innerHTML = '';
+            
+            // Check if we have valid data
+            if (!data || !data.industries || Object.keys(data.industries).length === 0) {
+                container.innerHTML = `<div class="alert alert-warning">No industry data available for ${indexName}.</div>`;
+                return;
+            }
+            
+            // Get all industries from the data
+            const allIndustries = Object.keys(data.industries);
+            const referenceIndustries = [...allIndustries].sort(); // Alphabetical for reference column
+            
+            // Get the dates (months) from the data
+            const dates = data.dates || [];
+            if (!dates.length) {
+                container.innerHTML = `<div class="alert alert-warning">No date data available for ${indexName}.</div>`;
+                return;
+            }
+            
+            // Process data for each month to determine rankings
+            const monthsData = dates.map(date => {
+                // Categorize industries by status
+                const growing = [];
+                const neutral = [];
+                const declining = [];
+                
+                allIndustries.forEach(industry => {
+                    const statusData = data.industries[industry][date];
+                    if (!statusData) {
+                        neutral.push(industry);
+                        return;
+                    }
+                    
+                    const status = statusData.status;
+                    
+                    // Determine category based on status
+                    if (status === 'Growing' || status === 'Increasing' || 
+                        status === 'Higher' || status === 'Too High' || status === 'Slower') {
+                        growing.push(industry);
+                    } else if (status === 'Contracting' || status === 'Decreasing' || 
+                            status === 'Lower' || status === 'Too Low' || status === 'Faster') {
+                        declining.push(industry);
+                    } else {
+                        neutral.push(industry);
+                    }
+                });
+                
+                // Assign ranks similar to the Google Sheets implementation
+                const rankMap = {};
+                
+                // Positive ranks for growing (highest first)
+                growing.forEach((industry, i) => {
+                    rankMap[industry] = growing.length - i;
+                });
+                
+                // Zero for neutral
+                neutral.forEach(industry => {
+                    rankMap[industry] = 0;
+                });
+                
+                // Negative ranks for declining (most negative last)
+                declining.forEach((industry, i) => {
+                    rankMap[industry] = -(i + 1);
+                });
+                
+                // Create a sorted array by rank
+                const sortedByRank = [...allIndustries].sort((a, b) => rankMap[b] - rankMap[a]);
+                
+                return {
+                    date: date,
+                    rankMap: rankMap,
+                    sortedIndustries: sortedByRank
+                };
+            });
+            
+            // Create header with index name
+            const indexHeader = document.createElement('h5');
+            indexHeader.className = 'mb-3';
+            indexHeader.textContent = `INDEX: ${indexName}`;
+            container.appendChild(indexHeader);
+            
+            // Create a flex container for horizontal layout
+            const tablesContainer = document.createElement('div');
+            tablesContainer.className = 'tables-container d-flex flex-nowrap overflow-auto';
+            tablesContainer.style.paddingBottom = '10px'; // Add padding to show shadows
+            
+            // Create reference table (alphabetical)
+            const referenceDiv = document.createElement('div');
+            referenceDiv.className = 'reference-table-container me-4';
+            referenceDiv.style.minWidth = '250px';
+            referenceDiv.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
+            
+            const referenceTable = document.createElement('table');
+            referenceTable.className = 'table table-bordered mb-0';
+            referenceTable.id = 'numReferenceTable';
+            
+            // Create reference header
+            const refThead = document.createElement('thead');
+            const refHeaderRow = document.createElement('tr');
+            refHeaderRow.innerHTML = '<th>REFERENCE</th>';
+            refThead.appendChild(refHeaderRow);
+            referenceTable.appendChild(refThead);
+            
+            // Create reference body
+            const refTbody = document.createElement('tbody');
+            referenceIndustries.forEach(industry => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${industry}</td>`;
+                refTbody.appendChild(row);
+            });
+            referenceTable.appendChild(refTbody);
+            referenceDiv.appendChild(referenceTable);
+            tablesContainer.appendChild(referenceDiv);
+            
+            // Create a table for each month
+            monthsData.forEach(monthData => {
+                const monthDiv = document.createElement('div');
+                monthDiv.className = 'month-table-container me-4';
+                monthDiv.style.minWidth = '320px';
+                monthDiv.style.boxShadow = '0 2px 5px rgba(0,0,0,0.1)';
+                
+                const monthTable = document.createElement('table');
+                monthTable.className = 'table table-bordered mb-0';
+                
+                // Create header
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                headerRow.innerHTML = `<th>${monthData.date}</th><th style="width: 80px;">Rank</th>`; // Narrower rank column
+                thead.appendChild(headerRow);
+                monthTable.appendChild(thead);
+                
+                // Create body sorted by rank
+                const tbody = document.createElement('tbody');
+                monthData.sortedIndustries.forEach(industry => {
+                    const rank = monthData.rankMap[industry];
+                    const row = document.createElement('tr');
+                    
+                    // Industry cell - no background color
+                    const industryCell = document.createElement('td');
+                    industryCell.textContent = industry;
+                    
+                    // Rank cell with gradient color
+                    const rankCell = document.createElement('td');
+                    rankCell.textContent = rank;
+                    rankCell.className = 'text-center';
+                    rankCell.style.width = '80px'; // Narrower rank column
+                    
+                    // Apply color gradient based on rank
+                    if (rank > 0) {
+                        const intensity = Math.min(rank, 5) / 5;
+                        rankCell.style.backgroundColor = `rgba(46, 204, 113, ${intensity})`;
+                    } else if (rank < 0) {
+                        const intensity = Math.min(Math.abs(rank), 5) / 5;
+                        rankCell.style.backgroundColor = `rgba(231, 76, 60, ${intensity})`;
+                    } else {
+                        rankCell.style.backgroundColor = 'rgba(241, 196, 15, 0.5)';
+                    }
+                    
+                    row.appendChild(industryCell);
+                    row.appendChild(rankCell);
+                    tbody.appendChild(row);
+                });
+                
+                monthTable.appendChild(tbody);
+                monthDiv.appendChild(monthTable);
+                tablesContainer.appendChild(monthDiv);
+            });
+            
+            container.appendChild(tablesContainer);
+            
+            // Add styling
+            addNumericalTableStyles();
         }
 
         function addNumericalTableStyles() {
@@ -1445,56 +1412,70 @@
                 styleEl = document.createElement('style');
                 styleEl.id = 'numerical-table-styles';
                 styleEl.textContent = `
-                    .reference-cell, #numGrowthTable th:first-child, #numRankedTable th:first-child {
-                        position: sticky;
-                        left: 0;
-                        background-color: #f8f9fa;
-                        z-index: 10;
-                        min-width: 200px;
-                        border-right: 2px solid #dee2e6;
+                    .tables-container {
+                        padding-bottom: 10px;
                     }
                     
-                    #numGrowthTable th, #numRankedTable th {
-                        position: sticky;
-                        top: 0;
-                        background-color: #f8f9fa;
-                        z-index: 5;
+                    .reference-table-container, .month-table-container {
+                        border-radius: 4px;
+                        overflow: hidden;
                     }
                     
-                    #numGrowthTable th:first-child, #numRankedTable th:first-child {
-                        z-index: 15;
-                    }
-                    
-                    .bg-growing {
-                        background-color: #2ecc71 !important;
-                        color: white !important;
-                    }
-                    
-                    .bg-contracting {
-                        background-color: #e74c3c !important;
-                        color: white !important;
-                    }
-                    
-                    .bg-neutral {
-                        background-color: #f39c12 !important;
-                        color: white !important;
-                    }
-                    
-                    /* Add hover effect to rows */
-                    #numGrowthTable tbody tr:hover, #numRankedTable tbody tr:hover {
-                        background-color: rgba(0,0,0,0.05);
+                    .reference-table-container table, .month-table-container table {
+                        margin-bottom: 0;
                     }
                     
                     /* Format rank cells */
-                    #numGrowthTable td:nth-child(even), #numRankedTable td:nth-child(even) {
+                    .month-table-container td:nth-child(2) {
                         font-weight: bold;
-                        min-width: 50px;
+                        text-align: center;
+                        width: 80px !important;
+                        min-width: 80px !important;
+                        max-width: 80px !important;
                     }
                     
-                    /* Format industry cells */
-                    #numGrowthTable td:nth-child(odd):not(:first-child), 
-                    #numRankedTable td:nth-child(odd):not(:first-child) {
-                        min-width: 180px;
+                    /* Make table headers sticky */
+                    .tables-container thead th {
+                        position: sticky;
+                        top: 0;
+                        background-color: #f8f9fa;
+                        z-index: 10;
+                    }
+                    
+                    /* Add hover effect to rows */
+                    tbody tr:hover {
+                        background-color: rgba(0,0,0,0.05);
+                    }
+                    
+                    /* Add matching heights between tables */
+                    .tables-container table {
+                        height: 100%;
+                    }
+                    
+                    /* Add more separation between indices in All view */
+                    .index-container {
+                        margin-bottom: 3rem !important;
+                        border-bottom: 1px solid #dee2e6;
+                        padding-bottom: 2rem;
+                    }
+                    
+                    /* Add horizontal scrollbar styling */
+                    .tables-container::-webkit-scrollbar {
+                        height: 8px;
+                    }
+                    
+                    .tables-container::-webkit-scrollbar-track {
+                        background: #f1f1f1;
+                        border-radius: 4px;
+                    }
+                    
+                    .tables-container::-webkit-scrollbar-thumb {
+                        background: #888;
+                        border-radius: 4px;
+                    }
+                    
+                    .tables-container::-webkit-scrollbar-thumb:hover {
+                        background: #555;
                     }
                 `;
                 document.head.appendChild(styleEl);
@@ -1541,6 +1522,167 @@
             }
         }
 
+        // Modify this function to be called when the page loads
+        function initializeNumericalGrowthTab() {
+            const numIndexSelect = document.getElementById('numIndexSelect');
+            if (!numIndexSelect) return;
+            
+            const cardBody = document.querySelector('.card-body');
+            
+            // Show loading indicator
+            if (cardBody) {
+                cardBody.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading indices...</p></div>';
+            }
+            
+            // Fetch indices directly from the API
+            fetch('/api/heatmap_data/all')
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Heatmap data:", data); // Debug output
+                    
+                    // Extract unique indices from the response
+                    const availableIndices = new Set();
+                    
+                    if (Array.isArray(data)) {
+                        data.forEach(item => {
+                            if (item && item.indices) {
+                                Object.keys(item.indices).forEach(index => {
+                                    availableIndices.add(index);
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Convert to array and filter out Manufacturing PMI
+                    const filteredIndices = Array.from(availableIndices)
+                        .filter(index => index !== 'Manufacturing PMI')
+                        .sort(); // Sort alphabetically
+                    
+                    console.log("Available indices:", filteredIndices); // Debug output
+                    
+                    // Clear existing options
+                    while (numIndexSelect.options.length > 0) {
+                        numIndexSelect.remove(0);
+                    }
+                    
+                    // Add the "All" option first
+                    const allOption = document.createElement('option');
+                    allOption.value = "All";
+                    allOption.text = "All Indices";
+                    numIndexSelect.add(allOption);
+                    
+                    // Add other indices
+                    filteredIndices.forEach(index => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.text = index;
+                        numIndexSelect.add(option);
+                    });
+                    
+                    // Set up event listener
+                    if (!numIndexSelect.hasAttribute('data-event-bound')) {
+                        numIndexSelect.addEventListener('change', function() {
+                            loadNumericalGrowthTable(this.value);
+                        });
+                        numIndexSelect.setAttribute('data-event-bound', 'true');
+                    }
+                    
+                    // Load data for the first option (or "All")
+                    if (numIndexSelect.options.length > 0) {
+                        numIndexSelect.selectedIndex = 0;
+                        loadNumericalGrowthTable(numIndexSelect.value);
+                    } else {
+                        if (cardBody) {
+                            cardBody.innerHTML = '<div class="alert alert-danger">No indices available. Please check if data exists in the database.</div>';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching indices:", error);
+                    
+                    // Fallback: Use hardcoded list of common indices from your database
+                    const fallbackIndices = [
+                        'New Orders', 'Production', 'Employment', 'Supplier Deliveries', 
+                        'Inventories', 'Customers\' Inventories', 'Prices', 'Backlog of Orders',
+                        'New Export Orders', 'Imports'
+                    ];
+                    
+                    // Clear existing options
+                    while (numIndexSelect.options.length > 0) {
+                        numIndexSelect.remove(0);
+                    }
+                    
+                    // Add the "All" option first
+                    const allOption = document.createElement('option');
+                    allOption.value = "All";
+                    allOption.text = "All Indices";
+                    numIndexSelect.add(allOption);
+                    
+                    // Add fallback indices
+                    fallbackIndices.forEach(index => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.text = index;
+                        numIndexSelect.add(option);
+                    });
+                    
+                    // Set up event listener
+                    if (!numIndexSelect.hasAttribute('data-event-bound')) {
+                        numIndexSelect.addEventListener('change', function() {
+                            loadNumericalGrowthTable(this.value);
+                        });
+                        numIndexSelect.setAttribute('data-event-bound', 'true');
+                    }
+                    
+                    // Load data for the first option (or "All")
+                    numIndexSelect.selectedIndex = 0;
+                    loadNumericalGrowthTable(numIndexSelect.value);
+                });
+        }
+
+        // Separate function to populate the dropdown
+        function populateDropdown(dropdown, indicesList) {
+            // Keep track of the previously selected value if any
+            const previousValue = dropdown.value;
+            
+            // Remove any existing options
+            while (dropdown.options.length > 0) {
+                dropdown.remove(0);
+            }
+            
+            // Add the "All" option first
+            const allOption = document.createElement('option');
+            allOption.value = "All";
+            allOption.text = "All Indices";
+            dropdown.add(allOption);
+            
+            // Add other indices
+            indicesList.forEach(index => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = index;
+                dropdown.add(option);
+            });
+            
+            // Restore previous selection if possible, otherwise default to "All"
+            if (previousValue && Array.from(dropdown.options).some(opt => opt.value === previousValue)) {
+                dropdown.value = previousValue;
+            } else {
+                dropdown.value = "All";
+            }
+            
+            // Set up event listener if not already set
+            if (!dropdown.hasAttribute('data-event-bound')) {
+                dropdown.addEventListener('change', function() {
+                    loadNumericalGrowthTable(this.value);
+                });
+                dropdown.setAttribute('data-event-bound', 'true');
+            }
+            
+            // Trigger load with the current value
+            loadNumericalGrowthTable(dropdown.value);
+        }
+
         // Function to add color scale for rank columns
         function addRankColumnColorScale() {
             // Create a style element if it doesn't exist
@@ -1574,6 +1716,66 @@
                 #numTableBody td:nth-child(even)[data-rank="-4"] { background-color: rgba(220, 53, 69, 0.8); }
                 #numTableBody td:nth-child(even)[data-rank="-5"] { background-color: rgba(220, 53, 69, 1.0); }
             `;
+        }
+
+        // Helper function for processing all indices
+        function processAllIndices(container, indicesList) {
+            // Create a progress indicator
+            container.innerHTML = `
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                        role="progressbar" style="width: 0%" 
+                        aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        Loading indices...
+                    </div>
+                </div>
+                <div id="allIndicesContainer"></div>
+            `;
+            
+            const allIndicesContainer = document.getElementById('allIndicesContainer');
+            const progressBar = container.querySelector('.progress-bar');
+            
+            // Process each index sequentially
+            let completed = 0;
+            
+            function processNextIndex() {
+                if (completed >= indicesList.length) {
+                    // All done, remove progress bar
+                    const progressElement = container.querySelector('.progress');
+                    if (progressElement) {
+                        container.removeChild(progressElement);
+                    }
+                    return;
+                }
+                
+                const indexName = indicesList[completed];
+                progressBar.style.width = `${(completed / indicesList.length) * 100}%`;
+                progressBar.setAttribute('aria-valuenow', (completed / indicesList.length) * 100);
+                progressBar.textContent = `Loading ${indexName}... (${completed + 1}/${indicesList.length})`;
+                
+                // Create a container for this index
+                const indexContainer = document.createElement('div');
+                indexContainer.className = 'index-container mb-5';
+                allIndicesContainer.appendChild(indexContainer);
+                
+                // Use the correct endpoint
+                fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        renderSingleIndexView(indexContainer, indexName, data);
+                        completed++;
+                        setTimeout(processNextIndex, 100); // Small delay to allow UI to update
+                    })
+                    .catch(error => {
+                        console.error(`Error loading index ${indexName}:`, error);
+                        indexContainer.innerHTML = `<div class="alert alert-danger">Error loading ${indexName}</div>`;
+                        completed++;
+                        setTimeout(processNextIndex, 100);
+                    });
+            }
+            
+            // Start processing
+            processNextIndex();
         }
 
         // Trend Chart Functions
