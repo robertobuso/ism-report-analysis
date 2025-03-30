@@ -300,8 +300,16 @@ def get_industry_status(index_name):
     try:
         # Get industry status data for the specified index (last 12 months)
         months = request.args.get('months', 12, type=int)
+        debug = request.args.get('debug', False, type=bool)
+        
+        if debug:
+            logger.info(f"Fetching industry status for {index_name}, {months} months")
+            
         industry_data = get_industry_status_over_time(index_name, months)
         
+        if debug and not industry_data['industries']:
+            logger.warning(f"No industry data found for {index_name}")
+            
         # Ensure all standard industries are included
         standard_industries = [
             "Chemical",
@@ -338,8 +346,9 @@ def get_industry_status(index_name):
         return jsonify(industry_data)
     except Exception as e:
         logger.error(f"Error getting industry status: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-    
+        logger.error(traceback.format_exc())
+        return jsonify({"error": str(e), "industries": {}, "dates": []}), 500
+        
 @app.route('/api/industry_alphabetical/<index_name>')
 def get_industry_alphabetical(index_name):
     try:
@@ -375,6 +384,24 @@ def api_heatmap_data(months=None):
     except Exception as e:
         logger.error(f"Error getting heatmap data: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/all_indices')
+def get_indices_list():
+    try:
+        # Get list of indices directly from database
+        indices = get_all_indices()
+        return jsonify(indices)
+    except Exception as e:
+        logger.error(f"Error getting indices list: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Return at least a fallback list
+        fallback_indices = [
+            'New Orders', 'Production', 'Employment', 'Supplier Deliveries',
+            'Inventories', 'Customers\' Inventories', 'Prices', 'Backlog of Orders',
+            'New Export Orders', 'Imports'
+        ]
+        return jsonify(fallback_indices)
 
 @app.route('/health')
 def health():
