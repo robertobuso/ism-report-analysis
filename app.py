@@ -299,14 +299,47 @@ def get_index_trends(index_name):
 def get_industry_status(index_name):
     try:
         # Get industry status data for the specified index (last 12 months)
-        industry_data = get_industry_status_over_time(index_name, 12)
+        months = request.args.get('months', 12, type=int)
+        industry_data = get_industry_status_over_time(index_name, months)
         
-        # Return as JSON
+        # Ensure all standard industries are included
+        standard_industries = [
+            "Chemical",
+            "Computer & Electronic",
+            "Electrical Equipment, Appliances & Components",
+            "Fabricated Metal",
+            "Food, Beverage & Tobacco",
+            "Furniture & Related",
+            "Machinery",
+            "Miscellaneous Manufacturing",
+            "Nonmetallic Mineral",
+            "Paper",
+            "Petroleum & Coal",
+            "Plastics & Rubber",
+            "Primary Metals",
+            "Printing & Related Support Activities",
+            "Textile Mills",
+            "Transportation Equipment",
+            "Wood"
+        ]
+        
+        # Add any missing standard industries with neutral status
+        if 'industries' in industry_data:
+            dates = industry_data.get('dates', [])
+            for industry in standard_industries:
+                if industry not in industry_data['industries']:
+                    industry_data['industries'][industry] = {}
+                    for date in dates:
+                        industry_data['industries'][industry][date] = {
+                            'status': 'Neutral',
+                            'category': 'Not Reported'
+                        }
+        
         return jsonify(industry_data)
     except Exception as e:
         logger.error(f"Error getting industry status: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @app.route('/api/industry_alphabetical/<index_name>')
 def get_industry_alphabetical(index_name):
     try:
@@ -343,17 +376,6 @@ def api_heatmap_data(months=None):
         logger.error(f"Error getting heatmap data: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/industry_status/<index_name>')
-def s(index_name):
-    try:
-        # Get industry status data for the specified index (last 12 months)
-        months = request.args.get('months', 12, type=int)
-        industry_data = get_industry_status_over_time(index_name, months)
-        return jsonify(industry_data)
-    except Exception as e:
-        logger.error(f"Error getting industry status: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-    
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy"})

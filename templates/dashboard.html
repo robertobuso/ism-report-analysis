@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>Dashboard - ISM Report Analysis</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -26,10 +27,13 @@
 
     <style>
         body {
-            background-color: #f8f9fa;
-            color: #343a40;
-            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-        }
+            background-color: #f8fafc;
+            color: #1e293b;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            font-size: 15px;
+            line-height: 1.5;
+            letter-spacing: -0.01em;
+            }
         
         .container {
             max-width: 1400px;
@@ -41,84 +45,90 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .dashboard-header h1 {
-            font-weight: 600;
-            font-size: 2rem;
+            margin-bottom: 24px;
+            }
+
+            .dashboard-header h1 {
+            font-weight: 700;
+            font-size: 1.75rem;
             margin: 0;
-            color: #212529;
-        }
+            color: #0f172a;
+            letter-spacing: -0.02em;
+            }
         
         /* KPI Cards styling */
         .kpi-card {
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px var(--color-card-shadow);
+            padding: 24px;
             height: 100%;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        
+            }
+
         .kpi-card:hover {
             transform: translateY(-3px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
         }
-        
+    
         .kpi-title {
-            color: #6c757d;
-            font-size: 0.9rem;
-            font-weight: 600;
+            color: #64748b;
+            font-size: 0.8125rem;
+            font-weight: 500;
             margin-bottom: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.03em;
         }
-        
+
         .kpi-value {
             font-size: 2.5rem;
             font-weight: 700;
             margin-bottom: 5px;
-            color: #212529;
+            color: #0f172a;
+            letter-spacing: -0.03em;
+            font-feature-settings: "tnum";
+            font-variant-numeric: tabular-nums;
         }
-        
+
         .kpi-direction {
-            font-size: 0.9rem;
+            font-size: 0.9375rem;
+            font-weight: 500;
         }
         
         .text-growing {
-            color: #28a745;
+            color: var(--color-growing);
         }
-        
+
         .text-contracting {
-            color: #dc3545;
+            color: var(--color-contracting);
         }
         
         /* Tab navigation */
         .nav-tabs {
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 1px solid var(--color-border);
             margin-bottom: 25px;
         }
-        
+
         .nav-tabs .nav-link {
             border: none;
             border-bottom: 3px solid transparent;
-            color: #495057;
+            color: #64748b;
             font-weight: 500;
             padding: 0.75rem 1rem;
             margin-right: 1rem;
             transition: color 0.2s ease, border-color 0.2s ease;
         }
-        
+
         .nav-tabs .nav-link:hover {
-            border-color: #dee2e6;
-            color: #212529;
+            border-color: #cbd5e1;
+            color: #334155;
         }
-        
+
         .nav-tabs .nav-link.active {
-            color: #007bff;
-            border-color: #007bff;
+            color: #0284c7;
+            border-color: #0284c7;
             background-color: transparent;
+            font-weight: 600;
         }
         
         /* Table styling */
@@ -193,6 +203,12 @@
             display: flex;
             gap: 15px;
             margin-bottom: 20px;
+            }
+
+        .filter-container label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #475569;
         }
         
         .filter-select {
@@ -263,6 +279,62 @@
         #numTableBody td:nth-child(even) {
             font-weight: bold;
             text-align: center;
+        }
+        
+        /* Ensure even columns (rank cells) have a minimum width */
+        #numGrowthTable td:nth-child(even) {
+            min-width: 50px;
+        }
+        
+        /* Make status cells have a minimum width */
+        #numGrowthTable td:nth-child(odd):not(:first-child) {
+            min-width: 150px;
+        }
+        
+        /* Make reference column sticky */
+        #numGrowthTable td:first-child,
+        #numGrowthTable th:first-child {
+            position: sticky;
+            left: 0;
+            background-color: #f8f9fa;
+            z-index: 10;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        
+        /* Header styling */
+        #numGrowthTable thead th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        
+        /* First header cell (at intersection of sticky header and sticky column) */
+        #numGrowthTable th:first-child {
+            z-index: 15;
+        }
+
+        /* Improve form control styling */
+        select.form-select, input.form-control {
+        font-size: 0.9375rem;
+        border-radius: 6px;
+        border-color: #cbd5e1;
+        padding: 0.5rem 0.75rem;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+
+        select.form-select:focus, input.form-control:focus {
+        border-color: #0284c7;
+        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+        }
+
+        #alphaGrowthTable th, #alphaGrowthTable td {
+            border-right: 1px solid #dee2e6;
+        }
+
+        #alphaGrowthTable th:last-child, #alphaGrowthTable td:last-child {
+            border-right: none;
         }
     </style>
 </head>
@@ -369,11 +441,20 @@
                     <div class="content-card-header">
                         <h5>Industry Growth Status (Alphabetical)</h5>
                         <div class="d-flex align-items-center">
-                            <input type="text" class="form-control form-control-sm me-2" id="alphaIndustryFilter" placeholder="Filter industries...">
+                            <select id="alphaIndexSelect" class="form-select form-select-sm me-2" style="width: auto;">
+                                {% for index in indices %}
+                                    {% if index != 'Manufacturing PMI' %}
+                                        <option value="{{ index }}">{{ index }}</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
                             <button id="exportAlphaBtn" class="btn btn-sm btn-outline-secondary">
                                 <i class="bi bi-download"></i> Export
                             </button>
                         </div>
+                    </div>
+                    <div class="bg-light p-2 border-bottom" id="alphaCurrentIndex">
+                        <h6 class="mb-0">Current Index: <span id="currentIndexName">Backlog of Orders</span></h6>
                     </div>
                     <div class="content-card-body p-0">
                         <div class="table-responsive">
@@ -448,16 +529,29 @@
                             <div class="col-md-12">
                                 <label class="form-label">Select Indices to Compare:</label>
                                 <div class="d-flex flex-wrap" id="indexCheckboxes">
+                                    <!-- Always include Manufacturing PMI -->
+                                    <div class="form-check me-3 mb-2">
+                                        <input class="form-check-input index-checkbox" type="checkbox" 
+                                            id="check_Manufacturing_PMI" 
+                                            value="Manufacturing PMI" 
+                                            checked>
+                                        <label class="form-check-label" for="check_Manufacturing_PMI">
+                                            Manufacturing PMI
+                                        </label>
+                                    </div>
+                                    
+                                    <!-- Include all other indices -->
                                     {% for index in indices %}
-                                        <div class="form-check me-3 mb-2">
-                                            <input class="form-check-input index-checkbox" type="checkbox" 
-                                                id="check_{{ index|replace(' ', '_') }}" 
-                                                value="{{ index }}" 
-                                                {% if index == 'Manufacturing PMI' %}checked{% endif %}>
-                                            <label class="form-check-label" for="check_{{ index|replace(' ', '_') }}">
-                                                {{ index }}
-                                            </label>
-                                        </div>
+                                        {% if index != 'Manufacturing PMI' %}
+                                            <div class="form-check me-3 mb-2">
+                                                <input class="form-check-input index-checkbox" type="checkbox" 
+                                                    id="check_{{ index|replace(' ', '_') }}" 
+                                                    value="{{ index }}">
+                                                <label class="form-check-label" for="check_{{ index|replace(' ', '_') }}">
+                                                    {{ index }}
+                                                </label>
+                                            </div>
+                                        {% endif %}
                                     {% endfor %}
                                 </div>
                             </div>
@@ -490,9 +584,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Update KPI cards
             updateKpiCards();
+
+            // Initialize the dropdown for the Alpha Growth tab
+            initAlphaIndexSelect();
             
             // Remove the original filter container if it's empty or not needed
             const filterContainer = document.querySelector('.filter-container');
+
             if (filterContainer) {
                 // If we've moved the only filter element elsewhere, remove the container
                 if (filterContainer.children.length === 0) {
@@ -503,6 +601,29 @@
             // Initialize the heatmap if it's the active tab
             if (document.getElementById('heatmap-tab').classList.contains('active')) {
                 loadHeatmapData();
+            }
+
+            // Set up index selection changes for both tabs
+            const alphaIndexSelect = document.getElementById('indexSelect');
+            if (alphaIndexSelect) {
+                alphaIndexSelect.addEventListener('change', function() {
+                    loadGrowthTable('alpha', this.value);
+                });
+            }
+            
+            const numIndexSelect = document.getElementById('numIndexSelect');
+            if (numIndexSelect) {
+                numIndexSelect.addEventListener('change', function() {
+                    loadNumericalGrowthTable(this.value);
+                });
+            }
+            
+            // Initial loading of data if tab is active
+            if (document.getElementById('growth-alpha-tab').classList.contains('active')) {
+                const indexSelect = document.getElementById('indexSelect');
+                if (indexSelect) {
+                    loadGrowthTable('alpha', indexSelect.value);
+                }
             }
 
             // Set up trend chart
@@ -516,6 +637,12 @@
             });
             
             updateChart();
+
+            // If Growth Numerical tab is active, initialize it
+            if (document.getElementById('growth-num-tab').classList.contains('active')) {
+                const selectedIndex = numIndexSelect ? numIndexSelect.value : 'New Orders';
+                loadNumericalGrowthTable(selectedIndex);
+            }
             
             // Set up index selectors
             const indexSelect = document.getElementById('indexSelect');
@@ -530,6 +657,41 @@
             setupTabEventListeners();
         });
         
+
+        function initAlphaIndexSelect() {
+            const alphaIndexSelect = document.getElementById('alphaIndexSelect');
+            if (alphaIndexSelect) {
+                // Set a default option if none is selected
+                if (alphaIndexSelect.selectedIndex < 0) {
+                    alphaIndexSelect.selectedIndex = 0;
+                }
+                
+                // Set the initial index name display
+                const currentIndexElement = document.getElementById('currentIndexName');
+                if (currentIndexElement) {
+                    currentIndexElement.textContent = alphaIndexSelect.options[alphaIndexSelect.selectedIndex].text;
+                }
+                
+                // Add change event listener
+                alphaIndexSelect.addEventListener('change', function() {
+                    console.log('Alpha index changed to:', this.value);
+                    
+                    // Update the current index display
+                    if (currentIndexElement) {
+                        currentIndexElement.textContent = this.options[this.selectedIndex].text;
+                    }
+                    
+                    // Load data for the selected index
+                    loadGrowthTable('alpha', this.value);
+                });
+                
+                // Trigger initial data load if on the alpha tab
+                if (document.getElementById('growth-alpha-tab').classList.contains('active')) {
+                    loadGrowthTable('alpha', alphaIndexSelect.value);
+                }
+            }
+        }
+
         // Set up tab event listeners
         function setupTabEventListeners() {
             // Heatmap tab
@@ -543,31 +705,59 @@
                 });
             }
             
-            // Other tabs (where the index filter makes sense)
-            const otherTabs = ['growth-alpha-tab', 'growth-num-tab', 'trends-tab'];
-            otherTabs.forEach(tabId => {
-                const tab = document.getElementById(tabId);
-                if (tab) {
-                    tab.addEventListener('shown.bs.tab', function() {
-                        // Show the index filter when on other tabs
-                        const indexFilterContainer = document.querySelector('.filter-select:nth-of-type(2)');
-                        if (indexFilterContainer) {
-                            indexFilterContainer.style.display = '';
-                        }
-                        
-                        // Other existing tab logic...
-                        if (tabId === 'growth-alpha-tab') {
-                            if (!document.getElementById('alphaTableBody').hasChildNodes()) {
-                                loadGrowthTable('alpha', document.getElementById('indexSelect').value);
-                            }
-                        } else if (tabId === 'growth-num-tab') {
-                            loadNumericalGrowthTable(document.getElementById('numIndexSelect').value);
+            const alphaIndexSelect = document.getElementById('alphaIndexSelect');
+                if (alphaIndexSelect) {
+                    alphaIndexSelect.addEventListener('change', function() {
+                        // Update the current index display
+                        document.getElementById('currentIndexName').textContent = this.options[this.selectedIndex].text;
+                        // Load data for the selected index
+                        loadGrowthTable('alpha', this.value);
+                    });
+                }
+
+            const alphaTab = document.getElementById('growth-alpha-tab');
+                if (alphaTab) {
+                    alphaTab.addEventListener('shown.bs.tab', function() {
+                        // Get the selected index from the dropdown
+                        const indexSelect = document.getElementById('alphaIndexSelect');
+                        if (indexSelect) {
+                            const selectedIndex = indexSelect.value;
+                            // Update the current index display
+                            document.getElementById('currentIndexName').textContent = indexSelect.options[indexSelect.selectedIndex].text;
+                            // Load data for this index
+                            loadGrowthTable('alpha', selectedIndex);
                         }
                     });
                 }
-            });
+            
+             // Growth Numerical tab
+            const numTab = document.getElementById('growth-num-tab');
+            if (numTab) {
+                numTab.addEventListener('shown.bs.tab', function() {
+                    // Get the selected index (default to first index if none selected)
+                    const numIndexSelect = document.getElementById('numIndexSelect');
+                    const selectedIndex = numIndexSelect ? numIndexSelect.value : 'New Orders';
+                    loadNumericalGrowthTable(selectedIndex);
+                    
+                    // Add event listener to the index selector if it exists
+                    if (numIndexSelect && !numIndexSelect.hasAttribute('data-event-bound')) {
+                        numIndexSelect.addEventListener('change', function() {
+                            loadNumericalGrowthTable(this.value);
+                        });
+                        numIndexSelect.setAttribute('data-event-bound', 'true');
+                    }
+                });
+            }
+            
+            // Trends Tab
+            const trendsTab = document.getElementById('trends-tab');
+            if (trendsTab) {
+                trendsTab.addEventListener('shown.bs.tab', function() {
+                    updateChart();
+                });
+            }
         }
-  
+
         // KPI Cards Functions
         function updateKpiCards() {
             try {
@@ -873,6 +1063,7 @@
             fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
                 .then(response => response.json())
                 .then(data => {
+                    // Sort industries alphabetically for the alpha table
                     const industries = isAlpha 
                         ? Object.keys(data.industries).sort() 
                         : Object.keys(data.industries).sort((a, b) => {
@@ -893,19 +1084,29 @@
                     const tableBody = document.getElementById(tableId);
                     tableBody.innerHTML = ''; // Reset
                     
+                    // Ensure we have data to display
+                    if (industries.length === 0) {
+                        tableBody.innerHTML = '<tr><td colspan="20" class="text-center">No industry data available</td></tr>';
+                        return;
+                    }
+                    
+                    // For Growth Alphabetical, make sure we're showing all industries
                     industries.forEach(industry => {
                         const row = document.createElement('tr');
                         row.innerHTML = `<td>${industry}</td>`;
                         
                         data.dates.forEach(date => {
-                            const status = data.industries[industry][date] || { status: 'Not Reported', category: 'Not Reported' };
+                            const status = data.industries[industry][date] || { status: 'Neutral', category: 'Not Reported' };
                             let cellClass = '';
                             
-                            // Set class based on status - using our new brighter classes
-                            if (status.status === 'Growing' || status.status === 'Increasing') {
-                                cellClass = 'bg-growing';  // Use this brighter class
-                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
-                                cellClass = 'bg-contracting';  // Use this brighter class
+                            // Expanded status mapping to handle all direction terms
+                            const positiveStatuses = ['Growing', 'Increasing', 'Higher', 'Too High', 'Slowing'];
+                            const negativeStatuses = ['Contracting', 'Decreasing', 'Lower', 'Too Low', 'Faster'];
+                            
+                            if (positiveStatuses.includes(status.status)) {
+                                cellClass = 'bg-growing';  // Use green for positive indicators
+                            } else if (negativeStatuses.includes(status.status)) {
+                                cellClass = 'bg-contracting';  // Use red for negative indicators
                             } else if (status.status === 'Neutral') {
                                 cellClass = 'bg-neutral';
                             }
@@ -915,6 +1116,26 @@
                         
                         tableBody.appendChild(row);
                     });
+                    
+                    // Add industry filtering for alpha table
+                    if (isAlpha) {
+                        const filterInput = document.getElementById('alphaIndustryFilter');
+                        if (filterInput) {
+                            filterInput.addEventListener('input', function() {
+                                const filterText = this.value.toLowerCase();
+                                const rows = tableBody.getElementsByTagName('tr');
+                                
+                                Array.from(rows).forEach(row => {
+                                    const industryName = row.cells[0].textContent.toLowerCase();
+                                    if (industryName.includes(filterText)) {
+                                        row.style.display = '';
+                                    } else {
+                                        row.style.display = 'none';
+                                    }
+                                });
+                            });
+                        }
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching industry status:', error);
@@ -922,7 +1143,7 @@
                         '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
                 });
         }
-        
+
         // Helper function for growth table sorting
         function getRecentMonthValue(industryData, dateArray) {
             // Find most recent month with data
@@ -944,95 +1165,417 @@
         
         // Numerical Growth Table
         function loadNumericalGrowthTable(indexName) {
-            const tableBody = document.getElementById('numTableBody');
-            const headerRow = document.getElementById('numHeaderRow');
-            
+            const container = document.querySelector('.card-body');
             // Show loading indicator
-            tableBody.innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
+            container.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading data...</p></div>';
             
             fetch(`/api/industry_numerical/${encodeURIComponent(indexName)}`)
                 .then(response => response.json())
                 .then(data => {
-                    // Reset header row
-                    headerRow.innerHTML = '<th>Industry</th>';
+                    // Clear the container
+                    container.innerHTML = '';
                     
-                    // Add month columns
+                    // Get all industries from the data
+                    const allIndustries = Object.keys(data.industries);
+                    const referenceIndustries = [...allIndustries].sort(); // Alphabetical for reference column
+                    
+                    // Process data for each month
+                    const monthsData = data.dates.map(date => {
+                        // Categorize industries by status
+                        const growing = [];
+                        const neutral = [];
+                        const declining = [];
+                        
+                        allIndustries.forEach(industry => {
+                            const status = data.industries[industry][date];
+                            
+                            if (!status) {
+                                neutral.push(industry);
+                            } else if (status.status === 'Growing' || status.status === 'Increasing') {
+                                growing.push(industry);
+                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
+                                declining.push(industry);
+                            } else {
+                                neutral.push(industry);
+                            }
+                        });
+                        
+                        // Sort each category alphabetically
+                        growing.sort();
+                        neutral.sort();
+                        declining.sort();
+                        
+                        // Assign ranks
+                        const rankMap = {};
+                        
+                        // Positive ranks for growing (highest first)
+                        growing.forEach((industry, i) => {
+                            rankMap[industry] = growing.length - i;
+                        });
+                        
+                        // Zero for neutral
+                        neutral.forEach(industry => {
+                            rankMap[industry] = 0;
+                        });
+                        
+                        // Negative ranks for declining (most negative last)
+                        declining.forEach((industry, i) => {
+                            rankMap[industry] = -(i + 1);
+                        });
+                        
+                        // Create an array of industries sorted by rank
+                        const sortedByRank = [
+                            ...growing,
+                            ...neutral,
+                            ...declining
+                        ];
+                        
+                        return {
+                            date: date,
+                            rankMap: rankMap,
+                            sortedIndustries: sortedByRank
+                        };
+                    });
+                    
+                    // Create the table
+                    const table = document.createElement('table');
+                    table.className = 'table table-striped table-hover';
+                    table.id = 'numGrowthTable';
+                    
+                    // Create header row
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+                    headerRow.innerHTML = '<th>REFERENCE</th>';
+                    
+                    // Add column headers for each month
                     data.dates.forEach(date => {
                         headerRow.innerHTML += `<th>${date}</th><th>Rank</th>`;
                     });
                     
-                    // Get all industries
-                    const industries = Object.keys(data.industries);
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
                     
-                    // Get the most recent date
-                    const mostRecentDate = data.dates[0];
+                    // Create table body
+                    const tbody = document.createElement('tbody');
                     
-                    // Create a sorting map for rankings based on most recent month
-                    const rankMap = {};
-                    industries.forEach(industry => {
-                        const status = data.industries[industry][mostRecentDate];
-                        if (status) {
-                            // Calculate a rank value based on status
-                            if (status.status === 'Growing' || status.status === 'Increasing') {
-                                rankMap[industry] = 3;
-                            } else if (status.status === 'Neutral') {
-                                rankMap[industry] = 2;
-                            } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
-                                rankMap[industry] = 1;
-                            } else {
-                                rankMap[industry] = 0;
-                            }
-                        } else {
-                            rankMap[industry] = 0;
-                        }
-                    });
-                    
-                    // Sort industries by rank (descending)
-                    const sortedIndustries = industries.sort((a, b) => rankMap[b] - rankMap[a]);
-    
-                    // Build table rows
-                    tableBody.innerHTML = '';
-                    sortedIndustries.forEach(industry => {
+                    // For each reference industry (alphabetical order)
+                    referenceIndustries.forEach(industry => {
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td>${industry}</td>`;
                         
-                        // Add status and rank for each date
-                        data.dates.forEach(date => {
-                            const status = data.industries[industry][date];
-                            let statusCell = '';
-                            let rankCell = '';
+                        // Reference column
+                        const refCell = document.createElement('td');
+                        refCell.textContent = industry;
+                        refCell.className = 'reference-cell';
+                        row.appendChild(refCell);
+                        
+                        // For each month
+                        monthsData.forEach(monthData => {
+                            const status = data.industries[industry][monthData.date];
+                            const rank = monthData.rankMap[industry];
                             
-                            if (status) {
-                                let cellClass = '';
-                                if (status.status === 'Growing' || status.status === 'Increasing') {
-                                    cellClass = 'bg-growing';
-                                    rankCell = '+' + (rankMap[industry] || 0);
-                                } else if (status.status === 'Contracting' || status.status === 'Decreasing') {
-                                    cellClass = 'bg-contracting';
-                                    rankCell = '-' + (rankMap[industry] || 0);
-                                } else if (status.status === 'Neutral') {
-                                    cellClass = 'bg-neutral';
-                                    rankCell = '0';
-                                }
-                                
-                                statusCell = `<td class="${cellClass}">${status.status}</td>`;
+                            // Create industry cell with appropriate color
+                            const industryCell = document.createElement('td');
+                            industryCell.textContent = industry;
+                            
+                            if (rank > 0) {
+                                industryCell.className = 'bg-growing';
+                            } else if (rank < 0) {
+                                industryCell.className = 'bg-contracting';
                             } else {
-                                statusCell = '<td>Not Reported</td>';
-                                rankCell = '<td>0</td>';
+                                industryCell.className = 'bg-neutral';
                             }
                             
-                            row.innerHTML += statusCell + `<td>${rankCell}</td>`;
+                            // Create rank cell with gradient color
+                            const rankCell = document.createElement('td');
+                            rankCell.textContent = rank;
+                            rankCell.className = 'text-center';
+                            
+                            // Apply color gradient based on rank
+                            if (rank > 0) {
+                                const intensity = Math.min(rank, 5) / 5;
+                                rankCell.style.backgroundColor = `rgba(46, 204, 113, ${intensity})`;
+                            } else if (rank < 0) {
+                                const intensity = Math.min(Math.abs(rank), 5) / 5;
+                                rankCell.style.backgroundColor = `rgba(231, 76, 60, ${intensity})`;
+                            } else {
+                                rankCell.style.backgroundColor = 'rgba(241, 196, 15, 0.5)';
+                            }
+                            
+                            // Add visual separator between months
+                            rankCell.style.borderRight = '8px solid #f8f9fa';
+                            
+                            row.appendChild(industryCell);
+                            row.appendChild(rankCell);
                         });
                         
-                        tableBody.appendChild(row);
+                        tbody.appendChild(row);
                     });
+                    
+                    table.appendChild(tbody);
+                    
+                    // Create second table sorted by rank for each month
+                    const rankedTable = document.createElement('table');
+                    rankedTable.className = 'table table-striped table-hover mt-5';
+                    rankedTable.id = 'numRankedTable';
+                    
+                    // Create header for ranked table
+                    const rankedThead = document.createElement('thead');
+                    const rankedHeaderRow = document.createElement('tr');
+                    rankedHeaderRow.innerHTML = '<th>REFERENCE</th>';
+                    
+                    // Add column headers for each month
+                    data.dates.forEach(date => {
+                        rankedHeaderRow.innerHTML += `<th>${date}</th><th>Rank</th>`;
+                    });
+                    
+                    rankedThead.appendChild(rankedHeaderRow);
+                    rankedTable.appendChild(rankedThead);
+                    
+                    // Create ranked table body
+                    const rankedTbody = document.createElement('tbody');
+                    
+                    // Determine the maximum number of rows needed
+                    const maxRows = Math.max(...monthsData.map(m => m.sortedIndustries.length));
+                    
+                    // Create rows
+                    for (let i = 0; i < maxRows; i++) {
+                        const row = document.createElement('tr');
+                        
+                        // Reference column (empty for alignment)
+                        const refCell = document.createElement('td');
+                        refCell.className = 'reference-cell';
+                        refCell.innerHTML = '&nbsp;'; // Empty cell with spacing
+                        row.appendChild(refCell);
+                        
+                        // For each month, add the industry at this rank position
+                        monthsData.forEach(monthData => {
+                            const industry = i < monthData.sortedIndustries.length ? 
+                                        monthData.sortedIndustries[i] : null;
+                            
+                            if (industry) {
+                                const rank = monthData.rankMap[industry];
+                                
+                                // Create industry cell with appropriate color
+                                const industryCell = document.createElement('td');
+                                industryCell.textContent = industry;
+                                
+                                if (rank > 0) {
+                                    industryCell.className = 'bg-growing';
+                                } else if (rank < 0) {
+                                    industryCell.className = 'bg-contracting';
+                                } else {
+                                    industryCell.className = 'bg-neutral';
+                                }
+                                
+                                // Create rank cell with gradient color
+                                const rankCell = document.createElement('td');
+                                rankCell.textContent = rank;
+                                rankCell.className = 'text-center';
+                                
+                                // Apply color gradient based on rank
+                                if (rank > 0) {
+                                    const intensity = Math.min(rank, 5) / 5;
+                                    rankCell.style.backgroundColor = `rgba(46, 204, 113, ${intensity})`;
+                                } else if (rank < 0) {
+                                    const intensity = Math.min(Math.abs(rank), 5) / 5;
+                                    rankCell.style.backgroundColor = `rgba(231, 76, 60, ${intensity})`;
+                                } else {
+                                    rankCell.style.backgroundColor = 'rgba(241, 196, 15, 0.5)';
+                                }
+                                
+                                // Add visual separator between months
+                                rankCell.style.borderRight = '8px solid #f8f9fa';
+                                
+                                row.appendChild(industryCell);
+                                row.appendChild(rankCell);
+                            } else {
+                                // Empty cells for alignment
+                                const emptyCell = document.createElement('td');
+                                row.appendChild(emptyCell);
+                                
+                                const emptyRankCell = document.createElement('td');
+                                emptyRankCell.style.borderRight = '8px solid #f8f9fa';
+                                row.appendChild(emptyRankCell);
+                            }
+                        });
+                        
+                        rankedTbody.appendChild(row);
+                    }
+                    
+                    rankedTable.appendChild(rankedTbody);
+                    
+                    // Add tables to container
+                    const alphabeticalDiv = document.createElement('div');
+                    alphabeticalDiv.className = 'table-responsive';
+                    alphabeticalDiv.style.maxHeight = '35vh';
+                    alphabeticalDiv.appendChild(table);
+                    
+                    const rankedDiv = document.createElement('div');
+                    rankedDiv.className = 'table-responsive';
+                    rankedDiv.style.maxHeight = '35vh';
+                    rankedDiv.appendChild(rankedTable);
+                    
+                    // Add headers for each table
+                    const alphaHeader = document.createElement('h6');
+                    alphaHeader.className = 'mt-3 mb-2';
+                    alphaHeader.textContent = 'Alphabetical View';
+                    
+                    const rankedHeader = document.createElement('h6');
+                    rankedHeader.className = 'mt-4 mb-2';
+                    rankedHeader.textContent = 'Ranked View (Matches Google Sheet)';
+                    
+                    container.appendChild(alphaHeader);
+                    container.appendChild(alphabeticalDiv);
+                    container.appendChild(rankedHeader);
+                    container.appendChild(rankedDiv);
+                    
+                    // Add styling
+                    addNumericalTableStyles();
                 })
                 .catch(error => {
                     console.error('Error fetching numerical growth data:', error);
-                    tableBody.innerHTML = '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
+                    container.innerHTML = '<div class="alert alert-danger">Error loading data. Please try again.</div>';
                 });
         }
-        
+
+        function addNumericalTableStyles() {
+            // Add or update styling
+            let styleEl = document.getElementById('numerical-table-styles');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'numerical-table-styles';
+                styleEl.textContent = `
+                    .reference-cell, #numGrowthTable th:first-child, #numRankedTable th:first-child {
+                        position: sticky;
+                        left: 0;
+                        background-color: #f8f9fa;
+                        z-index: 10;
+                        min-width: 200px;
+                        border-right: 2px solid #dee2e6;
+                    }
+                    
+                    #numGrowthTable th, #numRankedTable th {
+                        position: sticky;
+                        top: 0;
+                        background-color: #f8f9fa;
+                        z-index: 5;
+                    }
+                    
+                    #numGrowthTable th:first-child, #numRankedTable th:first-child {
+                        z-index: 15;
+                    }
+                    
+                    .bg-growing {
+                        background-color: #2ecc71 !important;
+                        color: white !important;
+                    }
+                    
+                    .bg-contracting {
+                        background-color: #e74c3c !important;
+                        color: white !important;
+                    }
+                    
+                    .bg-neutral {
+                        background-color: #f39c12 !important;
+                        color: white !important;
+                    }
+                    
+                    /* Add hover effect to rows */
+                    #numGrowthTable tbody tr:hover, #numRankedTable tbody tr:hover {
+                        background-color: rgba(0,0,0,0.05);
+                    }
+                    
+                    /* Format rank cells */
+                    #numGrowthTable td:nth-child(even), #numRankedTable td:nth-child(even) {
+                        font-weight: bold;
+                        min-width: 50px;
+                    }
+                    
+                    /* Format industry cells */
+                    #numGrowthTable td:nth-child(odd):not(:first-child), 
+                    #numRankedTable td:nth-child(odd):not(:first-child) {
+                        min-width: 180px;
+                    }
+                `;
+                document.head.appendChild(styleEl);
+            }
+        }
+
+        function addFixedColumnStyling() {
+            // Add styling for fixed reference column if not already added
+            let styleEl = document.getElementById('numerical-table-styles');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'numerical-table-styles';
+                styleEl.textContent = `
+                    .reference-cell, #numGrowthTable th:first-child {
+                        position: sticky;
+                        left: 0;
+                        background-color: #f8f9fa;
+                        z-index: 10;
+                        min-width: 200px;
+                        border-right: 2px solid #dee2e6;
+                    }
+                    
+                    #numGrowthTable th {
+                        position: sticky;
+                        top: 0;
+                        background-color: #f8f9fa;
+                        z-index: 5;
+                    }
+                    
+                    #numGrowthTable th:first-child {
+                        z-index: 15;
+                    }
+                    
+                    #numTableBody td:nth-child(even) {
+                        font-weight: bold;
+                        min-width: 50px;
+                    }
+                    
+                    #numTableBody td:nth-child(odd):not(:first-child) {
+                        min-width: 180px;
+                    }
+                `;
+                document.head.appendChild(styleEl);
+            }
+        }
+
+        // Function to add color scale for rank columns
+        function addRankColumnColorScale() {
+            // Create a style element if it doesn't exist
+            let styleEl = document.getElementById('rank-column-styles');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'rank-column-styles';
+                document.head.appendChild(styleEl);
+            }
+            
+            // Add CSS rules for rank column cell background colors
+            styleEl.textContent = `
+                #numTableBody td:nth-child(even) {
+                    font-weight: bold;
+                }
+                
+                /* Positive values (green gradient) */
+                #numTableBody td:nth-child(even)[data-rank="1"] { background-color: rgba(40, 167, 69, 0.2); }
+                #numTableBody td:nth-child(even)[data-rank="2"] { background-color: rgba(40, 167, 69, 0.4); }
+                #numTableBody td:nth-child(even)[data-rank="3"] { background-color: rgba(40, 167, 69, 0.6); }
+                #numTableBody td:nth-child(even)[data-rank="4"] { background-color: rgba(40, 167, 69, 0.8); }
+                #numTableBody td:nth-child(even)[data-rank="5"] { background-color: rgba(40, 167, 69, 1.0); }
+                
+                /* Neutral value (yellow) */
+                #numTableBody td:nth-child(even)[data-rank="0"] { background-color: rgba(255, 193, 7, 0.5); }
+                
+                /* Negative values (red gradient) */
+                #numTableBody td:nth-child(even)[data-rank="-1"] { background-color: rgba(220, 53, 69, 0.2); }
+                #numTableBody td:nth-child(even)[data-rank="-2"] { background-color: rgba(220, 53, 69, 0.4); }
+                #numTableBody td:nth-child(even)[data-rank="-3"] { background-color: rgba(220, 53, 69, 0.6); }
+                #numTableBody td:nth-child(even)[data-rank="-4"] { background-color: rgba(220, 53, 69, 0.8); }
+                #numTableBody td:nth-child(even)[data-rank="-5"] { background-color: rgba(220, 53, 69, 1.0); }
+            `;
+        }
+
         // Trend Chart Functions
         function fetchTrendData(indexName) {
             return fetch(`/api/index_trends/${encodeURIComponent(indexName)}`)
@@ -1057,6 +1600,8 @@
                 }
             }
             
+            console.log("Selected indices for chart:", selectedIndices);
+            
             // Fetch data for all selected indices
             Promise.all(selectedIndices.map(index => 
                 fetchTrendData(index)
@@ -1065,7 +1610,7 @@
             .then(results => renderMultiTrendChart(results))
             .catch(error => console.error('Error updating chart:', error));
         }
-    
+
         function renderMultiTrendChart(indexDataArray) {
             const ctx = document.getElementById('trendChart').getContext('2d');
             
