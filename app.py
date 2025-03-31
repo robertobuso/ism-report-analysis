@@ -3,8 +3,7 @@ import tempfile
 import logging
 import sys
 import traceback
-from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates
-
+from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
@@ -343,12 +342,38 @@ def get_industry_status(index_name):
                             'category': 'Not Reported'
                         }
         
+        # Fetch rank information for the industries from the database
+        from db_utils import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Find most recent report date
+        cursor.execute("""
+            SELECT report_date FROM reports ORDER BY report_date DESC LIMIT 1
+        """)
+        latest_date_row = cursor.fetchone()
+        
+        if latest_date_row:
+            latest_date = latest_date_row['report_date']
+            
+            # Get ranks for each industry in this index
+            cursor.execute("""
+                SELECT industry_name, rank 
+                FROM industry_status 
+                WHERE index_name = ? AND report_date = ?
+            """, (index_name, latest_date))
+            
+            # Add rank to response
+            ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}
+            industry_data['ranks'] = ranks
+        
+        conn.close()
         return jsonify(industry_data)
     except Exception as e:
         logger.error(f"Error getting industry status: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({"error": str(e), "industries": {}, "dates": []}), 500
-        
+          
 @app.route('/api/industry_alphabetical/<index_name>')
 def get_industry_alphabetical(index_name):
     try:

@@ -43,7 +43,7 @@
             }
         
         .container {
-            max-width: 1400px;
+            max-width: 1900px;
             padding: 20px;
         }
         
@@ -1161,40 +1161,38 @@
         }
         
         // Numerical Growth Table
-        function loadNumericalGrowthTable(indexName) {
-            console.log("Loading numerical growth table for:", indexName);
-            const container = document.querySelector('.card-body');
-            
-            if (!container) {
-                console.error("Container not found");
-                return;
+        function loadNumericalGrowthTable(selectedValue) {
+            console.log("Loading data for:", selectedValue);
+            const cardBody = document.querySelector('.card-body');
+            if (!cardBody) return;
+
+            // Clear previous content
+            cardBody.innerHTML = '';
+
+            if (selectedValue === "All") {
+                // Load all indices
+                fetch('/api/all_indices')
+                    .then(response => response.json())
+                    .then(indicesList => {
+                        processAllIndices(cardBody, indicesList.filter(index => index !== 'Manufacturing PMI').sort());
+                    })
+                    .catch(error => {
+                        console.error("Error loading all indices:", error);
+                        cardBody.innerHTML = `<div class="alert alert-danger">Error loading all indices.</div>`;
+                    });
+            } else {
+                // Load single index
+                cardBody.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading index...</p></div>';
+                fetch(`/api/industry_status/${encodeURIComponent(selectedValue)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        renderSingleIndexView(cardBody, selectedValue, data);
+                    })
+                    .catch(error => {
+                        console.error(`Error loading index ${selectedValue}:`, error);
+                        cardBody.innerHTML = `<div class="alert alert-danger">Error loading ${selectedValue}.</div>`;
+                    });
             }
-            
-            // Show loading indicator
-            container.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading data...</p></div>';
-            
-            // Handle "All" indices case properly
-            if (indexName === "All") {
-                loadAllIndices(container);
-                return;
-            }
-            
-            // Load single index
-            fetch(`/api/industry_status/${encodeURIComponent(indexName)}?debug=true`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log("Received data for", indexName, ":", data);
-                    renderSingleIndexView(container, indexName, data);
-                })
-                .catch(error => {
-                    console.error("Error loading data:", error);
-                    container.innerHTML = `<div class="alert alert-danger">Error loading data for ${indexName}: ${error.message}</div>`;
-                });
         }
 
         // Helper function to generate sample data when the API fails
@@ -1387,11 +1385,13 @@
                 // Track industries with their attributes (status and original order)
                 const industries = allIndustries.map((industry, originalOrder) => {
                     const statusData = data.industries[industry][date] || { status: 'Neutral', category: 'Not Reported' };
+                    
                     return { 
                         industry, 
                         status: statusData.status,
                         category: statusData.category || '',
-                        originalOrder  // Save the order as it appears in the list
+                        originalOrder,
+                        rank: data.industries && data.industries[industry] && data.industries[industry][date] && data.industries[industry][date].rank !== undefined ? data.industries[industry][date].rank : null
                     };
                 });
                 
@@ -1401,46 +1401,64 @@
                 const declining = [];
                 
                 industries.forEach(item => {
-                    const { industry, status, category, originalOrder } = item;
+                    const { industry, status, category, originalOrder, rank } = item;
                     
                     // Categorize based on status
                     if (status === positiveCategory || status === "Growing" || 
                         status === "Increasing" || status === "Higher" || status === "Too High" || 
-                        status === "Slower") {
-                        growing.push({ industry, originalOrder });
+                        status === "Slower" || status === "Slowing") {
+                        growing.push({ industry, originalOrder, rank });
                     } else if (status === negativeCategory || status === "Contracting" || 
                             status === "Decreasing" || status === "Lower" || status === "Too Low" || 
                             status === "Faster") {
-                        declining.push({ industry, originalOrder });
+                        declining.push({ industry, originalOrder, rank });
                     } else {
-                        neutral.push({ industry, originalOrder });
+                        neutral.push({ industry, originalOrder, rank });
                     }
                 });
                 
-                // Preserve original order within each category
-                // growing.sort((a, b) => a.originalOrder - b.originalOrder);
-                // declining.sort((a, b) => a.originalOrder - b.originalOrder);
-                // neutral.sort((a, b) => a.originalOrder - b.originalOrder);
+                // First sort by database rank if available
+                growing.sort((b, a) => {
+                    // If both have valid ranks, use them
+                    if (a.rank !== null && b.rank !== null) {
+                        return b.rank - a.rank; // Higher ranks first for growing
+                    }
+                    // Fall back to original order if ranks aren't available
+                    return a.originalOrder - b.originalOrder;
+                });
+                
+                declining.sort((a, b) => {
+                    // If both have valid ranks, use them
+                    if (a.rank !== null && b.rank !== null) {
+                        return a.rank - b.rank; // Lower ranks (more negative) first for declining
+                    }
+                    // Fall back to original order if ranks aren't available
+                    return a.originalOrder - b.originalOrder;
+                });
+                
+                neutral.sort((a, b) => a.originalOrder - b.originalOrder); // Keep neutral in original order
                 
                 // Create rank map (ranks don't change, just the order within each rank)
                 const rankMap = {};
-                
-                // Positive ranks for growing (preserve original order)
-                growing.forEach((item, i) => {
-                    rankMap[item.industry] = growing.length - i;
+
+                // Positive ranks for growing (relative integers)
+                let positiveCounter = growing.length;
+                growing.forEach(item => {
+                    rankMap[item.industry] = positiveCounter--;
                 });
-                
+
                 // Zero for neutral
                 neutral.forEach(item => {
                     rankMap[item.industry] = 0;
                 });
-                
-                // Negative ranks for declining (preserve original order)
-                declining.forEach((item, i) => {
-                    rankMap[item.industry] = -(i + 1);
+
+                // Negative ranks for declining (relative integers)
+                let negativeCounter = -1;
+                declining.forEach(item => {
+                    rankMap[item.industry] = negativeCounter--;
                 });
                 
-                // Create a sorted array by rank (but preserve original order within same rank)
+                // Create a sorted array by rank
                 // First extract industries in rank order (positive → neutral → negative)
                 const positiveIndustries = growing.map(item => item.industry);
                 const neutralIndustries = neutral.map(item => item.industry);

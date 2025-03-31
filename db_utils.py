@@ -439,7 +439,7 @@ def get_industry_status_over_time(index_name, num_months=12):
         
         date_records = [dict(row) for row in cursor.fetchall()]
         if not date_records:
-            return {'dates': [], 'industries': {}}
+            return {'dates': [], 'industries': {}, 'ranks': {}}
             
         # Get all unique industries for this index
         cursor.execute("""
@@ -450,8 +450,16 @@ def get_industry_status_over_time(index_name, num_months=12):
         """, (index_name,))
 
         industries = [row['industry_name'] for row in cursor.fetchall()]
-
-        logger.info(f"industries when set: {industries}")
+        
+        # Also get the most recent ranks for these industries
+        most_recent_date = date_records[0]['report_date']
+        cursor.execute("""
+            SELECT industry_name, rank
+            FROM industry_status
+            WHERE report_date = ? AND index_name = ?
+        """, (most_recent_date, index_name))
+        
+        ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}
         
         # For each industry, get status for each date
         industry_data = {}
@@ -463,7 +471,7 @@ def get_industry_status_over_time(index_name, num_months=12):
                 month_year = date_record['month_year']
                 
                 cursor.execute("""
-                    SELECT status, category
+                    SELECT status, category, rank
                     FROM industry_status
                     WHERE report_date = ? AND index_name = ? AND industry_name = ?
                 """, (report_date, index_name, industry))
@@ -472,12 +480,14 @@ def get_industry_status_over_time(index_name, num_months=12):
                 if row:
                     status_by_date[month_year] = {
                         'status': row['status'],
-                        'category': row['category']
+                        'category': row['category'],
+                        'rank': row['rank']
                     }
                 else:
                     status_by_date[month_year] = {
                         'status': 'Neutral',
-                        'category': 'Not Reported'
+                        'category': 'Not Reported',
+                        'rank': 0 
                     }
             
             industry_data[industry] = status_by_date
@@ -488,11 +498,11 @@ def get_industry_status_over_time(index_name, num_months=12):
         }
     except Exception as e:
         logger.error(f"Error getting industry status for {index_name}: {str(e)}")
-        return {'dates': [], 'industries': {}}
+        return {'dates': [], 'industries': {}, 'ranks': {}}
     finally:
         if conn:
             conn.close()
-
+            
 def get_all_indices():
     """Get a list of all indices in the database."""
     conn = None
