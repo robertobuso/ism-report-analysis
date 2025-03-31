@@ -73,6 +73,7 @@ def initialize_database():
             industry_name TEXT NOT NULL,
             status TEXT NOT NULL,
             category TEXT NOT NULL,
+            rank INTEGER,
             UNIQUE(report_date, index_name, industry_name),
             FOREIGN KEY(report_date) REFERENCES reports(report_date)
         )
@@ -445,10 +446,12 @@ def get_industry_status_over_time(index_name, num_months=12):
             SELECT DISTINCT industry_name 
             FROM industry_status 
             WHERE index_name = ?
-            ORDER BY industry_name
+            ORDER BY rank
         """, (index_name,))
-        
+
         industries = [row['industry_name'] for row in cursor.fetchall()]
+
+        logger.info(f"industries when set: {industries}")
         
         # For each industry, get status for each date
         industry_data = {}
@@ -723,7 +726,8 @@ def store_report_data_in_db(extracted_data, pdf_path):
                 else:
                     status = 'Growing' if category == 'Growing' else 'Contracting'
                 
-                for industry in industries:
+                # Insert each industry with its rank
+                for idx, industry in enumerate(industries):
                     # Clean and validate the industry name
                     cleaned_industry = clean_industry_name(industry)
                     if not cleaned_industry:
@@ -733,15 +737,16 @@ def store_report_data_in_db(extracted_data, pdf_path):
                         cursor.execute(
                             """
                             INSERT OR REPLACE INTO industry_status
-                            (report_date, index_name, industry_name, status, category)
-                            VALUES (?, ?, ?, ?, ?)
+                            (report_date, index_name, industry_name, status, category, rank)
+                            VALUES (?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 report_date.isoformat(),
                                 index_name,
                                 cleaned_industry,
                                 status,
-                                category
+                                category,
+                                idx  # Use the order in the list as the rank
                             )
                         )
                     except Exception as e:
