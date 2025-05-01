@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Web-Enhanced Insights - ISM Report Analysis</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('web_insight.static', filename='css/insights.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Dashboard Header -->
+        <div class="dashboard-header">
+            <h1>ISM Web-Enhanced Insights</h1>
+            <div>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-primary me-2">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+                <button id="refreshTrendsBtn" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-repeat"></i> Refresh Trends
+                </button>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="row mt-4">
+            <!-- Left Column: Significant Trends -->
+            <div class="col-md-4">
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <h5>Significant Trends</h5>
+                        <span id="trendsLoadingIndicator" class="badge bg-secondary d-none">Loading...</span>
+                    </div>
+                    <div class="content-card-body">
+                        <div id="trendsContainer">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary"></div>
+                                <p class="mt-2">Loading trends...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column: Insights -->
+            <div class="col-md-8">
+                <div class="content-card">
+                    <div class="content-card-header">
+                        <h5>Web-Enhanced Insights</h5>
+                        <div>
+                            <span id="insightLoadingIndicator" class="badge bg-secondary me-2 d-none">
+                                <span class="spinner-border spinner-border-sm"></span>
+                                Generating...
+                            </span>
+                            <button id="generateInsightBtn" class="btn btn-sm btn-primary">
+                                <i class="bi bi-lightbulb"></i> Generate New Insight
+                            </button>
+                        </div>
+                    </div>
+                    <div class="content-card-body">
+                        <div id="insightsContainer">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary"></div>
+                                <p class="mt-2">Loading insights...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Insight Detail Modal -->
+    <div class="modal fade" id="insightDetailModal" tabindex="-1" aria-labelledby="insightDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="insightDetailModalLabel">Insight Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="insightDetailModalBody">
+                    <!-- Content will be loaded dynamically -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('web_insight.static', filename='js/insights.js') }}"></script>
+</body>
+</html>

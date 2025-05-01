@@ -432,6 +432,21 @@ def get_indices_list():
 def health():
     return jsonify({"status": "healthy"})
 
+# Blueprint registration for web insights
+try:
+    from web_insight import web_insight_bp
+    app.register_blueprint(web_insight_bp, url_prefix='/web_insight')
+    
+    # Add redirect route
+    @app.route('/web_insights')
+    def web_insights_redirect():
+        """Redirect to the web insights dashboard."""
+        return redirect(url_for('web_insight.index'))
+    
+    print("Web Insights module loaded successfully")
+except ImportError as e:
+    print(f"Note: Web Insights module not available: {e}")
+
 # Ensure app is available at the module level
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))

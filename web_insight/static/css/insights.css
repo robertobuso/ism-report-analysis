@@ -1,0 +1,269 @@
+body {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+}
+
+.container {
+    max-width: 1900px;
+    padding: 20px;
+}
+
+/* Header styling */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.dashboard-header h1 {
+    font-weight: 700;
+    font-size: 1.75rem;
+    margin: 0;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+}
+
+/* Card styling */
+.content-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    margin-bottom: 25px;
+    overflow: hidden;
+}
+
+.content-card-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8f9fa;
+}
+
+.content-card-header h5 {
+    margin: 0;
+    font-weight: 600;
+    color: #343a40;
+}
+
+.content-card-body {
+    padding: 20px;
+}
+
+/* Trend card styling */
+.trend-card {
+    border-left: 4px solid transparent;
+    padding: 15px;
+    margin-bottom: 15px;
+    background-color: white;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
+}
+
+.trend-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.trend-card.positive {
+    border-left-color: #10b981;
+}
+
+.trend-card.negative {
+    border-left-color: #ef4444;
+}
+
+.trend-card .trend-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.trend-card .trend-description {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.trend-card .trend-change {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.trend-card .trend-change.positive {
+    color: #10b981;
+}
+
+.trend-card .trend-change.negative {
+    color: #ef4444;
+}
+
+.trend-card .btn {
+    margin-top: 10px;
+    width: 100%;
+}
+
+/* Insight card styling */
+.insight-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    background-color: white;
+    transition: all 0.2s ease;
+}
+
+.insight-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+}
+
+.insight-card .insight-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.insight-card .insight-title {
+    font-weight: 600;
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.insight-card .insight-date {
+    color: #6b7280;
+    font-size: 0.85rem;
+}
+
+.insight-card .insight-description {
+    color: #4b5563;
+    margin-bottom: 15px;
+}
+
+.insight-card .insight-analysis {
+    margin-bottom: 15px;
+}
+
+.insight-card .insight-analysis h6 {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #374151;
+}
+
+.insight-card .insight-button {
+    text-align: right;
+}
+
+/* Investment implication styling */
+.implications-section {
+    background-color: #f9fafb;
+    border-radius: 6px;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+.implications-section h6 {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 10px;
+}
+
+.implication-item {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.implication-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.implication-item .implication-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.implication-item .bullish {
+    color: #10b981;
+}
+
+.implication-item .bearish {
+    color: #ef4444;
+}
+
+/* Evidence section styling */
+.evidence-section {
+    margin-top: 20px;
+}
+
+.evidence-section h6 {
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.evidence-item {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 12px;
+    margin-top: 12px;
+}
+
+.evidence-item:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
+.evidence-item .evidence-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.evidence-item .evidence-source {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-bottom: 8px;
+}
+
+/* Helper classes */
+.text-growing, .text-bullish {
+    color: #10b981;
+}
+
+.text-contracting, .text-bearish {
+    color: #ef4444;
+}
+
+.badge.bg-growing {
+    background-color: #10b981;
+    color: white;
+}
+
+.badge.bg-contracting {
+    background-color: #ef4444;
+    color: white;
+}
+
+/* Loading spinner */
+.spinner-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
