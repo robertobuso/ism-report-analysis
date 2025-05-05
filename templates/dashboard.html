@@ -5,46 +5,84 @@
     <title>Dashboard - ISM Report Analysis</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Initialize heatmap_data from Flask template data
         const heatmap_data = {{ heatmap_data|tojson|safe }};
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            // Now updateKpiCards will work
-            updateKpiCards();
-
-            // Initialize the heatmap if it's the active tab
-            if (document.getElementById('heatmap-tab').classList.contains('active')) {
-                loadHeatmapData();
-            }
-
-            // Initialize the numerical tab if it's active on page load
-            if (document.getElementById('growth-num-tab').classList.contains('active')) {
-                initializeNumericalGrowthTab();
-                const numIndexSelect = document.getElementById('numIndexSelect');
-                loadNumericalGrowthTable(numIndexSelect ? numIndexSelect.value : 'All');
-            }
-            
-            // Setup tab event listeners
-            setupTabEventListeners();
-
-        });
     </script>
+   <style>
+        :root {
+            --primary-color: midnightblue; /* #191970 */
+            --primary-hover: #10104D; /* A darker shade for hover */
+            --secondary-color: #f8f9fa;
+            --accent-color: #28a745; /* Keep accent green or choose another */
+            --text-color: #333;
+            --light-text: #6c757d;
+            --bg-color: #f8fafc; /* Background for dashboard/upload pages */
+            --card-shadow: rgba(0, 0, 0, 0.05);
 
-    <style>
-        body {
-            background-color: #f8fafc;
-            color: #1e293b;
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            font-size: 15px;
-            line-height: 1.5;
-            letter-spacing: -0.01em;
-            }
+            /* Chart specific colors - these stay the same */
+            --color-growing: #34A853;
+            --color-contracting: #EA4335;
+            --color-neutral-heatmap: #F5F5F5;
+        }
         
-        .container {
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            letter-spacing: -0.01em;
+        }
+        
+        .container-fluid {
+            padding: 0;
+        }
+        
+        .content-container {
+            padding: 2rem;
             max-width: 1900px;
-            padding: 20px;
+            margin: 0 auto;
+        }
+        
+        /* Navbar styling */
+        .navbar {
+            padding: 1rem 2rem;
+            background-color: white !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.4rem;
+            color: var(--primary-color) !important;
+        }
+        
+        .nav-link {
+            font-weight: 500;
+            color: var(--text-color);
+            position: relative;
+            padding: 0.5rem 1rem;
+            margin: 0 0.25rem;
+        }
+        
+        .nav-link:hover {
+            color: var(--primary-color);
+        }
+        
+        .nav-link.active {
+            color: var(--primary-color);
+        }
+        
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 1rem;
+            right: 1rem;
+            height: 2px;
+            background-color: var(--primary-color);
         }
         
         /* Header styling */
@@ -52,45 +90,75 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
-            }
+            margin-bottom: 2rem;
+        }
 
-            .dashboard-header h1 {
+        .dashboard-header h1 {
             font-weight: 700;
             font-size: 1.75rem;
             margin: 0;
             color: #0f172a;
             letter-spacing: -0.02em;
-            }
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            border-color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 86, 179, 0.2);
+        }
+
+        .btn-primary:disabled { /* Adjusted disabled */
+             background-color: #6a6aaf;
+             border-color: #6a6aaf;
+             opacity: 0.65;
+          }
         
         /* KPI Cards styling */
         .kpi-card {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px var(--color-card-shadow);
-            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--card-shadow);
+            padding: 1.75rem;
             height: 100%;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            }
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
 
         .kpi-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
         }
     
         .kpi-title {
-            color: #64748b;
-            font-size: 0.8125rem;
-            font-weight: 500;
-            margin-bottom: 10px;
+            color: var(--light-text);
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.03em;
+            display: flex;
+            align-items: center;
+        }
+        
+        .kpi-title i {
+            margin-left: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--primary-color);
         }
 
         .kpi-value {
             font-size: 2.5rem;
             font-weight: 700;
-            margin-bottom: 5px;
+            margin-bottom: 0.5rem;
             color: #0f172a;
             letter-spacing: -0.03em;
             font-feature-settings: "tnum";
@@ -98,31 +166,39 @@
         }
 
         .kpi-direction {
-            font-size: 0.9375rem;
-            font-weight: 500;
+            font-size: 1rem;
+            font-weight: 600;
         }
         
         .text-growing {
-            color: var(--color-growing);
+            color: var(--color-growing) !important;
         }
 
         .text-contracting {
-            color: var(--color-contracting);
+            color: var(--color-contracting) !important; 
         }
         
         /* Tab navigation */
+        .dashboard-tabs {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--card-shadow);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+        
         .nav-tabs {
-            border-bottom: 1px solid var(--color-border);
-            margin-bottom: 25px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 0 1rem;
+            background-color: white;
         }
 
         .nav-tabs .nav-link {
             border: none;
             border-bottom: 3px solid transparent;
-            color: #64748b;
-            font-weight: 500;
-            padding: 0.75rem 1rem;
-            margin-right: 1rem;
+            color: var(--light-text);
+            font-weight: 600;
+            padding: 1rem 1.5rem;
             transition: color 0.2s ease, border-color 0.2s ease;
         }
 
@@ -132,64 +208,27 @@
         }
 
         .nav-tabs .nav-link.active {
-            color: #0284c7;
-            border-color: #0284c7;
+            color: var(--primary-color);
+            border-color: var(--primary-color);
             background-color: transparent;
-            font-weight: 600;
         }
         
-        /* Table styling */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .data-table th {
-            background-color: #f8f9fa;
-            color: #495057;
-            font-weight: 600;
-            text-align: left;
-            padding: 12px 15px;
-            border-bottom: 2px solid #dee2e6;
-        }
-        
-        .data-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .data-table tr:hover {
-            background-color: rgba(0, 0, 0, 0.02);
-        }
-        
-        /* Status colors - make them brighter */
-        .bg-growing {
-            background-color: #2ecc71 !important; /* Brighter green */
-            color: white !important;
-        }
-        
-        .bg-contracting {
-            background-color: #e74c3c !important; /* Brighter red */
-            color: white !important;
-        }
-        
-        .bg-neutral {
-            background-color: #f39c12 !important;
-            color: white !important;
+        .tab-content {
+            padding: 2rem;
         }
         
         /* Content card styling */
         .content-card {
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            margin-bottom: 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--card-shadow);
+            margin-bottom: 2rem;
             overflow: hidden;
         }
         
         .content-card-header {
-            padding: 15px 20px;
-            border-bottom: 1px solid #e9ecef;
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -198,46 +237,100 @@
         .content-card-header h5 {
             margin: 0;
             font-weight: 600;
-            color: #343a40;
+            color: var(--primary-color);
+            font-size: 1.2rem;
         }
         
         .content-card-body {
-            padding: 20px;
+            padding: 2rem;
         }
+        
+        /* Enhanced table styling */
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        .data-table th {
+            background-color: #f8f9fa;
+            color: #495057;
+            font-weight: 600;
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .data-table td {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
+        }
+        
+        .data-table tr:hover {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* Status colors - keep the same */
+        .bg-growing, .bg-success { /* Included .bg-success for KPI badges */
+            background-color: var(--color-growing) !important;
+            color: white !important; /* White text should be fine */
+        }
+        .bg-contracting, .bg-danger { /* Included .bg-danger for KPI badges */
+            background-color: var(--color-contracting) !important;
+            color: white !important;
+        }
+        .bg-neutral {
+            /* Consider updating neutral? Maybe a gray? */
+            background-color: #ffc107 !important; /* Bootstrap warning yellow */
+            color: #333 !important; /* Dark text for yellow */
+        }
+         /* Default gray for "no change" */
+         .bg-secondary {
+            background-color: #6c757d !important;
+            color: white !important;
+         }
         
         /* Filter selectors */
         .filter-container {
             display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            }
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
 
         .filter-container label {
             font-size: 0.875rem;
-            font-weight: 500;
-            color: #475569;
+            font-weight: 600;
+            color: var(--light-text);
+            margin-bottom: 0.35rem;
         }
         
-        .filter-select {
+        .form-select {
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 0.6rem 1rem;
+            font-size: 0.95rem;
+            background-color: white;
             min-width: 200px;
-        }
-        
-        /* Button styling */
-        .btn-primary {
-            background-color: #007bff;
-            border-color: #007bff;
-            padding: 8px 16px;
             font-weight: 500;
         }
         
-        .btn-primary:hover {
-            background-color: #0069d9;
-            border-color: #0062cc;
+        .form-select:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.1);
         }
-
+        
+        /* Heatmap enhancements */
         .heatmap-container {
             overflow-x: auto;
-            margin-top: 20px;
+            margin-top: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
         }
 
         .heatmap-container table {
@@ -246,9 +339,9 @@
         }
 
         .heatmap-container th, .heatmap-container td {
-            padding: 8px 12px;
+            padding: 0.75rem 1rem;
             text-align: center;
-            border: 1px solid #dee2e6;
+            border: 1px solid #e9ecef;
         }
 
         .heatmap-container th {
@@ -256,6 +349,7 @@
             position: sticky;
             top: 0;
             z-index: 10;
+            font-weight: 600;
         }
 
         .heatmap-container td:first-child {
@@ -264,167 +358,169 @@
             left: 0;
             background-color: #f8f9fa;
             z-index: 5;
+            font-weight: 500;
         }
-
-        /* Make sure the brighter colors are properly defined */
-        .bg-growing {
-            background-color: #2ecc71 !important; /* Brighter green */
-            color: white !important;
-        }
-
-        .bg-contracting {
-            background-color: #e74c3c !important; /* Brighter red */
-            color: white !important;
-        }
-
-        .bg-neutral {
-            background-color: #f39c12 !important;
-            color: white !important;
-        }
-
-        /* Add more contrast to the rank cells in numerical table */
-        #numTableBody td:nth-child(even) {
-            font-weight: bold;
+        
+        /* Footer */
+        .footer {
+            background-color: white;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 1.5rem 0;
             text-align: center;
+            color: var(--light-text);
+            margin-top: 2rem;
         }
         
-        /* Ensure even columns (rank cells) have a minimum width */
-        #numGrowthTable td:nth-child(even) {
-            min-width: 50px;
-        }
-        
-        /* Make status cells have a minimum width */
-        #numGrowthTable td:nth-child(odd):not(:first-child) {
-            min-width: 150px;
-        }
-        
-        /* Make reference column sticky */
-        #numGrowthTable td:first-child,
-        #numGrowthTable th:first-child {
-            position: sticky;
-            left: 0;
-            background-color: #f8f9fa;
-            z-index: 10;
-            min-width: 200px;
-            max-width: 300px;
-        }
-        
-        /* Header styling */
-        #numGrowthTable thead th {
-            background-color: #f8f9fa;
-            position: sticky;
-            top: 0;
-            z-index: 5;
-        }
-        
-        /* First header cell (at intersection of sticky header and sticky column) */
-        #numGrowthTable th:first-child {
-            z-index: 15;
-        }
-
-        /* Improve form control styling */
-        select.form-select, input.form-control {
-        font-size: 0.9375rem;
-        border-radius: 6px;
-        border-color: #cbd5e1;
-        padding: 0.5rem 0.75rem;
-        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-        }
-
-        select.form-select:focus, input.form-control:focus {
-        border-color: #0284c7;
-        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
-        }
-
-        #alphaGrowthTable th, #alphaGrowthTable td {
-            border-right: 1px solid #dee2e6;
-        }
-
-        #alphaGrowthTable th:last-child, #alphaGrowthTable td:last-child {
-            border-right: none;
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .content-container {
+                padding: 1rem;
+            }
+            
+            .kpi-card {
+                margin-bottom: 1rem;
+            }
+            
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .dashboard-header h1 {
+                margin-bottom: 1rem;
+            }
+            
+            .nav-tabs .nav-link {
+                padding: 0.75rem 1rem;
+            }
+            
+            .content-card-header, .content-card-body {
+                padding: 1.25rem;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Dashboard Header -->
-        <div class="dashboard-header">
-            <h1>ISM Manufacturing Report Dashboard</h1>
-            <button class="btn btn-primary" onclick="location.href='{{ url_for('upload_view') }}'">
-                Upload Reports
-            </button>
-            <a href="/web_insights" class="btn btn-primary ms-2">
-                <i class="bi bi-lightbulb"></i> Web-Enhanced Insights
-            </a>
-        </div>
-        
-        <!-- KPI Cards Row -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="kpi-card text-center">
-                    <div class="kpi-title">Manufacturing PMI</div>
-                    <div class="kpi-value" id="mainPmiValue">--</div>
-                    <div class="kpi-direction" id="mainPmiDirection">--</div>
-                    <div class="mt-2">
-                        <span class="badge rounded-pill" id="mainPmiChange"></span>
+    <div class="container-fluid">
+        <nav class="navbar navbar-expand-lg navbar-light">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#">Envoy LLC</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('dashboard') }}">Dashboard</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('upload_view') }}">Upload Reports</a>
+                        </li>
+                        {% if web_insights_available %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('web_insights_redirect') }}">Web Insights</a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                    <div class="d-flex">
+                        <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-box-arrow-right me-2"></i>Logout
+                        </a>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="kpi-card text-center">
-                    <div class="kpi-title">New Orders</div>
-                    <div class="kpi-value" id="newOrdersValue">--</div>
-                    <div class="kpi-direction" id="newOrdersDirection">--</div>
-                    <div class="mt-2">
-                        <span class="badge rounded-pill" id="newOrdersChange"></span>
+        </nav>
+
+        <div class="content-container">
+            <!-- Dashboard Header -->
+            <div class="dashboard-header">
+                <h1>ISM Manufacturing Report Dashboard</h1>
+                <a href="{{ url_for('upload_view') }}" class="btn btn-primary">
+                    <i class="bi bi-upload me-2"></i>Upload New Report
+                </a>
+            </div>
+            
+            <!-- KPI Cards Row -->
+            <div class="row mb-4">
+                <div class="col-md-3 mb-3">
+                    <div class="kpi-card text-center">
+                        <div class="kpi-title">
+                            Manufacturing PMI
+                            <i class="bi bi-info-circle-fill" data-bs-toggle="tooltip" data-bs-placement="top" title="The Manufacturing PMI® is a composite index based on five indicators: New Orders, Production, Employment, Supplier Deliveries, and Inventories."></i>
+                        </div>
+                        <div class="kpi-value" id="mainPmiValue">--</div>
+                        <div class="kpi-direction" id="mainPmiDirection">--</div>
+                        <div class="mt-2">
+                            <span class="badge rounded-pill" id="mainPmiChange"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="kpi-card text-center">
+                        <div class="kpi-title">
+                            New Orders
+                            <i class="bi bi-info-circle-fill" data-bs-toggle="tooltip" data-bs-placement="top" title="The New Orders Index indicates the level of new orders from customers, a key leading indicator of manufacturing activity."></i>
+                        </div>
+                        <div class="kpi-value" id="newOrdersValue">--</div>
+                        <div class="kpi-direction" id="newOrdersDirection">--</div>
+                        <div class="mt-2">
+                            <span class="badge rounded-pill" id="newOrdersChange"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="kpi-card text-center">
+                        <div class="kpi-title">
+                            Production
+                            <i class="bi bi-info-circle-fill" data-bs-toggle="tooltip" data-bs-placement="top" title="The Production Index represents the current output level compared to the previous month."></i>
+                        </div>
+                        <div class="kpi-value" id="productionValue">--</div>
+                        <div class="kpi-direction" id="productionDirection">--</div>
+                        <div class="mt-2">
+                            <span class="badge rounded-pill" id="productionChange"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="kpi-card text-center">
+                        <div class="kpi-title">
+                            Employment
+                            <i class="bi bi-info-circle-fill" data-bs-toggle="tooltip" data-bs-placement="top" title="The Employment Index indicates changes in manufacturing employment levels compared to the previous month."></i>
+                        </div>
+                        <div class="kpi-value" id="employmentValue">--</div>
+                        <div class="kpi-direction" id="employmentDirection">--</div>
+                        <div class="mt-2">
+                            <span class="badge rounded-pill" id="employmentChange"></span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
-                <div class="kpi-card text-center">
-                    <div class="kpi-title">Production</div>
-                    <div class="kpi-value" id="productionValue">--</div>
-                    <div class="kpi-direction" id="productionDirection">--</div>
-                    <div class="mt-2">
-                        <span class="badge rounded-pill" id="productionChange"></span>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="kpi-card text-center">
-                    <div class="kpi-title">Employment</div>
-                    <div class="kpi-value" id="employmentValue">--</div>
-                    <div class="kpi-direction" id="employmentDirection">--</div>
-                    <div class="mt-2">
-                        <span class="badge rounded-pill" id="employmentChange"></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Navigation Tabs -->
-        <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
-                    Heatmap
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
-                    Growth Alphabetical
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
-                    Growth Numerical
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
-                    Index Trends
-                </button>
-            </li>
-        </ul>
+            
+            <!-- Dashboard Content -->
+            <div class="dashboard-tabs">
+                <!-- Navigation Tabs -->
+                <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
+                            <i class="bi bi-grid-3x3 me-2"></i>Heatmap Summary
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
+                            <i class="bi bi-sort-alpha-down me-2"></i>Alphabetical View
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
+                            <i class="bi bi-sort-numeric-down me-2"></i>Numerical View
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
+                            <i class="bi bi-graph-up-arrow me-2"></i>Index Trends
+                        </button>
+                    </li>
+                </ul>
         
         <!-- Tab Content -->
         <div class="tab-content" id="dashboardTabsContent">
@@ -575,8 +671,20 @@
         </div>
     </div>
     
+    <footer class="footer">
+        <div class="container">
+            <p>© 2025 Envoy LLC. All rights reserved.</p>
+        </div>
+    </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Initialize tooltips
+        document.addEventListener('DOMContentLoaded', function() {
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+        });
+
         // Shared colors array for charts
         const colors = [
             'rgba(46, 204, 113, 1)', // Bright green
@@ -654,18 +762,8 @@
                 loadNumericalGrowthTable(selectedIndex);
             }
             
-            // Set up index selectors
-            const indexSelect = document.getElementById('indexSelect');
-            if (indexSelect) {
-                fetchTrendData(indexSelect.value);
-                indexSelect.addEventListener('change', function() {
-                    fetchTrendData(this.value);
-                });
-            }
-            
             // Setup tab event listeners
             setupTabEventListeners();
-        });
         
         function initAlphaIndexSelect() {
             const alphaIndexSelect = document.getElementById('alphaIndexSelect');
@@ -984,72 +1082,67 @@
 
         // Helper function to calculate cell color based on global scale
         function calculateGlobalCellColor(value, min, mid, max) {
-            // Convert RGB values to hex color
-            function rgbToHex(r, g, b) {
-                return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+                function rgbToHex(r, g, b) {
+                    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+                }
+                function hexToRgb(hex) {
+                    if (!hex || hex.length < 4) return [255, 255, 255]; // Default to white on error
+                    const bigint = parseInt(hex.substring(1), 16);
+                    const r = (bigint >> 16) & 255;
+                    const g = (bigint >> 8) & 255;
+                    const b = bigint & 255;
+                    return [r, g, b];
+                }
+
+                // --- Using Option 1 Colors ---
+                const colorContractingHex = "#EA4335";
+                const colorNeutralHex = "#F5F5F5"; // Light Gray
+                const colorGrowingHex = "#34A853";
+
+                const colorContractingRGB = hexToRgb(colorContractingHex);
+                const colorNeutralRGB = hexToRgb(colorNeutralHex);
+                const colorGrowingRGB = hexToRgb(colorGrowingHex);
+
+                // Handle endpoints and exact middle
+                if (value <= min) return colorContractingHex;
+                if (value >= max) return colorGrowingHex;
+                if (value === mid) return colorNeutralHex;
+
+                // Interpolate
+                let r, g, b;
+                if (value < mid) {
+                    // Blend from Contracting Red to Neutral Gray
+                    const ratio = (value - min) / (mid - min);
+                    const clampedRatio = Math.max(0, Math.min(1, ratio)); // Clamp ratio
+                    r = Math.round(colorContractingRGB[0] + clampedRatio * (colorNeutralRGB[0] - colorContractingRGB[0]));
+                    g = Math.round(colorContractingRGB[1] + clampedRatio * (colorNeutralRGB[1] - colorContractingRGB[1]));
+                    b = Math.round(colorContractingRGB[2] + clampedRatio * (colorNeutralRGB[2] - colorContractingRGB[2]));
+                } else { // value > mid
+                    // Blend from Neutral Gray to Growing Green
+                    const ratio = (value - mid) / (max - mid);
+                    const clampedRatio = Math.max(0, Math.min(1, ratio)); // Clamp ratio
+                    r = Math.round(colorNeutralRGB[0] + clampedRatio * (colorGrowingRGB[0] - colorNeutralRGB[0]));
+                    g = Math.round(colorNeutralRGB[1] + clampedRatio * (colorGrowingRGB[1] - colorNeutralRGB[1]));
+                    b = Math.round(colorNeutralRGB[2] + clampedRatio * (colorGrowingRGB[2] - colorNeutralRGB[2]));
+                }
+                return rgbToHex(r, g, b);
             }
-            
-            // Parse hex color to RGB
+        function getTextColorForBackground(hexColor) {
             function hexToRgb(hex) {
+                if (!hex || hex.length < 4) return null;
                 const bigint = parseInt(hex.substring(1), 16);
+                if (isNaN(bigint)) return null;
                 const r = (bigint >> 16) & 255;
                 const g = (bigint >> 8) & 255;
                 const b = bigint & 255;
                 return [r, g, b];
             }
-            
-            // Define color ranges with more vibrant reds
-            const brightRed = [220, 53, 69];         // Bootstrap's danger red - more vibrant
-            const midRed = [235, 120, 100];          // Intermediate red (closer to orange-red)
-            const lightGreen = hexToRgb("#B5DFB2");  // Light green for exactly 50
-            const brightGreen = [40, 167, 69];       // Bootstrap's success green
-            
-            // Handle out-of-range values directly
-            if (value <= min) {
-                return rgbToHex(...brightRed);  // Bright red for values at or below 40
+                const rgb = hexToRgb(hexColor);
+                if (!rgb) return '#333'; // Default dark text
+                // Formula for perceived brightness (luminance)
+                const luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+                return luminance > 0.5 ? '#333' : '#fff'; // Dark text on light background, light text on dark
             }
-            
-            if (value >= max) {
-                return rgbToHex(...brightGreen);  // Bright green for values at or above 60
-            }
-            
-            // Handle value = 50 explicitly
-            if (value === mid) {
-                return "#B5DFB2";  // Light green for exactly 50
-            }
-            
-            // Enhanced gradient for red range (40-50)
-            if (value < mid) {
-                // Create a non-linear gradient that emphasizes differences in the red range
-                // Use a two-step gradient: bright red -> mid red -> light green
-                const halfwayPoint = min + (mid - min) / 2;  // 45 is halfway between 40 and 50
-                
-                if (value <= halfwayPoint) {
-                    // First half: bright red to mid red (40-45)
-                    const ratio = (value - min) / (halfwayPoint - min);
-                    const r = Math.round(brightRed[0] + ratio * (midRed[0] - brightRed[0]));
-                    const g = Math.round(brightRed[1] + ratio * (midRed[1] - brightRed[1]));
-                    const b = Math.round(brightRed[2] + ratio * (midRed[2] - brightRed[2]));
-                    return rgbToHex(r, g, b);
-                } else {
-                    // Second half: mid red to light green (45-50)
-                    const ratio = (value - halfwayPoint) / (mid - halfwayPoint);
-                    const r = Math.round(midRed[0] + ratio * (lightGreen[0] - midRed[0]));
-                    const g = Math.round(midRed[1] + ratio * (lightGreen[1] - midRed[1]));
-                    const b = Math.round(midRed[2] + ratio * (lightGreen[2] - midRed[2]));
-                    return rgbToHex(r, g, b);
-                }
-            } 
-            // Above midpoint: Gradient from light green to bright green
-            else {
-                const ratio = (value - mid) / (max - mid);
-                const r = Math.round(lightGreen[0] + ratio * (brightGreen[0] - lightGreen[0]));
-                const g = Math.round(lightGreen[1] + ratio * (brightGreen[1] - lightGreen[1]));
-                const b = Math.round(lightGreen[2] + ratio * (brightGreen[2] - lightGreen[2]));
-                
-                return rgbToHex(r, g, b);
-            }
-        }
 
         // Growth Table Functions
         function loadGrowthTable(tableType, indexName) {
@@ -2083,6 +2176,7 @@
                 }
             });
         }
+        }); 
     </script>
 </body>
 </html>

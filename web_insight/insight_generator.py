@@ -1,457 +1,307 @@
+"""
+Main class to identify trends, query the web, and build web-enhanced insights.
+"""
+
+from __future__ import annotations
+
+import asyncio
 import json
-import sqlite3
 import logging
-import os
+import sqlite3
 from datetime import datetime
+
 import openai
-from . import config
-from . import search_utils
 
-# Configure OpenAI
-openai.api_key = config.OPENAI_API_KEY
+from . import config, search_utils, search_utils_async
 
-# Set up logging
+# --------------------------------------------------------------------------- #
+# Logging & OpenAI setup
+# --------------------------------------------------------------------------- #
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+openai.api_key = config.OPENAI_API_KEY
+
 
 class WebEnhancedInsightGenerator:
-    """Class to generate enhanced insights from ISM data with web evidence."""
-    
-    def __init__(self, db_path=None):
-        """Initialize the insight generator with database connection."""
-        if db_path is None:
-            db_path = config.ISM_DB_PATH
-            
-        self.db_path = db_path
+    """Generate insights that combine ISM data with fresh web evidence."""
+
+    def __init__(self, db_path: str | None = None) -> None:
+        self.db_path = db_path or config.ISM_DB_PATH
         self.conn = self._get_db_connection()
-        
-        # Create insights table if it doesn't exist
         self._create_insights_table()
-    
+
+    # ---------------------  DB helpers  --------------------- #
     def _get_db_connection(self):
-        """Create a connection to the SQLite database."""
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+        conn.row_factory = sqlite3.Row
         return conn
-    
+
     def _create_insights_table(self):
-        """Create the insights table if it doesn't exist."""
-        try:
-            cursor = self.conn.cursor()
-            
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS web_insights (
-                insight_id TEXT PRIMARY KEY,
-                report_date DATE NOT NULL,
-                index_name TEXT NOT NULL,
-                trend_description TEXT NOT NULL,
-                search_queries TEXT NOT NULL,
-                evidence TEXT NOT NULL,
-                analysis TEXT NOT NULL,
-                investment_implications TEXT NOT NULL,
-                created_at DATETIME NOT NULL
-            )
-            ''')
-            
-            # Create index
-            cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_web_insights_date 
-            ON web_insights(report_date)
-            ''')
-            
-            self.conn.commit()
-            logger.info("Web insights table initialized")
-        except Exception as e:
-            logger.error(f"Error creating insights table: {str(e)}")
-    
-    def identify_significant_trends(self, months_to_analyze=2):
-        """Identify significant trends in the ISM data."""
-        try:
-            cursor = self.conn.cursor()
-            
-            # Get most recent report dates
-            cursor.execute('''
-            SELECT report_date, month_year 
-            FROM reports 
-            ORDER BY report_date DESC 
-            LIMIT ?
-            ''', (months_to_analyze,))
-            
-            report_dates = [dict(row) for row in cursor.fetchall()]
-            
-            if len(report_dates) < 2:
-                logger.warning("Need at least 2 months of data to identify trends")
-                return []
-            
-            # Get PMI data for these dates
-            current_month = report_dates[0]
-            previous_month = report_dates[1]
-            
-            # Get indices for the current month
-            cursor.execute('''
-            SELECT index_name, index_value, direction
-            FROM pmi_indices
-            WHERE report_date = ?
-            ''', (current_month['report_date'],))
-            
-            current_indices = {row['index_name']: {
-                'value': row['index_value'],
-                'direction': row['direction']
-            } for row in cursor.fetchall()}
-            
-            # Get indices for the previous month
-            cursor.execute('''
-            SELECT index_name, index_value, direction
-            FROM pmi_indices
-            WHERE report_date = ?
-            ''', (previous_month['report_date'],))
-            
-            previous_indices = {row['index_name']: {
-                'value': row['index_value'],
-                'direction': row['direction']
-            } for row in cursor.fetchall()}
-            
-            # Compare indices to find significant changes
-            trends = []
-            
-            for index_name, current_data in current_indices.items():
-                if index_name in previous_indices:
-                    previous_data = previous_indices[index_name]
-                    
-                    # Get current and previous values
-                    current_value = float(current_data['value'])
-                    previous_value = float(previous_data['value'])
-                    
-                    # Calculate the change
-                    change = current_value - previous_value
-                    
-                    # If the change is significant
-                    if abs(change) >= config.SIGNIFICANT_CHANGE_THRESHOLD:
-                        trend = {
-                            "index_name": index_name,
-                            "current_value": current_value,
-                            "previous_value": previous_value,
-                            "change": change,
-                            "direction": current_data['direction'],
-                            "month_year": current_month['month_year'],
-                            "report_date": current_month['report_date']
-                        }
-                        
-                        # Add a description
-                        if change > 0:
-                            trend["description"] = f"{index_name} rose {abs(change):.1f} points to {current_value:.1f} in {current_month['month_year']}"
-                        else:
-                            trend["description"] = f"{index_name} fell {abs(change):.1f} points to {current_value:.1f} in {current_month['month_year']}"
-                        
-                        trends.append(trend)
-            
-            # Sort trends by absolute change (most significant first)
-            return sorted(trends, key=lambda x: abs(x['change']), reverse=True)
-        
-        except Exception as e:
-            logger.error(f"Error identifying trends: {str(e)}")
-            return []
-    
-    def generate_search_queries(self, trend):
-        """Generate search queries based on a trend."""
-        index_name = trend['index_name']
-        direction = "increase" if trend['change'] > 0 else "decrease"
-        month_year = trend['month_year']
-        
-        # Get the current month and year
-        current_month = datetime.now().strftime("%B")
-        current_year = datetime.now().year
-        
-        # Generate different query variations
-        queries = [
-            f"manufacturing {index_name.lower()} {direction} impact {current_month} {current_year}",
-            f"economic impact of {direction} in manufacturing {index_name.lower()} today",
-            f"{index_name} {direction} manufacturing sector implications {current_month}",
-            f"why {index_name.lower()} {direction}d in manufacturing this month"
-        ]
-        
-        # If it's a specific index, add more targeted queries
-        if index_name == "New Orders":
-            queries.append(f"manufacturing demand {direction} {current_month} impact")
-            queries.append(f"factory orders {direction} economic implications this week")
-        elif index_name == "Production":
-            queries.append(f"manufacturing output {direction} {current_month} implications")
-            queries.append(f"factory production {direction} impact today")
-        elif index_name == "Employment":
-            queries.append(f"manufacturing jobs {direction} {current_month} analysis")
-            queries.append(f"manufacturing employment {direction} impact this week")
-        elif index_name == "Prices":
-            queries.append(f"manufacturing inflation {direction} {current_month} impact")
-            queries.append(f"factory input costs {direction} implications today")
-        elif index_name == "Manufacturing PMI":
-            queries.append(f"manufacturing PMI {direction} economic outlook {current_month}")
-            queries.append(f"PMI {direction} impact on economy this week")
-            
-        return queries
-    
-    def analyze_with_llm(self, trend, evidence, model=None):
-        """Analyze trend and evidence using OpenAI's LLM."""
-        if model is None:
-            model = config.OPENAI_MODEL
-            
-        # Format evidence for the prompt
-        evidence_text = ""
-        for i, item in enumerate(evidence, 1):
-            evidence_text += f"SOURCE {i}: {item['source']} - {item['title']}\n"
-            evidence_text += f"EXCERPT: {item['content'][:500]}...\n\n"
-        
-        prompt = f"""
-        I am analyzing a trend from the ISM Manufacturing Report, and I need to provide context and investment implications.
-
-        THE TREND:
-        {trend['description']}
-        Current value: {trend['current_value']} ({trend['direction']})
-        Previous value: {trend['previous_value']}
-        Change: {trend['change']} points
-
-        EVIDENCE FROM NEWS AND ANALYSIS:
-        {evidence_text}
-
-        Please provide:
-        1. A brief explanation of why this trend is occurring (based on the evidence)
-        2. The broader economic implications of this trend
-        3. 2-3 specific companies or sectors that might be affected (positively or negatively)
-        4. Any predictions for the next 3-6 months based on this trend
-
-        Format your response clearly with numbered sections. For the investment implications, indicate if they are bullish or bearish.
-        
-        Keep your analysis concise but insightful.
-        """
-        
-        client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are an expert economic analyst and investment strategist."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+        CREATE TABLE IF NOT EXISTS web_insights (
+            insight_id TEXT PRIMARY KEY,
+            report_date DATE NOT NULL,
+            index_name TEXT NOT NULL,
+            trend_description TEXT NOT NULL,
+            search_queries TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            analysis TEXT NOT NULL,
+            investment_implications TEXT NOT NULL,
+            created_at DATETIME NOT NULL
+        )"""
         )
-        
-        return response.choices[0].message.content
-    
-    def extract_investment_implications(self, analysis):
-        """Extract investment implications from the analysis."""
-        client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
-        
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_web_insights_date ON web_insights(report_date)"
+        )
+        self.conn.commit()
+
+    # -------------------  Trend detection  ------------------ #
+    def identify_significant_trends(self, months_to_analyze: int = 2) -> list[dict]:
+        try:
+            cur = self.conn.cursor()
+            cur.execute(
+                "SELECT report_date, month_year FROM reports ORDER BY report_date DESC LIMIT ?",
+                (months_to_analyze,),
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+            if len(rows) < 2:
+                return []
+
+            curr, prev = rows[0], rows[1]
+
+            def indices_for(date):
+                cur.execute(
+                    """
+                    SELECT index_name,index_value,direction
+                    FROM pmi_indices WHERE report_date=?""",
+                    (date,),
+                )
+                return {r["index_name"]: dict(r) for r in cur.fetchall()}
+
+            curr_idx, prev_idx = indices_for(curr["report_date"]), indices_for(prev["report_date"])
+
+            trends = []
+            for name, cd in curr_idx.items():
+                if name not in prev_idx:
+                    continue
+                cv, pv = float(cd["index_value"]), float(prev_idx[name]["index_value"])
+                change = cv - pv
+                if abs(change) >= config.SIGNIFICANT_CHANGE_THRESHOLD:
+                    desc = (
+                        f"{name} rose {abs(change):.1f} points to {cv:.1f} in {curr['month_year']}"
+                        if change > 0
+                        else f"{name} fell {abs(change):.1f} points to {cv:.1f} in {curr['month_year']}"
+                    )
+                    trends.append(
+                        {
+                            "index_name": name,
+                            "current_value": cv,
+                            "previous_value": pv,
+                            "change": change,
+                            "direction": cd["direction"],
+                            "month_year": curr["month_year"],
+                            "report_date": curr["report_date"],
+                            "description": desc,
+                        }
+                    )
+            return sorted(trends, key=lambda t: abs(t["change"]), reverse=True)
+        except Exception as exc:
+            logger.error("identify_trends error: %s", exc)
+            return []
+
+    # --------------------  Evidence fetch  ------------------ #
+    async def _fetch_and_process(self, results: list[dict]) -> list[dict]:
+        urls = [r["url"] for r in results if r.get("url")]
+        html_map = await search_utils_async.fetch_articles_concurrently(urls, 5)
+
+        processed = []
+        for r in results:
+            url = r.get("url")
+            if not url or url not in html_map:
+                continue
+            html = html_map[url]
+            extraction = search_utils_async.extract_article_content(
+                html, url, config.MAX_ARTICLE_LENGTH
+            )
+            date = r.get("date") or search_utils_async.extract_date_from_metadata(html)
+            processed.append(
+                {
+                    "source": r.get("source", ""),
+                    "title": extraction["title"] or r.get("title", ""),
+                    "url": url,
+                    "snippet": r.get("snippet", ""),
+                    "date": date,
+                    "content": extraction["content"],
+                }
+            )
+        return processed
+
+    # -----------------------  LLM  --------------------------- #
+    def _analyse_with_llm(self, trend: dict, evidence: list[dict]) -> str:
+        evidence_block = (
+            "No relevant evidence found."
+            if not evidence
+            else "\n".join(
+                f"SOURCE {i1}: {ev['source']} – {ev['title']}\nEXCERPT: {ev['content'][:400]}…\n"
+                for i, ev in enumerate(evidence)
+            )
+        )
+
         prompt = f"""
-        Based on the following analysis, extract just the investment implications in a structured format.
-        
-        {analysis}
-        
-        Format your response as a JSON object with the following structure:
-        {{
-            "sectors": [
-                {{
-                    "name": "Sector name",
-                    "impact": "bullish/bearish",
-                    "reasoning": "Brief explanation"
-                }}
-            ],
-            "companies": [
-                {{
-                    "name": "Company name",
-                    "ticker": "Stock ticker if mentioned",
-                    "impact": "bullish/bearish",
-                    "reasoning": "Brief explanation"
-                }}
-            ],
-            "timing": "Timing considerations if mentioned"
-        }}
-        
-        Return only the JSON without any other text.
-        """
-        
-        response = client.chat.completions.create(
+You are an expert macro-economist and equity strategist.
+
+**Task**  
+Analyse the manufacturing-trend below **and return ONLY valid JSON** that
+summarises investment implications.  Do NOT wrap it in code fences or add any
+extra commentary.
+
+Required JSON schema:
+{{
+  "sectors": [{{"name":"","impact":"bullish/bearish","reasoning":""}}],
+  "companies": [{{"name":"","ticker":"","impact":"","reasoning":""}}],
+  "timing":""
+}}
+
+**Trend**  
+{trend['description']}  (current {trend['current_value']} vs {trend['previous_value']}; Δ {trend['change']} pts, {trend['direction']})
+
+**Key Evidence**  
+{evidence_block}
+"""
+        client = openai.OpenAI(api_key=config.OPENAI_API_KEY)
+        resp = client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=[
-                {"role": "system", "content": "You extract investment implications from analysis into structured data."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "You are an expert economic analyst."},
+                {"role": "user", "content": prompt},
             ],
-            temperature=0.1
+            temperature=0.2,
         )
-        
+        return resp.choices[0].message.content.strip()
+
+    def _extract_investment_json(self, raw_json: str) -> dict:
+        """
+        raw_json is already intended to be pure JSON.  Parse it, and if that fails
+        use a regex fallback that crudely looks for 'Sector:' / 'Company:' lines.
+        """
         try:
-            # Extract JSON string from response
-            json_str = response.choices[0].message.content
-            
-            # If it's wrapped in ```json blocks, extract just the JSON part
-            if "```json" in json_str:
-                json_str = json_str.split("```json")[1].split("```")[0].strip()
-            elif "```" in json_str:
-                json_str = json_str.split("```")[1].split("```")[0].strip()
-                
-            return json.loads(json_str)
-        except Exception as e:
-            logger.error(f"Error parsing investment implications: {str(e)}")
-            return {"sectors": [], "companies": [], "timing": ""}
-    
-    def generate_insight(self, trend_index=0):
-        """Generate a complete insight for a significant trend."""
-        # Get significant trends
+            return json.loads(raw_json)
+        except Exception:
+            import re
+
+            sectors, companies = [], []
+            for line in raw_json.splitlines():
+                if m := re.match(r"[-*]\s*Sector[:\-]\s*(.?)\s*\((bullish|bearish)\)", line, re.I):
+                    sectors.append({"name": m[1].strip(), "impact": m[2].lower(), "reasoning": ""})
+                elif m := re.match(r"[-*]\s*Company[:\-]\s*(.?)\s*\((bullish|bearish)\)", line, re.I):
+                    companies.append({"name": m[1].strip(), "ticker": "", "impact": m[2].lower(), "reasoning": ""})
+            return {"sectors": sectors, "companies": companies, "timing": ""}
+
+    # -------------------  Main entry point  ----------------- #
+    def generate_insight(self, trend_index: int = 0) -> dict:
         trends = self.identify_significant_trends()
-        
-        if not trends:
+        if not isinstance(trends, list) or not trends:
             return {"error": "No significant trends identified"}
-        
-        # Select the trend to analyze (default to most significant)
-        if trend_index >= len(trends):
-            trend_index = 0
-            
+
+        trend_index = trend_index if trend_index < len(trends) else 0
         trend = trends[trend_index]
-        
-        # Generate search queries
-        queries = self.generate_search_queries(trend)
-        
-        # Search the web for each query
+
+        queries = search_utils.generate_month_aware_queries(trend, 4)
         all_results = []
-        for query in queries[:2]:  # Limit to 2 queries for the demo
-            results = search_utils.search_web(query, num_results=3)
-            all_results.extend(results)
-        
-        # Remove duplicate URLs
-        unique_urls = set()
-        unique_results = []
-        for result in all_results:
-            if result['url'] not in unique_urls:
-                unique_urls.add(result['url'])
-                unique_results.append(result)
-        
-        # Fetch content from top results
-        evidence = []
-        for result in unique_results[:config.MAX_SEARCH_RESULTS]:
-            content = search_utils.fetch_article_content(result['url'])
-            evidence.append({
-                "source": result['source'],
-                "title": result['title'],
-                "url": result['url'],
-                "content": content
-            })
-        
-        # Analyze with LLM
-        analysis = self.analyze_with_llm(trend, evidence)
-        
-        # Extract investment implications
-        investment_implications = self.extract_investment_implications(analysis)
-        
-        # Structure the complete insight
+        for q in queries:
+            all_results.extend(
+                search_utils.search_web(q, num_results=10, fetch_all_pages=True)
+            )
+        # de-dupe
+        url_seen = set()
+        uniq_results = [r for r in all_results if not (r["url"] in url_seen or url_seen.add(r["url"]))]
+
+        evidence = asyncio.run(self._fetch_and_process(uniq_results[:20]))
+        evidence = search_utils.filter_articles_by_similarity_and_freshness(
+            evidence, trend["description"], 45, config.MAX_SEARCH_RESULTS
+        )
+
+        raw_json = self._analyse_with_llm(trend, evidence)
+        implications = self._extract_investment_json(raw_json)
+
         insight = {
             "insight_id": f"INS-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            "report_date": trend['report_date'],
-            "index_name": trend['index_name'],
-            "trend_description": trend['description'],
-            "current_value": trend['current_value'],
-            "previous_value": trend['previous_value'],
-            "change": trend['change'],
-            "direction": trend['direction'],
-            "month_year": trend['month_year'],
+            **trend,
             "search_queries": queries,
             "evidence": evidence,
             "analysis": analysis,
-            "investment_implications": investment_implications
+            "investment_implications": implications,
         }
-        
-        # Store in database
-        self.store_insight(insight)
-        
+        self._store_insight(insight)
         return insight
-    
-    def store_insight(self, insight):
-        """Store an insight in the database."""
+
+    def _store_insight(self, ins: dict) -> None:
         try:
-            cursor = self.conn.cursor()
-            
-            # Insert the insight
-            cursor.execute('''
+            cur = self.conn.cursor()
+            cur.execute(
+                """
             INSERT INTO web_insights (
-                insight_id, report_date, index_name, trend_description, 
-                search_queries, evidence, analysis, investment_implications, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                insight['insight_id'],
-                insight['report_date'],
-                insight['index_name'],
-                insight['trend_description'],
-                json.dumps(insight['search_queries']),
-                json.dumps(insight['evidence']),
-                insight['analysis'],
-                json.dumps(insight['investment_implications']),
-                datetime.now().isoformat()
-            ))
-            
+              insight_id, report_date, index_name, trend_description,
+              search_queries, evidence, analysis, investment_implications,
+              current_value, previous_value, change,
+              created_at
+
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    ins["insight_id"],
+                    ins["report_date"],
+                    ins["index_name"],
+                    ins["description"],
+                    json.dumps(ins["search_queries"]),
+                    json.dumps(ins["evidence"]),
+                    ins["analysis"],
+                    json.dumps(ins["investment_implications"]),
+                    ins["current_value"],
+                    ins["previous_value"],
+                    ins["change"],
+                    datetime.now().isoformat(),
+                ),
+            )
             self.conn.commit()
-            logger.info(f"Insight stored: {insight['insight_id']}")
-            return True
-        except Exception as e:
-            logger.error(f"Error storing insight: {str(e)}")
-            return False
-    
-    def get_insight(self, insight_id):
-        """Get a specific insight by ID."""
-        try:
-            cursor = self.conn.cursor()
-            
-            cursor.execute('''
-            SELECT * FROM web_insights WHERE insight_id = ?
-            ''', (insight_id,))
-            
-            row = cursor.fetchone()
-            if not row:
-                return None
-                
-            insight = dict(row)
-            
-            # Parse JSON fields
-            insight['search_queries'] = json.loads(insight['search_queries'])
-            insight['evidence'] = json.loads(insight['evidence'])
-            insight['investment_implications'] = json.loads(insight['investment_implications'])
-            
-            return insight
-        except Exception as e:
-            logger.error(f"Error retrieving insight: {str(e)}")
+            logger.info("Insight stored %s", ins["insight_id"])
+        except Exception as exc:
+            logger.error("Store insight error: %s", exc)
+
+    # ------------------- Retrieval helpers ------------------ #
+    def get_all_insights(self, limit: int = 10) -> list[dict]:
+        cur = self.conn.cursor()
+        cur.execute(
+            "SELECT * FROM web_insights ORDER BY created_at DESC LIMIT ?", (limit,)
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        for r in rows:
+            r["search_queries"] = json.loads(r["search_queries"])
+            r["evidence"] = json.loads(r["evidence"])
+            r["investment_implications"] = json.loads(r["investment_implications"])
+            # SQLite returns None for the new REAL columns when reading old rows;
+            # guard so pills don’t blow up
+            for k in ("current_value", "previous_value", "change"):
+                r[k] = float(r.get(k) or 0)
+        return rows
+
+    def get_insight(self, iid: str) -> dict | None:
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM web_insights WHERE insight_id=?", (iid,))
+        row = cur.fetchone()
+        if not row:
             return None
-    
-    def get_all_insights(self, limit=10):
-        """Get all insights from the database."""
-        try:
-            cursor = self.conn.cursor()
-            
-            cursor.execute('''
-            SELECT * FROM web_insights ORDER BY created_at DESC LIMIT ?
-            ''', (limit,))
-            
-            insights = []
-            for row in cursor.fetchall():
-                insight = dict(row)
-                
-                # Parse JSON fields
-                insight['search_queries'] = json.loads(insight['search_queries'])
-                insight['evidence'] = json.loads(insight['evidence'])
-                insight['investment_implications'] = json.loads(insight['investment_implications'])
-                
-                insights.append(insight)
-                
-            return insights
-        except Exception as e:
-            logger.error(f"Error retrieving insights: {str(e)}")
-            return []
-    
-    def delete_insight(self, insight_id):
-        """Delete an insight by ID."""
-        try:
-            cursor = self.conn.cursor()
-            
-            cursor.execute('''
-            DELETE FROM web_insights WHERE insight_id = ?
-            ''', (insight_id,))
-            
-            self.conn.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            logger.error(f"Error deleting insight: {str(e)}")
-            return False
+        r = dict(row)
+        r["search_queries"] = json.loads(r["search_queries"])
+        r["evidence"] = json.loads(r["evidence"])
+        r["investment_implications"] = json.loads(r["investment_implications"])
+        for k in ("current_value", "previous_value", "change"):
+            r[k] = float(r.get(k) or 0)
+        return r
+
+    def delete_insight(self, iid: str) -> bool:
+        cur = self.conn.cursor()
+        cur.execute("DELETE FROM web_insights WHERE insight_id=?", (iid,))
+        self.conn.commit()
+        return cur.rowcount > 0

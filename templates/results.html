@@ -7,6 +7,39 @@
     <style>
         .container { max-width: 800px; }
         .mt-5 { margin-top: 3rem !important; }
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .processing-animation {
+            width: 100px;
+            height: 100px;
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .progress-container {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 1rem;
+        }
+        
+        .progress {
+            height: 10px;
+            margin-bottom: 0.5rem;
+        }
     </style>
     <script>
         // Redirect to dashboard after 3 seconds if at least one success
@@ -37,6 +70,17 @@
                                 <th>Status</th>
                             </tr>
                         </thead>
+                        <div class="loading-container" id="processingIndicator">
+                            <div class="processing-animation"></div>
+                            <h4>Processing Your Reports</h4>
+                            <p class="text-muted">This may take a few moments depending on the number and size of files.</p>
+                            <div class="progress-container">
+                                <div class="progress">
+                                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <p class="text-center" id="progressText">Initializing...</p>
+                            </div>
+                        </div>
                         <tbody>
                             {% for file, status in results.items() %}
                             <tr>
@@ -77,5 +121,56 @@
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Simulated progress for processing
+        document.addEventListener('DOMContentLoaded', function() {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const processingIndicator = document.getElementById('processingIndicator');
+            const resultTable = document.querySelector('.table-responsive');
+            
+            if (resultTable) {
+                // Hide the loading indicator if results are already available
+                processingIndicator.style.display = 'none';
+            } else {
+                // Simulate progress
+                let progress = 0;
+                const stages = [
+                    'Extracting data from PDFs...',
+                    'Structuring manufacturing data...',
+                    'Validating industry classifications...',
+                    'Creating visualizations...',
+                    'Updating Google Sheets...',
+                    'Finalizing results...'
+                ];
+                
+                const interval = setInterval(() => {
+                    progress += Math.random() * 15;
+                    if (progress > 100) progress = 100;
+                    
+                    progressBar.style.width = progress + '%';
+                    
+                    // Update text based on progress
+                    const stageIndex = Math.min(Math.floor(progress / 20), stages.length - 1);
+                    progressText.textContent = stages[stageIndex];
+                    
+                    if (progress >= 100) {
+                        clearInterval(interval);
+                        // Check if results are ready
+                        checkResultsReady();
+                    }
+                }, 1000);
+                
+                // Actually check for results periodically
+                function checkResultsReady() {
+                    // This would typically be an AJAX call to check status
+                    // For now, we'll just reload after a delay if results should be ready
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                }
+            }
+        });
+    </script>
 </body>
 </html>

@@ -1,38 +1,324 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>ISM Report Analysis</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload ISM Report - Envoy LLC</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        .container { max-width: 800px; }
-        .mt-5 { margin-top: 3rem !important; }
-        .card { margin-bottom: 20px; }
+        :root {
+            --primary-color: midnightblue; /* #191970 */
+            --primary-hover: #10104D; /* A darker shade for hover */
+            --secondary-color: #f8f9fa;
+            --accent-color: #28a745; /* Keep accent green or choose another */
+            --text-color: #333;
+            --light-text: #6c757d;
+            --bg-color: #f8fafc; /* Background for dashboard/upload pages */
+            --card-shadow: rgba(0, 0, 0, 0.05);
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f8fafc;
+            color: var(--text-color);
+            line-height: 1.6;
+            position: relative;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1000px;
+            padding: 2rem;
+            margin: 0 auto;
+        }
+        
+        .navbar {
+            padding: 1rem 0;
+            background-color: white !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.4rem;
+            color: var(--primary-color) !important;
+        }
+        
+        .content-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 86, 179, 0.08);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background-color: white;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 1.5rem 2rem;
+        }
+        
+        .card-header h5 {
+            margin: 0;
+            font-weight: 600;
+            color: var(--primary-color);
+            font-size: 1.4rem;
+        }
+        
+        .card-body {
+            padding: 2rem;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            font-weight: 600;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background-color: #004494;
+            border-color: #004494;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 86, 179, 0.2);
+        }
+        
+        .btn-primary:disabled {
+            background-color: #a2c1e5;
+            border-color: #a2c1e5;
+        }
+        
+        .form-control {
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.1);
+        }
+        
+        .form-check-input:checked {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            margin-bottom: 1.5rem;
+            background-color: #f8fafc;
+        }
+        
+        .upload-area:hover {
+            border-color: var(--primary-color);
+            background-color: #f0f7ff;
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+        }
+        
+        .upload-text {
+            margin-bottom: 1rem;
+        }
+        
+        .form-text {
+            color: var(--light-text);
+        }
+        
+        .info-card {
+            background-color: #e6f4ff;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .info-card h5 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        
+        .nav-link {
+            color: var(--text-color);
+            font-weight: 500;
+        }
+        
+        .nav-link:hover {
+            color: var(--primary-color);
+        }
+        
+        .footer {
+            background-color: var(--secondary-color);
+            padding: 2rem 0;
+            text-align: center;
+            color: var(--light-text);
+            margin-top: 3rem;
+        }
+        
+        .viz-option {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s ease;
+        }
+        
+        .viz-option:hover {
+            border-color: var(--primary-color);
+            background-color: #f8fafc;
+        }
+        
+        .viz-option-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+        }
+        
+        .viz-option-title i {
+            margin-right: 0.5rem;
+            color: var(--primary-color);
+        }
+        
+        .viz-option-desc {
+            color: var(--light-text);
+            font-size: 0.9rem;
+            margin-left: 1.7rem;
+        }
+        
+        .selected-files {
+            margin-top: 1rem;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .file-item i {
+            font-size: 1.25rem;
+            margin-right: 0.75rem;
+            color: var(--primary-color);
+        }
+        
+        .tooltip-icon {
+            color: var(--primary-color);
+            font-size: 0.85rem;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+
+        .processing-overlay {
+            position: fixed; /* Cover the whole viewport */
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.65); /* Semi-transparent black background */
+            z-index: 1060; /* Higher than navbar, lower than potential modals if any */
+            display: none; /* Hidden by default */
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .processing-overlay.is-active {
+            display: flex; /* Show when active */
+            opacity: 1;
+        }
+        
+        .processing-overlay .spinner-border {
+            width: 3rem; /* Make spinner larger */
+            height: 3rem;
+            border-width: 0.3rem; /* Make spinner thicker */
+            color: white !important; /* Ensure spinner is visible */
+        }
+        
+        .processing-overlay h5 {
+            color: white !important; /* Ensure text is visible */
+            font-weight: 500;
+        }
+        
+        /* Style for the submit button when processing */
+        #uploadButton.is-processing {
+            cursor: not-allowed;
+        }
+        #uploadButton.is-processing .button-text {
+            display: none; /* Hide original text */
+        }
+        #uploadButton.is-processing .spinner-border-sm {
+            display: inline-block !important; /* Show spinner */
+        }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="text-center">ISM Manufacturing Report Analysis</h1>
-            <div>
-                <a href="{{ url_for('index') }}" class="btn btn-primary">View Dashboard</a>
+    <nav class="navbar navbar-expand-lg navbar-light bg-white">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <span>Envoy LLC</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('upload_view') }}">Upload</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                </ul>
             </div>
         </div>
-        
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <div class="alert alert-info">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
+    </nav>
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                {# Add this condition to skip the specific success message #}
+                {% if message != 'Google Sheets authentication successful!' %}
+                    <div class="alert alert-{{ category if category else 'info' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endif %}
+                {% endfor %}
+            {% endif %}
         {% endwith %}
-        
-        <div class="card">
+
+        <div class="content-card">
             <div class="card-header">
-                <h5>Upload ISM PDF Reports</h5>
+                <h5>Upload ISM Manufacturing Report</h5>
             </div>
             <div class="card-body">
-                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+                <div class="info-card">
+                    <h5><i class="bi bi-info-circle-fill me-2"></i>About This Tool</h5>
+                    <p>This tool analyzes ISM Manufacturing Reports to extract key metrics, industry trends, and visual insights. Simply upload your PDF report and we'll take care of the rest.</p>
+                </div>
+
+                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" id="uploadForm">
                     <div class="mb-3">
                         <label for="fileInput" class="form-label">Select one or more PDF files</label>
                         <input class="form-control" type="file" id="fileInput" name="file" accept=".pdf" multiple>
@@ -65,43 +351,155 @@
                         </div>
                     </div>
                     <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">Upload and Process</button>
+                        <button type="submit" class="btn btn-primary" id="uploadButton" disabled>
+                            <span class="button-text">Upload and Process</span>
+                            <span class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
-        
-        {% if not google_auth_ready %}
-        <div class="card">
-            <div class="card-header bg-warning">
-                <h5>Google Authentication Required</h5>
-            </div>
-            <div class="card-body">
-                <p>Google Sheets authentication is not set up yet. Click the button below to set it up.</p>
-                <a href="{{ url_for('setup_google') }}" class="btn btn-warning">Set Up Google Authentication</a>
-            </div>
+
+        {% if has_data %}
+        <div class="d-grid">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary">
+                <i class="bi bi-bar-chart-fill me-2"></i>View Dashboard
+            </a>
         </div>
         {% endif %}
-        
-        <div class="card">
-            <div class="card-header">
-                <h5>Instructions</h5>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2025 Envoy LLC. All rights reserved.</p>
+        </div>
+    </footer>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Get Elements (Consolidated) ---
+            const uploadForm = document.getElementById('uploadForm'); // Use ID
+            const processingOverlay = document.getElementById('processingOverlay');
+            const submitButton = document.getElementById('uploadButton');
+            const submitButtonText = submitButton ? submitButton.querySelector('.button-text') : null;
+            const submitButtonSpinner = submitButton ? submitButton.querySelector('.spinner-border-sm') : null;
+            const fileInput = document.getElementById('fileInput');
+            const fileListDiv = document.getElementById('fileList'); // Optional
+
+            // --- Initialize Tooltips ---
+            const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltips.forEach(tooltip => {
+                // Small safety check
+                if (tooltip && bootstrap && bootstrap.Tooltip) {
+                     new bootstrap.Tooltip(tooltip);
+                }
+            });
+
+            // --- File Input Change Listener (Handles Button Enable/Disable) ---
+            if (fileInput && submitButton) {
+                fileInput.addEventListener('change', function() {
+                    let files = this.files;
+                    let validFiles = files.length > 0; // Start assuming valid if files exist
+                    let fileNames = [];
+
+                    if (files.length > 0) {
+                        for (let i = 0; i < files.length; i++) {
+                            fileNames.push(files[i].name); // Always add name
+                            if (files[i].type !== 'application/pdf') {
+                                validFiles = false; // Mark as invalid if ANY non-PDF is found
+                                fileNames[i] += ` <span class="text-danger">(Invalid format)</span>`; // Append warning only to invalid ones
+                            }
+                        }
+
+                        if (!validFiles) {
+                             displayFlashMessage('Please select only PDF files.', 'warning');
+                        }
+                    }
+
+                    // Update button state based ONLY on validation result
+                    submitButton.disabled = !validFiles;
+
+                    // Update optional file list display
+                    if(fileListDiv) {
+                        fileListDiv.innerHTML = validFiles && files.length > 0 ? "Selected: " + fileNames.join(', ') : "";
+                    }
+                });
+            }
+
+            // --- Form Submit Listener (Shows Overlay) ---
+            if (uploadForm && processingOverlay && submitButton && fileInput) { // Added fileInput check
+                uploadForm.addEventListener('submit', function(event) {
+                    // Final validation check before submitting
+                    let files = fileInput.files;
+                    let isFormValid = files.length > 0; // Must have at least one file
+                    if(isFormValid) {
+                        for (let i = 0; i < files.length; i++) {
+                            if (files[i].type !== 'application/pdf') {
+                                isFormValid = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isFormValid) {
+                        // Show the overlay ONLY if the form is valid
+                        if(processingOverlay) { // Safety check
+                            processingOverlay.classList.add('is-active');
+                        }
+
+                        // Update the button state
+                        submitButton.disabled = true;
+                        submitButton.classList.add('is-processing');
+                        if (submitButtonText) submitButtonText.textContent = 'Processing...';
+                        if (submitButtonSpinner) submitButtonSpinner.classList.remove('d-none');
+
+                        // Allow default submission (NO preventDefault)
+                    } else {
+                         event.preventDefault(); // STOP submission if invalid
+                         displayFlashMessage('Submission stopped. Please select one or more valid PDF files.', 'danger');
+                         // Ensure button is disabled if form is invalid on submit click
+                         submitButton.disabled = true;
+                    }
+                });
+            }
+
+            // --- Helper: Display Flash Message (Keep) ---
+            function displayFlashMessage(message, category = 'info') {
+                const container = document.querySelector('div.container');
+                 if (!container) return;
+                 const alertDiv = document.createElement('div');
+                 alertDiv.className = `alert alert-${category} alert-dismissible fade show mt-3`;
+                 alertDiv.setAttribute('role', 'alert');
+                 alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                 `;
+                 const contentCard = document.querySelector('.content-card');
+                 if (contentCard) container.insertBefore(alertDiv, contentCard);
+                 else container.insertBefore(alertDiv, container.firstChild);
+                 setTimeout(() => {
+                     try { // Add try-catch around Bootstrap call
+                         const alertInstance = bootstrap.Alert.getOrCreateInstance(alertDiv);
+                         if (alertInstance) alertInstance.close();
+                         else if (alertDiv.parentNode) alertDiv.parentNode.removeChild(alertDiv);
+                     } catch (e) {
+                         console.error("Error closing alert:", e);
+                         if (alertDiv.parentNode) alertDiv.parentNode.removeChild(alertDiv); // Force remove on error
+                     }
+                 }, 5000);
+             }
+
+        }); // End DOMContentLoaded
+    </script>
+
+    <div class="processing-overlay" id="processingOverlay">
+        <div class="processing-content text-center">
+            <div class="spinner-border text-light mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
             </div>
-            <div class="card-body">
-                <ol>
-                    <li>Upload one or more ISM Manufacturing Report PDFs.</li>
-                    <li>The system will extract data from each PDF.</li>
-                    <li>Data will be validated and structured.</li>
-                    <li>Results will be updated in Google Sheets.</li>
-                    <li>You'll receive a processing report when complete.</li>
-                    {% if has_data %}
-                    <li>View the <a href="{{ url_for('dashboard') }}">Dashboard</a> to see visualizations of the processed data.</li>
-                    {% endif %}
-                </ol>
-                <p><strong>Note:</strong> Each index tab in Google Sheets will have industries as rows and months as columns. The number of industries may vary for each index and month.</p>
-            </div>
+            <h5 class="text-light">Processing Upload... Please Wait</h5>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
 </html>

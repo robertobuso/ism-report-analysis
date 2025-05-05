@@ -3,11 +3,15 @@ import tempfile
 import logging
 import sys
 import traceback
+import uuid
+import threading
 from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
+
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
 
+from auth import login_required, is_authenticated
 from flask import Flask, request, render_template, redirect, url_for, flash, session, jsonify
 from werkzeug.utils import secure_filename
 from main import process_single_pdf, process_multiple_pdfs
@@ -43,9 +47,51 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/')
-def index():
+@app.route('/landing')
+@app.route('/welcome')
+def landing():
+    """Landing page for the application."""
+    return render_template('landing.html')
+
+@app.route('/login')
+def login():
+    """Initiate Google login flow."""
+    if is_authenticated():
+        return redirect(url_for('index'))
+    
     try:
+        # Get the auth URL
+        auth_url = get_google_auth_url()
+        if not auth_url:
+            flash('Error setting up Google authentication.', 'danger')
+            return redirect(url_for('landing'))
+        
+        # Redirect to Google's auth page
+        return redirect(auth_url)
+    except Exception as e:
+        flash(f'Error with Google authentication: {str(e)}', 'danger')
+        return redirect(url_for('landing'))
+
+@app.route('/logout')
+def logout():
+    """Log out the user."""
+    session.pop('authenticated', None)
+    flash('You have been logged out successfully', 'success')
+    return redirect(url_for('landing'))
+
+@app.route('/')
+def root():
+    """Root route that checks auth and redirects appropriately."""
+    if is_authenticated():
+        return redirect(url_for('index'))
+    return redirect(url_for('landing'))
+
+@app.route('/home')
+@login_required
+def index():
+    """Main dashboard or upload page after authentication."""
+    try:
+        # Your existing index code...
         # Check if database is initialized and has data
         has_data = False
         try:
@@ -76,6 +122,7 @@ def index():
         return redirect(url_for('upload_view'))
     
 @app.route('/upload', methods=['GET'])
+@login_required
 def upload_view():
     # Check if Google auth is set up
     google_auth_ready = os.path.exists('token.pickle')
@@ -94,24 +141,21 @@ def upload_view():
                           has_data=has_data)
 
 @app.route('/upload', methods=['POST'])
+@login_required
 def upload_file():
     # Check if Google auth is set up
     if not os.path.exists('token.pickle'):
-        flash('Please set up Google Authentication first')
-        return redirect(url_for('upload_view'))
+        return jsonify({"status": "error", "message": "Please set up Google Authentication first"})
     
     # Check if the post request has the file part
     if 'file' not in request.files:
-        flash('No file part')
-        return redirect(url_for('upload_view'))
-    
+        flash('No file part in the request.', 'danger')
+        return redirect(url_for('upload_view')) # Redirect back on error
     files = request.files.getlist('file')
-    
-    if len(files) == 1 and files[0].filename == '':
-        flash('No selected file')
-        return redirect(url_for('upload_view'))
-    
-    # Get visualization options
+    if not files or files[0].filename == '':
+         flash('No file selected.', 'warning')
+         return redirect(url_for('upload_view'))
+
     visualization_types = request.form.getlist('visualization_types')
     visualization_options = {
         'basic': 'basic' in visualization_types,
@@ -120,107 +164,93 @@ def upload_file():
         'industry': 'industry' in visualization_types
     }
 
-    # Log what we're storing
-    logger.info(f"Storing visualization options in session: {visualization_options}")
-    session['visualization_options'] = visualization_options
-    
-    # Store visualization options in session
-    session['visualization_options'] = visualization_options
-    
-    # Process files
-    saved_files = []
+    # --- Process Files Directly ---
+    results = {}
+    saved_files_paths = [] # Keep track for deletion
+
     for file in files:
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(filepath)
-            saved_files.append(filepath)
-    
-    if not saved_files:
-        flash('No valid files uploaded')
-        return redirect(url_for('upload_view'))
-    
-    # Store file paths in session
-    session['files'] = saved_files
-    
-    return redirect(url_for('process'))
-
-@app.route('/process')
-def process():
-    files = session.get('files', [])
-    if not files:
-        flash('No files to process')
-        return redirect(url_for('upload_view'))
-    
-    # Make sure to get this from the session
-    visualization_options = session.get('visualization_options', {
-        'basic': True,
-        'heatmap': True,
-        'timeseries': True,
-        'industry': True
-    })
-    
-    # Explicitly log what options were retrieved
-    logger.info(f"Processing with visualization options: {visualization_options}")
-    
-    results = {}
-    
-    # Process each file
-    for filepath in files:
-        try:
-            filename = os.path.basename(filepath)
-            if len(files) == 1:
-                # If visualization options exist, pass them; otherwise, don't
-                if visualization_options:
-                    result = process_single_pdf(filepath, visualization_options)
+            try:
+                file.save(filepath)
+                saved_files_paths.append(filepath)
+                # Process single file immediately (if only one)
+                if len(files) == 1:
+                     logger.info(f"Processing single file: {filename}")
+                     process_result = process_single_pdf(filepath, visualization_options)
+                     results[filename] = "Success" if process_result else "Failed"
                 else:
-                    result = process_single_pdf(filepath)
-                results[filename] = "Success" if result else "Failed"
-            else:
-                # Just store the files to process them together
-                pass
-        except Exception as e:
-            logger.error(f"Error processing {filepath}: {str(e)}")
-            results[filename] = f"Error: {str(e)}"
-    
+                     # Mark for batch processing below
+                     results[filename] = "Pending Batch"
+
+            except Exception as e:
+                 logger.error(f"Failed to save or initially process {filename}: {e}")
+                 results[filename] = f"Error: Save/Initial processing failed"
+                 flash(f"Error processing file {filename}. Please check logs.", "danger")
+
+        elif file.filename: # If a file was selected but disallowed
+             flash(f"File type not allowed: {file.filename}", "warning")
+
+
+    # If multiple files were uploaded, process them as a batch
     if len(files) > 1:
-        # Process all PDFs together
+         logger.info(f"Processing batch of {len(saved_files_paths)} files.")
+         temp_dir = None
+         try:
+             temp_dir = tempfile.mkdtemp(prefix='ism_batch_sync_')
+             for path in saved_files_paths:
+                 fname = os.path.basename(path)
+                 temp_path = os.path.join(temp_dir, fname)
+                 with open(path, 'rb') as src, open(temp_path, 'wb') as dst:
+                      dst.write(src.read())
+
+             batch_result_data = process_multiple_pdfs(temp_dir)
+             logger.info("Batch processing function returned.")
+
+             if isinstance(batch_result_data, dict) and batch_result_data.get('success'):
+                  batch_file_results = batch_result_data.get('results', {})
+                  for fname, status in batch_file_results.items():
+                     results[fname] = "Success" if status else "Failed"
+                  for fname in results: # Mark remaining pending as success
+                     if results[fname] == "Pending Batch": results[fname] = "Success"
+                  flash("Batch processed successfully.", "success")
+             else:
+                  logger.warning("Batch processing failed or returned unexpected data.")
+                  for fname in results: results[fname] = "Failed in Batch"
+                  flash("Batch processing failed.", "danger")
+
+         except Exception as e:
+              logger.error(f"Error during synchronous batch processing: {e}")
+              for fname in results: results[fname] = "Error: Batch failed"
+              flash("An error occurred during batch processing.", "danger")
+         finally:
+             if temp_dir and os.path.exists(temp_dir):
+                  try:
+                      import shutil
+                      shutil.rmtree(temp_dir)
+                  except Exception as e:
+                      logger.error(f"Failed to cleanup temp directory {temp_dir}: {e}")
+
+
+    # Clean up uploaded files
+    for path in saved_files_paths:
         try:
-            temp_dir = tempfile.mkdtemp()
-            for filepath in files:
-                filename = os.path.basename(filepath)
-                temp_path = os.path.join(temp_dir, filename)
-                with open(filepath, 'rb') as src_file:
-                    with open(temp_path, 'wb') as dst_file:
-                        dst_file.write(src_file.read())
-            
-            batch_result = process_multiple_pdfs(temp_dir)
-            if isinstance(batch_result, dict) and batch_result.get('success'):
-                for filename, status in batch_result.get('results', {}).items():
-                    results[filename] = "Success" if status else "Failed"
-            else:
-                for filepath in files:
-                    filename = os.path.basename(filepath)
-                    results[filename] = "Failed in batch processing"
-        except Exception as e:
-            logger.error(f"Error in batch processing: {str(e)}")
-            for filepath in files:
-                filename = os.path.basename(filepath)
-                results[filename] = f"Batch error: {str(e)}"
-    
-    # Clear session
-    session.pop('files', None)
-    session.pop('visualization_options', None)
-    
-    # Delete uploaded files
-    for filepath in files:
-        try:
-            os.remove(filepath)
-        except:
-            pass
-    
-    # Return results page which should then redirect to dashboard on success
-    return render_template('results.html', results=results)
+            os.remove(path)
+        except OSError as e:
+            logger.warning(f"Could not delete uploaded file {path}: {e}")
+
+    # Check results and flash messages (optional)
+    success_count = sum(1 for status in results.values() if status == "Success")
+    fail_count = len(results) - success_count
+    if fail_count > 0:
+         flash(f"Processing complete. {success_count} succeeded, {fail_count} failed.", "warning")
+    elif success_count > 0:
+         flash("All files processed successfully!", "success")
+    # If results is empty (e.g., no valid files), maybe add another message
+
+    # --- Redirect to dashboard AFTER processing is complete ---
+    return redirect(url_for('dashboard')) # Or index() if that renders dashboard
 
 @app.route('/setup-google')
 def setup_google():
@@ -245,22 +275,36 @@ def oauth2callback():
         code = request.args.get('code')
         
         if not state or not code:
-            flash('Invalid authentication response')
-            return redirect(url_for('index'))
+            flash('Invalid authentication response', 'danger')
+            return redirect(url_for('landing'))
         
         # Complete the authentication flow
         creds = finish_google_auth(state, code)
         
         if creds:
-            flash('Google Sheets authentication successful!')
+            # Set authenticated session
+            session['authenticated'] = True
+            flash('Google Sheets authentication successful!', 'success')
+            
+            # Redirect to original URL if it exists
+            next_url = session.pop('next_url', None)
+            if next_url and 'upload' in next_url:
+                # Don't pass the flash message to upload page
+                session['_flashes'] = [(cat, msg) for cat, msg in session.get('_flashes', []) 
+                                      if msg != 'Google Sheets authentication successful!']
+            
+            if next_url:
+                return redirect(next_url)
+            return redirect(url_for('index'))
         else:
-            flash('Google Sheets authentication failed.')
+            flash('Google Sheets authentication failed.', 'danger')
+            return redirect(url_for('landing'))
     except Exception as e:
-        flash(f'Error with Google authentication: {str(e)}')
-    
-    return redirect(url_for('index'))
+        flash(f'Error with Google authentication: {str(e)}', 'danger')
+        return redirect(url_for('landing'))
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
     try:
         # Get PMI heatmap data from database
@@ -409,7 +453,6 @@ def api_heatmap_data(months=None):
     except Exception as e:
         logger.error(f"Error getting heatmap data: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/all_indices')
 def get_indices_list():
