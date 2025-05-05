@@ -44,6 +44,13 @@ logging.getLogger().addHandler(console_handler)
 app = Flask(__name__)
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
+logger.info("Secret key set.")
+
+# --- ADD THIS WRAPPER ---
+# Tell Flask it is behind one proxy (Railway's load balancer)
+# and to trust X-Forwarded-Proto for determining the scheme (http/https)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+logger.info("Flask app wrapped with ProxyFix.")
 
 # Set upload folder and maximum file size
 UPLOAD_FOLDER = 'uploads'
