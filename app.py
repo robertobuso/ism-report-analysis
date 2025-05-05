@@ -1,4 +1,5 @@
 import os
+import base64
 import tempfile
 import logging
 import sys
@@ -24,6 +25,11 @@ logging.basicConfig(
     filename='logs/app.log'
 )
 logger = logging.getLogger(__name__)
+
+if 'GOOGLE_CREDENTIALS_BASE64' in os.environ:
+    credentials_data = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_BASE64'])
+    with open('credentials.json', 'wb') as f:
+        f.write(credentials_data)
 
 # Add console handler
 console_handler = logging.StreamHandler(sys.stdout)
