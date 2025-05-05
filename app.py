@@ -26,13 +26,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+app = Flask(__name__)
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+
 if 'GOOGLE_CREDENTIALS_BASE64' in os.environ:
     credentials_data = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_BASE64'])
     with open('credentials.json', 'wb') as f:
         f.write(credentials_data)
-
-app = Flask(__name__)
-app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Add console handler
 console_handler = logging.StreamHandler(sys.stdout)
