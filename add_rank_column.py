@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database file path
-DB_PATH = os.environ.get('ISM_DB_PATH', 'ism_data.db')
+DB_PATH = os.environ.get('ISM_DB_PATH', '/data/ism_data.db')
 
 def add_rank_column():
     """Add rank column to industry_status table."""

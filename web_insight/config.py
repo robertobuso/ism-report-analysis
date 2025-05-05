@@ -14,7 +14,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = "gpt-4o"
 
 # Database settings
-ISM_DB_PATH = os.getenv("ISM_DB_PATH", "ism_data.db")
+DB_PATH = os.environ.get('ISM_DB_PATH', '/data/ism_data.db')
 
 # Search settings
 MAX_SEARCH_RESULTS = 5

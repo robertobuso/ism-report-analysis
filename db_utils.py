@@ -11,11 +11,16 @@ import traceback
 logger = logging.getLogger(__name__)
 
 # Database file path
-DB_PATH = os.environ.get('ISM_DB_PATH', 'ism_data.db')
+DB_PATH = os.environ.get('ISM_DB_PATH', '/data/ism_data.db')
 
 def get_db_connection():
     """Create a connection to the SQLite database."""
     try:
+        # Ensure directory exists
+        db_dir = os.path.dirname(DB_PATH)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+            
         conn = sqlite3.connect(DB_PATH)
         
         # Enable foreign key constraints
