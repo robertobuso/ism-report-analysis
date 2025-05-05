@@ -31,6 +31,9 @@ if 'GOOGLE_CREDENTIALS_BASE64' in os.environ:
     with open('credentials.json', 'wb') as f:
         f.write(credentials_data)
 
+app = Flask(__name__)
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+
 # Add console handler
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)

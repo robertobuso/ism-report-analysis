@@ -30,6 +30,7 @@ def get_google_auth_url():
             client_config,
             scopes=SCOPES,
             redirect_uri=url_for('oauth2callback', _external=True)
+            logger.info(f"Generated redirect URI: {redirect_uri}")
         )
         
         # Generate the authorization URL
@@ -63,6 +64,7 @@ def finish_google_auth(state, code):
             client_config,
             scopes=SCOPES,
             redirect_uri=url_for('oauth2callback', _external=True)
+            logger.info(f"Generated redirect URI: {redirect_uri}")
         )
         
         # Use the state from the session
