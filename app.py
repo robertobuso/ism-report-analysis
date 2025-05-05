@@ -15,6 +15,7 @@ os.makedirs("uploads", exist_ok=True)
 from auth import login_required, is_authenticated
 from flask import Flask, request, render_template, redirect, url_for, flash, session, jsonify
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
 
@@ -25,9 +26,7 @@ logging.basicConfig(
     filename='logs/app.log'
 )
 logger = logging.getLogger(__name__)
-
-app = Flask(__name__)
-app.config['PREFERRED_URL_SCHEME'] = 'https'
+logger.info("Starting app.py execution...")
 
 if 'GOOGLE_CREDENTIALS_BASE64' in os.environ:
     credentials_data = base64.b64decode(os.environ['GOOGLE_CREDENTIALS_BASE64'])
@@ -43,6 +42,7 @@ logging.getLogger().addHandler(console_handler)
 
 # Create Flask application
 app = Flask(__name__)
+app.config['PREFERRED_URL_SCHEME'] = 'https'
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
 # Set upload folder and maximum file size
