@@ -10,40 +10,41 @@ import traceback
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Database file path
-DB_PATH = os.environ.get('ISM_DB_PATH', '/data/ism_data.db')
+DATABASE_NAME = 'ism_data.db'
 
-def get_db_connection():
-    """Create a connection to the SQLite database."""
-    try:
-        # Ensure directory exists
-        db_dir = os.path.dirname(DB_PATH)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir)
-            
-        conn = sqlite3.connect(DB_PATH)
-        
-        # Enable foreign key constraints
-        conn.execute("PRAGMA foreign_keys = ON")
-        
-        # Configure connection to return rows as dictionaries
-        conn.row_factory = sqlite3.Row
-        
-        return conn
-    except Exception as e:
-        logger.error(f"Error connecting to database: {str(e)}")
-        raise
+# --- CORRECTED Path Determination ---
+# Check if running in Railway by looking for the volume mount path env var
+railway_volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
+
+if railway_volume_path:
+    # Running in Railway, use the provided volume path
+    # Note: RAILWAY_VOLUME_MOUNT_PATH points to the *directory* (e.g., /data)
+    DB_DIR = railway_volume_path
+    DATABASE_PATH = os.path.join(DB_DIR, DATABASE_NAME)
+    logger.info(f"Detected Railway environment. Using DB path: {DATABASE_PATH}")
+else:
+    # Running locally (or Railway env var not found), use current working directory
+    # This assumes you run 'flask run' from your project's root directory
+    DB_DIR = os.getcwd()
+    DATABASE_PATH = os.path.join(DB_DIR, DATABASE_NAME)
+    logger.info(f"Running in local environment. Using DB path: {DATABASE_PATH}")
+# --- End Path Determination ---
 
 def initialize_database():
     """Initialize the SQLite database with the required schema."""
+    conn = None
     try:
         # Check if directory exists
-        db_dir = os.path.dirname(DB_PATH)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir)
-            
-        conn = get_db_connection()
+        db_dir = os.path.dirname(DATABASE_PATH)
+        if not os.path.exists(db_dir):
+             logger.info(f"Attempting to create database directory: {db_dir}")
+             # exist_ok=True prevents error if dir already exists
+             os.makedirs(db_dir, exist_ok=True)
+
+        logger.info(f"Initializing database connection at: {DATABASE_PATH}")
+        conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
+        logger.debug("Executing CREATE TABLE IF NOT EXISTS statements...")
         
         # Create reports table
         cursor.execute('''
@@ -92,18 +93,37 @@ def initialize_database():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_industry ON industry_status(industry_name)')
         
         conn.commit()
-        logger.info("Database schema initialized successfully")
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}")
-        logger.error(traceback.format_exc())
-        if conn:
-            conn.rollback()
-        return False
+        logger.info(f"Database schema initialized successfully at {DATABASE_PATH}")
+
+    except (sqlite3.Error, OSError, Exception) as e: # Catch specific and general errors
+        logger.error(f"Error during database initialization for {DATABASE_PATH}: {e}", exc_info=True)
+        # Decide if you need to re-raise or handle differently
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+                logger.debug("DB connection closed after initialization.")
+            except sqlite3.Error as e:
+                 logger.error(f"Error closing connection post-initialization: {e}")
+
+def get_db_connection():
+    """Create a connection to the SQLite database."""
+    conn = None
+    try:
+        # Ensure directory exists (might be redundant if initialize_database called first, but safe)
+        db_dir = os.path.dirname(DATABASE_PATH)
+        if not os.path.exists(db_dir):
+             os.makedirs(db_dir, exist_ok=True)
+
+        conn = sqlite3.connect(DATABASE_PATH)
+        conn.row_factory = sqlite3.Row
+        logger.debug(f"Database connection opened successfully to {DATABASE_PATH}")
+        return conn
+    except (sqlite3.Error, OSError, Exception) as e:
+        logger.error(f"Error connecting to database {DATABASE_PATH}: {e}", exc_info=True)
+        # Re-raise the exception so the calling code knows connection failed
+        raise
+
 
 def check_report_exists_in_db(month_year):
     """
