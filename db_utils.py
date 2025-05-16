@@ -625,6 +625,7 @@ def get_industry_status_over_time(index_name, num_months=12):
         if conn:
             conn.close()
 
+
 def get_industry_status_over_time_by_type(index_name, num_months=12, report_type=None):
     """
     Get industry status over time for a specific index, filtered by report type.
@@ -663,7 +664,27 @@ def get_industry_status_over_time_by_type(index_name, num_months=12, report_type
         if not date_records:
             return {'dates': [], 'industries': {}, 'ranks': {}}
         
-         # For each industry, get status for each date
+        # Get all unique industries for this index
+        cursor.execute("""
+            SELECT DISTINCT industry_name 
+            FROM industry_status 
+            WHERE index_name = ?
+            ORDER BY rank
+        """, (index_name,))
+
+        industries = [row['industry_name'] for row in cursor.fetchall()]
+        
+        # Also get the most recent ranks for these industries
+        most_recent_date = date_records[0]['report_date']
+        cursor.execute("""
+            SELECT industry_name, rank
+            FROM industry_status
+            WHERE report_date = ? AND index_name = ?
+        """, (most_recent_date, index_name))
+        
+        ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}
+        
+        # For each industry, get status for each date
         industry_data = {}
         for industry in industries:
             status_by_date = {}
@@ -683,7 +704,7 @@ def get_industry_status_over_time_by_type(index_name, num_months=12, report_type
                     status_by_date[month_year] = {
                         'status': row['status'],
                         'category': row['category'],
-                        'rank': row['rank']
+                        'rank': row['rank'] if row['rank'] is not None else 0
                     }
                 else:
                     status_by_date[month_year] = {
@@ -693,33 +714,40 @@ def get_industry_status_over_time_by_type(index_name, num_months=12, report_type
                     }
             
             industry_data[industry] = status_by_date
-
-            # Just returning the structure here - the full implementation would be similar
-            # to the existing get_industry_status_over_time function
-            return {
-                'dates': [record['month_year'] for record in date_records],
-                'industries': industry_data,
-                'report_type': report_type
-            }
+        
+        return {
+            'dates': [record['month_year'] for record in date_records],
+            'industries': industry_data,
+            'report_type': report_type
+        }
     except Exception as e:
         logger.error(f"Error getting industry status for {index_name} with type {report_type}: {str(e)}")
         return {'dates': [], 'industries': {}, 'ranks': {}}
     finally:
         if conn:
             conn.close()
-              
-def get_all_indices(index_name):
-    """Get a list of all indices in the database."""
+     
+def get_all_indices(report_type=None):
+    """Get a list of all indices in the database, optionally filtered by report type."""
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            SELECT DISTINCT index_name 
-            FROM pmi_indices 
-            ORDER BY index_name
-        """)
+        if report_type:
+            cursor.execute("""
+                SELECT DISTINCT p.index_name 
+                FROM pmi_indices p
+                JOIN reports r ON p.report_date = r.report_date
+                WHERE r.report_type = ?
+                ORDER BY p.index_name
+            """, (report_type,))
+        else:
+            cursor.execute("""
+                SELECT DISTINCT index_name 
+                FROM pmi_indices 
+                ORDER BY index_name
+            """)
         
         return [row['index_name'] for row in cursor.fetchall()]
     except Exception as e:

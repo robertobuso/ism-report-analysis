@@ -436,14 +436,20 @@ def process_single_pdf(pdf_path, visualization_options=None, report_type='auto')
         else:
             logger.warning("sheet_id.txt not found. A new Google Sheet will be created.")
 
+        # Determine report type using the dedicated function
+        from pdf_utils import process_report_type
+        detected_report_type, error = process_report_type(pdf_path, report_type)
+        if error:
+            logger.warning(f"Error during report type detection: {error}")
+        
         # Create agents
         extractor_agent = create_extractor_agent()
         data_correction_agent = create_data_correction_agent()
         validator_agent = create_validator_agent()
         formatter_agent = create_formatter_agent()
 
-        # Execute extraction
-        logger.info("Starting data extraction...")
+        # Execute extraction with detected report type
+        logger.info(f"Starting data extraction for {detected_report_type} report...")
 
         # Always attempt direct PDF parsing first to get baseline data
         direct_data = None
@@ -911,9 +917,9 @@ def merge_industry_data(primary_data, secondary_data):
     
     return merged
 
-def process_multiple_pdfs(pdf_directory):
+def process_multiple_pdfs(pdf_directory, report_type='auto'):
     """Process all PDF files in a directory using the Orchestrator agent."""
-    logger.info(f"Processing all PDFs in directory: {pdf_directory}")
+    logger.info(f"Processing all PDFs in directory: {pdf_directory} with report_type: {report_type}")
     
     try:
         # Create orchestrator agent
@@ -923,6 +929,7 @@ def process_multiple_pdfs(pdf_directory):
         orchestration_task = Task(
             description=f"""
             Orchestrate the processing of all ISM Manufacturing Report PDFs in the directory {pdf_directory}.
+            The report type is: {report_type} (will auto-detect if set to 'auto')
             
             Steps:
             1. For each PDF file:
@@ -973,8 +980,8 @@ def process_multiple_pdfs(pdf_directory):
             
             for pdf_file in pdf_files:
                 pdf_path = os.path.join(pdf_directory, pdf_file)
-                logger.info(f"Direct processing of {pdf_file}")
-                processing_result = process_single_pdf(pdf_path)
+                logger.info(f"Direct processing of {pdf_file} with report_type: {report_type}")
+                processing_result = process_single_pdf(pdf_path, None, report_type)
                 result_data['results'][pdf_file] = processing_result
         
         logger.info("Completed processing all PDFs")
@@ -984,6 +991,29 @@ def process_multiple_pdfs(pdf_directory):
         logger.error(f"Error in batch processing: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return {"success": False, "message": str(e)}
+
+def process_report_type(pdf_path, specified_type='auto'):
+    """Process a PDF file with proper report type detection and error handling."""
+    try:
+        # If a specific type is requested (not auto), return it directly
+        if specified_type != 'auto':
+            logger.info(f"Using specified report type: {specified_type}")
+            return specified_type, None
+            
+        # For auto-detection, extract text from PDF
+        text = extract_text_from_pdf(pdf_path)
+        if not text:
+            logger.error(f"Failed to extract text from {pdf_path}")
+            return "Manufacturing", "Error extracting text"
+        
+        # Auto-detect the report type
+        detected_type = detect_report_type(text)
+        logger.info(f"Auto-detected report type: {detected_type}")
+        return detected_type, None
+    except Exception as e:
+        logger.error(f"Error determining report type: {str(e)}")
+        logger.error(traceback.format_exc())
+        return "Manufacturing", f"Error determining report type: {str(e)}"  # Default to Manufacturing on error
 
 if __name__ == "__main__":
     import argparse

@@ -1231,3 +1231,4 @@ def store_report_data_in_db(extracted_data, pdf_path):
     finally:
         if conn:
             conn.close()
+

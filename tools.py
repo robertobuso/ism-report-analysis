@@ -3460,8 +3460,6 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error updating heatmap summary: {str(e)}")
             logger.error(traceback.format_exc())
 
-    # Code for New Tabs and Consolidation
-
     def backup_existing_sheet(service, sheet_id, timestamp=None):
         """Create a backup copy of the current sheet before modifications."""
         try:
@@ -3487,7 +3485,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(traceback.format_exc())
             return None
 
-    def update_heatmap_tab(self, service, sheet_id, monthly_data):
+    def update_heatmap_tab(self, service, sheet_id, monthly_data, tab_name=None):
         """
         Update heatmap tab with values only (no direction).
         
@@ -3495,36 +3493,69 @@ class GoogleSheetsFormatterTool(BaseTool):
             service: Google Sheets API service
             sheet_id: Spreadsheet ID
             monthly_data: List of dictionaries containing monthly PMI data
+            tab_name: Optional tab name override
         
         Returns:
             Boolean indicating success
         """
         try:
-            tab_name = 'PMI Heatmap Summary'
+            # Determine report type from data if available
+            report_type = 'Manufacturing'  # Default
+            if monthly_data and len(monthly_data) > 0 and 'report_type' in monthly_data[0]:
+                report_type = monthly_data[0]['report_type']
+                
+            if not tab_name:
+                tab_name = f"{report_type} PMI Heatmap"
+                
             tab_id = self._get_all_sheet_ids(service, sheet_id).get(tab_name)
             
             if not tab_id:
                 logger.warning(f"{tab_name} tab not found")
-                return False
+                # Create the tab
+                add_sheet_request = {
+                    'requests': [{
+                        'addSheet': {
+                            'properties': {
+                                'title': tab_name
+                            }
+                        }
+                    }]
+                }
+                response = service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body=add_sheet_request
+                ).execute()
+                
+                # Get the new sheet ID
+                tab_id = response['replies'][0]['addSheet']['properties']['sheetId']
+                logger.info(f"Created new tab '{tab_name}' with ID {tab_id}")
+                
+                # Refresh the sheet IDs mapping
+                sheet_ids = self._get_all_sheet_ids(service, sheet_id)
+                tab_id = sheet_ids.get(tab_name)
                 
             # Get all unique index names
             all_indices = set()
             for data in monthly_data:
                 all_indices.update(data['indices'].keys())
             
-            # Order indices with Manufacturing PMI first, then alphabetically
-            ordered_indices = ['Manufacturing PMI']
-            ordered_indices.extend(sorted([idx for idx in all_indices if idx != 'Manufacturing PMI']))
+            # Order indices with PMI first, then alphabetically
+            pmi_index = 'Manufacturing PMI' if report_type == 'Manufacturing' else 'Services PMI'
+            ordered_indices = [pmi_index]
+            ordered_indices.extend(sorted([idx for idx in all_indices if idx != pmi_index]))
             
-            # Map to the expected column names
+            # Map to the expected column names - update for Services
             column_mapping = {
                 'Manufacturing PMI': 'PMI',
+                'Services PMI': 'PMI',
+                'Business Activity': 'Business Activity',
                 'New Orders': 'New Orders',
                 'Production': 'Production',
                 'Employment': 'Employment',
                 'Supplier Deliveries': 'Deliveries',
                 'Inventories': 'Inventories',
                 "Customers' Inventories": 'Customer Inv',
+                'Inventory Sentiment': 'Inv Sentiment',
                 'Prices': 'Prices',
                 'Backlog of Orders': 'Ord Backlog',
                 'New Export Orders': 'Exports',
@@ -3649,20 +3680,21 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(traceback.format_exc())
             return False
 
-    def create_alphabetical_growth_tab(self, service, sheet_id, sheet_ids):
+    def create_alphabetical_growth_tab(self, service, sheet_id, sheet_ids, report_type='Manufacturing'):
         """
-        Create the alphabetical growth/contraction tab.
+        Create the alphabetical growth/contraction tab with filtered data.
         
         Args:
             service: Google Sheets API service
             sheet_id: Spreadsheet ID
             sheet_ids: Dictionary mapping tab names to sheet IDs
-        
+            report_type: 'Manufacturing' or 'Service'
+            
         Returns:
             Boolean indicating success
         """
         try:
-            tab_name = 'Growth Alphabetical'
+            tab_name = f"{report_type} Growth Alphabetical"
             
             # Check if tab exists
             tab_id = sheet_ids.get(tab_name)
@@ -3689,11 +3721,11 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Refresh the sheet IDs mapping
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # Get all indices
-            indices = get_all_indices()
+            # Get all indices for this report type
+            indices = get_all_indices(report_type)
             
-            # Get all report dates for columns
-            report_dates = get_all_report_dates()
+            # Get all report dates for this report type
+            report_dates = get_report_dates_by_type(report_type)
             # Sort by date - assuming report_date is in ISO format
             report_dates.sort(key=lambda x: x['report_date'], reverse=True)
             months = [date['month_year'] for date in report_dates]
@@ -3705,6 +3737,9 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             # For each index, create a section
             for index_num, index in enumerate(indices):
+                if index == 'Manufacturing PMI' or index == 'Services PMI':
+                    continue  # Skip overall PMI indices
+                    
                 # Index number in the loop (for formatting)
                 section_start_row = current_row
                 
@@ -3770,12 +3805,12 @@ class GoogleSheetsFormatterTool(BaseTool):
                     }
                 })
                 
-                # Get industry data for this index
-                industry_data = get_industry_status_over_time(index, len(months))
+                # Get industry data for this index with report_type
+                industry_data = get_industry_status_over_time_by_type(index, len(months), report_type)
                 
                 # Check if we have industry data
-                if not industry_data or 'industries' not in industry_data:
-                    logger.warning(f"No industry data found for {index}")
+                if not industry_data or 'industries' not in industry_data or not industry_data['industries']:
+                    logger.warning(f"No industry data found for {index} (report type: {report_type})")
                     # Add blank row between indices
                     all_rows.append([""])
                     current_row += 1
@@ -3958,8 +3993,8 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error creating alphabetical growth tab: {str(e)}")
             logger.error(traceback.format_exc())
             return False
-
-    def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
+    
+    def create_numerical_growth_tab(self, service, sheet_id, sheet_ids, report_type='Manufacturing'):
         """
         Create the numerical growth/contraction tab with proper sorting for each month.
         
@@ -3967,12 +4002,13 @@ class GoogleSheetsFormatterTool(BaseTool):
             service: Google Sheets API service
             sheet_id: Spreadsheet ID
             sheet_ids: Dictionary mapping tab names to sheet IDs
-        
+            report_type: 'Manufacturing' or 'Service'
+            
         Returns:
             Boolean indicating success
         """
         try:
-            tab_name = 'Growth Numerical'
+            tab_name = f"{report_type} Growth Numerical"
             
             # Check if tab exists
             tab_id = sheet_ids.get(tab_name)
@@ -3999,65 +4035,104 @@ class GoogleSheetsFormatterTool(BaseTool):
                 # Refresh the sheet IDs mapping
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # Get all indices - FILTER OUT MANUFACTURING PMI
-            indices = [idx for idx in get_all_indices() if idx != 'Manufacturing PMI']
+            # Get all indices filtered by report_type - FILTER OUT PMI
+            pmi_to_filter = 'Manufacturing PMI' if report_type == 'Manufacturing' else 'Services PMI'
+            indices = [idx for idx in get_all_indices(report_type) if idx != pmi_to_filter]
             
-            # Get report dates
-            from db_utils import get_db_connection
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT report_date, month_year 
-                FROM reports 
-                ORDER BY report_date DESC
-            """)
-            report_dates = [dict(row) for row in cursor.fetchall()]
+            # Get report dates for this report type
+            from db_utils import get_db_connection, get_report_dates_by_type
+            report_dates = get_report_dates_by_type(report_type)
             months = [date['month_year'] for date in report_dates]
             
-            # The 18 standard industries - COMPLETE LIST
-            all_standard_industries = [
-                "Apparel, Leather & Allied Products",
-                "Chemical Products",
-                "Computer & Electronic Products",
-                "Electrical Equipment, Appliances & Components",
-                "Fabricated Metal Products",
-                "Food, Beverage & Tobacco Products",
-                "Furniture & Related Products",
-                "Machinery",
-                "Miscellaneous Manufacturing",
-                "Nonmetallic Mineral Products",
-                "Paper Products",
-                "Petroleum & Coal Products",
-                "Plastics & Rubber Products",
-                "Primary Metals",
-                "Printing & Related Support Activities",
-                "Textile Mills",
-                "Transportation Equipment",
-                "Wood Products"
-            ]
-            
-            # Mapping from DB industry names to standard names
-            standard_industries_mapping = {
-                "Apparel, Leather & Allied Products": ["Apparel", "Apparel, Leather", "Apparel & Leather"],
-                "Chemical Products": ["Chemical", "Chemicals"],
-                "Computer & Electronic Products": ["Computer", "Computer & Electronic", "Electronics"],
-                "Electrical Equipment, Appliances & Components": ["Electrical", "Electrical Equipment", "Appliances"],
-                "Fabricated Metal Products": ["Fabricated Metal", "Metal Products", "Fabricated"],
-                "Food, Beverage & Tobacco Products": ["Food", "Food & Beverage", "Food, Beverage & Tobacco"],
-                "Furniture & Related Products": ["Furniture", "Furniture & Related"],
-                "Machinery": ["Machinery"],
-                "Miscellaneous Manufacturing": ["Miscellaneous"],
-                "Nonmetallic Mineral Products": ["Nonmetallic", "Mineral Products", "Nonmetallic Mineral"],
-                "Paper Products": ["Paper"],
-                "Petroleum & Coal Products": ["Petroleum", "Petroleum & Coal", "Coal Products"],
-                "Plastics & Rubber Products": ["Plastics", "Rubber", "Plastics & Rubber"],
-                "Primary Metals": ["Primary Metal", "Metals"],
-                "Printing & Related Support Activities": ["Printing", "Related Support"],
-                "Textile Mills": ["Textile", "Textiles"],
-                "Transportation Equipment": ["Transportation", "Transportation Equipment"],
-                "Wood Products": ["Wood"]
-            }
+            # Standard industries might differ between manufacturing and service
+            # For manufacturing, use the standard list
+            if report_type == 'Manufacturing':
+                all_standard_industries = [
+                    "Apparel, Leather & Allied Products",
+                    "Chemical Products",
+                    "Computer & Electronic Products",
+                    "Electrical Equipment, Appliances & Components",
+                    "Fabricated Metal Products",
+                    "Food, Beverage & Tobacco Products",
+                    "Furniture & Related Products",
+                    "Machinery",
+                    "Miscellaneous Manufacturing",
+                    "Nonmetallic Mineral Products",
+                    "Paper Products",
+                    "Petroleum & Coal Products",
+                    "Plastics & Rubber Products",
+                    "Primary Metals",
+                    "Printing & Related Support Activities",
+                    "Textile Mills",
+                    "Transportation Equipment",
+                    "Wood Products"
+                ]
+
+                # Mapping from DB industry names to standard names
+                standard_industries_mapping = {
+                    "Apparel, Leather & Allied Products": ["Apparel", "Apparel, Leather", "Apparel & Leather"],
+                    "Chemical Products": ["Chemical", "Chemicals"],
+                    "Computer & Electronic Products": ["Computer", "Computer & Electronic", "Electronics"],
+                    "Electrical Equipment, Appliances & Components": ["Electrical", "Electrical Equipment", "Appliances"],
+                    "Fabricated Metal Products": ["Fabricated Metal", "Metal Products", "Fabricated"],
+                    "Food, Beverage & Tobacco Products": ["Food", "Food & Beverage", "Food, Beverage & Tobacco"],
+                    "Furniture & Related Products": ["Furniture", "Furniture & Related"],
+                    "Machinery": ["Machinery"],
+                    "Miscellaneous Manufacturing": ["Miscellaneous"],
+                    "Nonmetallic Mineral Products": ["Nonmetallic", "Mineral Products", "Nonmetallic Mineral"],
+                    "Paper Products": ["Paper"],
+                    "Petroleum & Coal Products": ["Petroleum", "Petroleum & Coal", "Coal Products"],
+                    "Plastics & Rubber Products": ["Plastics", "Rubber", "Plastics & Rubber"],
+                    "Primary Metals": ["Primary Metal", "Metals"],
+                    "Printing & Related Support Activities": ["Printing", "Related Support"],
+                    "Textile Mills": ["Textile", "Textiles"],
+                    "Transportation Equipment": ["Transportation", "Transportation Equipment"],
+                    "Wood Products": ["Wood"]
+                }
+            else:
+                # For services, use a different list of standard industries
+                all_standard_industries = [
+                    "Accommodation & Food Services",
+                    "Agriculture, Forestry, Fishing & Hunting",
+                    "Arts, Entertainment & Recreation",
+                    "Construction",
+                    "Educational Services",
+                    "Finance & Insurance",
+                    "Health Care & Social Assistance",
+                    "Information",
+                    "Management of Companies & Support Services",
+                    "Mining",
+                    "Other Services",
+                    "Professional, Scientific & Technical Services",
+                    "Public Administration",
+                    "Real Estate, Rental & Leasing",
+                    "Retail Trade",
+                    "Transportation & Warehousing",
+                    "Utilities",
+                    "Wholesale Trade"
+                ]
+
+                # Mapping from DB industry names to standard names
+                standard_industries_mapping = {
+                    'Accommodation & Food Services': ['Accommodation', 'Accommodation & Food'],
+                    'Agriculture, Forestry, Fishing & Hunting': ['Agriculture', 'Forestry', 'Fishing', 'Hunting'],
+                    'Arts, Entertainment & Recreation': ['Arts', 'Entertainment', 'Recreation'],
+                    'Construction': ['Construction'],
+                    'Educational Services': ['Educational'],
+                    'Finance & Insurance': ['Finance', 'Insurance'],
+                    'Health Care & Social Assistance': ['Health', 'Care', 'Social', 'Assistance'],
+                    'Information': ['Information'],
+                    'Management of Companies & Support Services': ['Management', 'Companies', 'Support'],
+                    'Mining': ['Mining'],
+                    'Other Services': ['Other'],
+                    'Professional, Scientific & Technical Services': ['Professional', 'Scientific', 'Technical'],
+                    'Public Administration': ['Public', 'Administration'],
+                    'Real Estate, Rental & Leasing': ['Real', 'Estate', 'Rental', 'Leasing'],
+                    'Retail Trade': ['Retail', 'Trade'],
+                    'Transportation & Warehousing': ['Transportation', 'Warehousing'],
+                    'Utilities': ['Utilities'],
+                    'Wholesale Trade': ['Wholesale', 'Trade']
+                }
             
             # Create a reverse lookup for standardizing DB entries
             industry_standardization = {}
