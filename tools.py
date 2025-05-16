@@ -73,6 +73,19 @@ class SimplePDFExtractionTool(BaseTool):
                 pdf_path = extracted_data['extracted_data']['pdf_path']
                 logger.info(f"Extracting data from PDF (nested structure): {pdf_path}")
                 
+                # Get report_type from extracted_data if present, otherwise auto-detect
+                report_type = "Manufacturing"  # Default to Manufacturing
+                if 'report_type' in extracted_data['extracted_data']:
+                    report_type = extracted_data['extracted_data']['report_type']
+                    logger.info(f"Using specified report type: {report_type}")
+                else:
+                    # Auto-detect report type
+                    from pdf_utils import extract_text_from_pdf, detect_report_type
+                    text = extract_text_from_pdf(pdf_path)
+                    if text:
+                        report_type = detect_report_type(text)
+                        logger.info(f"Auto-detected report type: {report_type}")
+                
                 # Get the month_year first (we'll need this for LLM extraction)
                 from pdf_utils import extract_text_from_pdf, extract_month_year
                 text = extract_text_from_pdf(pdf_path)
@@ -82,14 +95,15 @@ class SimplePDFExtractionTool(BaseTool):
                     if not month_year:
                         month_year = "Unknown"
                 
-                # Use LLM for primary extraction
-                logger.info("Using LLM for primary extraction of Manufacturing at a Glance data and industry data")
-                llm_data = self._extract_manufacturing_data_with_llm(pdf_path, month_year)
+                # Use LLM for primary extraction based on report type
+                logger.info(f"Using LLM for primary extraction of {report_type} report data")
+                llm_data = self._extract_data_with_llm_by_type(pdf_path, month_year, report_type)
                 
                 if llm_data:
                     result = {
                         'month_year': llm_data.get('month_year', month_year),
-                        'manufacturing_table': llm_data,
+                        'report_type': report_type,
+                        'manufacturing_table' if report_type == 'Manufacturing' else 'service_table': llm_data,
                         'pmi_data': llm_data.get('indices', {}),
                         'industry_data': llm_data.get('industry_data', {})
                     }
@@ -99,7 +113,8 @@ class SimplePDFExtractionTool(BaseTool):
                     logger.warning("LLM extraction returned empty data")
                     return {
                         'month_year': month_year,
-                        'manufacturing_table': {},
+                        'report_type': report_type,
+                        'manufacturing_table' if report_type == 'Manufacturing' else 'service_table': {},
                         'index_summaries': {},
                         'industry_data': {},
                         'pmi_data': {}
@@ -111,6 +126,7 @@ class SimplePDFExtractionTool(BaseTool):
             # Return minimal valid structure as fallback
             return {
                 "month_year": "Unknown",
+                "report_type": "Manufacturing",  # Default to Manufacturing
                 "manufacturing_table": {},
                 "index_summaries": {},
                 "industry_data": {},
@@ -1161,6 +1177,316 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error extracting data with LLM: {str(e)}")
             return {"month_year": month_year, "indices": {}}
         
+    def _extract_data_with_llm_by_type(self, pdf_path, month_year, report_type):
+        """Extract data from PDF with LLM, customized for the report type."""
+        try:
+            logger.info(f"Extracting {report_type} data from: {pdf_path} with LLM")
+            
+            # Extract text from ALL pages
+            extracted_text = ""
+            try:
+                with pdfplumber.open(pdf_path) as pdf:
+                    page_count = len(pdf.pages)
+                    logger.info(f"Extracting all {page_count} pages from PDF")
+                    
+                    for i in range(page_count):
+                        page_text = pdf.pages[i].extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n\n"
+            except Exception as e:
+                logger.warning(f"Error extracting text with pdfplumber: {str(e)}")
+                # Fallback to PyPDF2
+                try:
+                    from PyPDF2 import PdfReader
+                    reader = PdfReader(pdf_path)
+                    page_count = len(reader.pages)
+                    logger.info(f"Fallback: Extracting all {page_count} pages with PyPDF2")
+                    
+                    for i in range(page_count):
+                        page_text = reader.pages[i].extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n\n"
+                except Exception as e2:
+                    logger.error(f"Both PDF extraction methods failed: {str(e2)}")
+            
+            # Check if we have enough text
+            if len(extracted_text) < 500:
+                logger.warning(f"Extracted text is too short ({len(extracted_text)} chars)")
+                return {"month_year": month_year, "indices": {}, "industry_data": {}}
+                
+            logger.info(f"Successfully extracted {len(extracted_text)} chars from full PDF")
+            
+            # Construct prompt based on report type
+            if report_type == "Manufacturing":
+                prompt = self._build_manufacturing_prompt(month_year, extracted_text)
+            else:  # Service
+                prompt = self._build_service_prompt(month_year, extracted_text)
+            
+            # Call OpenAI API with robust error handling and retries
+            max_retries = 3
+            retry_delay = 2  # seconds
+            
+            for retry_count in range(max_retries):
+                try:
+                    # Use openai client
+                    client = openai.OpenAI()
+                    response = client.chat.completions.create(
+                        model="gpt-4o",  # Using gpt-4o
+                        messages=[
+                            {"role": "system", "content": "You are a data extraction specialist that returns only valid JSON."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.0  # Low temperature for deterministic output
+                    )
+                    
+                    # Get the response text
+                    response_text = response.choices[0].message.content
+                    logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                    
+                    # Try to parse the JSON
+                    try:
+                        # Clean up the response to extract just the JSON part
+                        json_text = response_text
+                        
+                        # If it has markdown code blocks, extract just the JSON
+                        if "```json" in response_text:
+                            json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group(1)
+                        elif "```" in response_text:
+                            # Try to extract from any code block
+                            json_match = re.search(r'```\n?(.*?)\n?```', response_text, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group(1)
+                        
+                        # Try to parse as JSON
+                        json_data = json.loads(json_text)
+                        
+                        # Validate the required fields exist
+                        if "month_year" not in json_data or "indices" not in json_data:
+                            logger.warning("JSON is missing required fields")
+                            if "industry_data" not in json_data:
+                                json_data["industry_data"] = {}
+                            if retry_count == max_retries - 1:
+                                # Create minimal valid structure for returning
+                                return {"month_year": month_year, "indices": {}, "industry_data": {}}
+                            continue
+                        
+                        # Ensure industry_data field exists
+                        if "industry_data" not in json_data:
+                            json_data["industry_data"] = {}
+                        
+                        # Success! Return the parsed JSON
+                        return json_data
+                        
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON on retry {retry_count}: {str(e)}")
+                        # If on last retry, create a fallback response
+                        if retry_count == max_retries - 1:
+                            return {"month_year": month_year, "indices": {}, "industry_data": {}}
+                        continue
+                
+                except Exception as e:
+                    logger.warning(f"API request failed on retry {retry_count}: {str(e)}")
+                    
+                    # If it's not the last retry, wait and try again
+                    if retry_count < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay * (retry_count + 1))  # Exponential backoff
+                    else:
+                        logger.error(f"All API retries failed: {str(e)}")
+            
+            # If we get here, all retries failed
+            logger.error("All extraction attempts failed")
+            return {"month_year": month_year, "indices": {}, "industry_data": {}}
+        
+        except Exception as e:
+            logger.error(f"Error in _extract_data_with_llm_by_type: {str(e)}")
+            logger.error(traceback.format_exc())
+            return {"month_year": month_year, "indices": {}, "industry_data": {}}
+    
+    def _build_manufacturing_prompt(self, month_year, extracted_text):
+        """Build prompt for Manufacturing report extraction."""
+        prompt = f"""I need you to analyze this ISM Manufacturing Report PDF and extract both the "Manufacturing at a Glance" table data AND industry classification data.
+
+    PART 1: Manufacturing at a Glance Table
+    Extract and return these data points:
+    - Month and Year of the report (should be {month_year})
+    - Manufacturing PMI value and status (Growing/Contracting)
+    - New Orders value and status
+    - Production value and status
+    - Employment value and status
+    - Supplier Deliveries value and status
+    - Inventories value and status
+    - Customers' Inventories value and status
+    - Prices value and status
+    - Backlog of Orders value and status
+    - New Export Orders value and status
+    - Imports value and status
+    - Overall Economy status
+    - Manufacturing Sector status
+
+    PART 2: Industry Data Classification
+    For each of the following indices, identify industries that are classified as growing/expanding or contracting/declining:
+
+    1. New Orders:
+    - Growing: List all industries mentioned as reporting growth, expansion, or increases
+    - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+    2. Production:
+    - Growing: List all industries mentioned as reporting growth, expansion, or increases
+    - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+    3. Employment:
+    - Growing: List all industries mentioned as reporting growth, expansion, or increases
+    - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+    4. Supplier Deliveries:
+    - Slower: List all industries mentioned as reporting slower deliveries
+    - Faster: List all industries mentioned as reporting faster deliveries
+
+    5. Inventories:
+    - Higher: List all industries mentioned as reporting higher inventories
+    - Lower: List all industries mentioned as reporting lower inventories
+
+    6. Customers' Inventories:
+    - Too High: List all industries mentioned as reporting customers' inventories as too high
+    - Too Low: List all industries mentioned as reporting customers' inventories as too low
+
+    7. Prices:
+    - Increasing: List all industries mentioned as reporting price increases
+    - Decreasing: List all industries mentioned as reporting price decreases
+
+    8. Backlog of Orders:
+    - Growing: List all industries mentioned as reporting growth or increases in backlogs
+    - Declining: List all industries mentioned as reporting contraction or decreases in backlogs
+
+    9. New Export Orders:
+    - Growing: List all industries mentioned as reporting growth in export orders
+    - Declining: List all industries mentioned as reporting decline in export orders
+
+    10. Imports:
+    - Growing: List all industries mentioned as reporting growth in imports
+    - Declining: List all industries mentioned as reporting decline in imports
+
+    Return ONLY a JSON object in this format:
+    {{
+        "month_year": "Month Year",
+        "indices": {{
+            "Manufacturing PMI": {{"current": "48.4", "direction": "Contracting"}},
+            "New Orders": {{"current": "50.4", "direction": "Growing"}},
+            ...and so on for all indices,
+            "OVERALL ECONOMY": {{"direction": "Growing"}},
+            "Manufacturing Sector": {{"direction": "Contracting"}}
+        }},
+        "industry_data": {{
+            "New Orders": {{
+                "Growing": ["Industry1", "Industry2", ...],
+                "Declining": ["Industry3", "Industry4", ...]
+            }},
+            "Production": {{
+                "Growing": [...],
+                "Declining": [...]
+            }},
+            ...and so on for all indices
+        }}
+    }}
+
+    Here is the extracted text from the PDF:
+    {extracted_text}"""
+        return prompt
+
+    def _build_service_prompt(self, month_year, extracted_text):
+        """Build prompt for Service report extraction."""
+        prompt = f"""I need you to analyze this ISM Services Report PDF and extract both the "Services at a Glance" table data AND industry classification data.
+
+    PART 1: Services at a Glance Table
+    Extract and return these data points:
+    - Month and Year of the report (should be {month_year})
+    - Services PMI value and status (Growing/Contracting)
+    - Business Activity value and status
+    - New Orders value and status
+    - Employment value and status
+    - Supplier Deliveries value and status
+    - Inventories value and status
+    - Inventory Sentiment value and status
+    - Prices value and status
+    - Backlog of Orders value and status
+    - New Export Orders value and status
+    - Imports value and status
+    - Overall Economy status
+    - Services Sector status
+
+    PART 2: Industry Data Classification
+    For each of the following indices, identify industries that are classified as growing/expanding or contracting/declining:
+
+    1. Business Activity:
+    - Growing: List all industries mentioned as reporting growth, expansion, or increases
+    - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+    2. New Orders:
+    - Growing: List all industries mentioned as reporting growth, expansion, or increases
+    - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+    3. Employment:
+    - Growing: List all industries mentioned as reporting growth, expansion, or increases
+    - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+    4. Supplier Deliveries:
+    - Slower: List all industries mentioned as reporting slower deliveries
+    - Faster: List all industries mentioned as reporting faster deliveries
+
+    5. Inventories:
+    - Higher: List all industries mentioned as reporting higher inventories
+    - Lower: List all industries mentioned as reporting lower inventories
+
+    6. Prices:
+    - Increasing: List all industries mentioned as reporting price increases
+    - Decreasing: List all industries mentioned as reporting price decreases
+
+    7. Backlog of Orders:
+    - Growing: List all industries mentioned as reporting growth or increases in backlogs
+    - Declining: List all industries mentioned as reporting contraction or decreases in backlogs
+
+    8. New Export Orders:
+    - Growing: List all industries mentioned as reporting growth in export orders
+    - Declining: List all industries mentioned as reporting decline in export orders
+
+    9. Imports:
+    - Growing: List all industries mentioned as reporting growth in imports
+    - Declining: List all industries mentioned as reporting decline in imports
+
+    10. Inventory Sentiment:
+    - Too High: List all industries mentioned as reporting inventories as too high
+    - Too Low: List all industries mentioned as reporting inventories as too low
+
+    Return ONLY a JSON object in this format:
+    {{
+        "month_year": "Month Year",
+        "indices": {{
+            "Services PMI": {{"current": "52.8", "direction": "Growing"}},
+            "Business Activity": {{"current": "54.5", "direction": "Growing"}},
+            ...and so on for all indices,
+            "OVERALL ECONOMY": {{"direction": "Growing"}},
+            "Services Sector": {{"direction": "Growing"}}
+        }},
+        "industry_data": {{
+            "Business Activity": {{
+                "Growing": ["Industry1", "Industry2", ...],
+                "Declining": ["Industry3", "Industry4", ...]
+            }},
+            "New Orders": {{
+                "Growing": [...],
+                "Declining": [...]
+            }},
+            ...and so on for all indices
+        }}
+    }}
+
+    Here is the extracted text from the PDF:
+    {extracted_text}"""
+        return prompt
+
     def _prepare_horizontal_row(self, parsed_data, formatted_month_year):
         """Prepare a horizontal row for the manufacturing table."""
         try:

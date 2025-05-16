@@ -19,6 +19,52 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def detect_report_type(text):
+    """
+    Detect whether the PDF is a Manufacturing or Service report.
+    
+    Args:
+        text: The extracted text from the PDF
+        
+    Returns:
+        String: 'Manufacturing' or 'Service'
+    """
+    # Look for definitive indicators of each report type
+    manufacturing_indicators = [
+        "MANUFACTURING PMI",
+        "MANUFACTURING INDEX SUMMARIES",
+        "Manufacturing ISM Report On Business",
+        "Manufacturing at a Glance"
+    ]
+    
+    service_indicators = [
+        "SERVICES PMI",
+        "SERVICES INDEX SUMMARIES",
+        "Services ISM Report On Business",
+        "Services at a Glance",
+        "Non-Manufacturing",
+        "NMI"
+    ]
+    
+    # Count occurrences of each type of indicator
+    manufacturing_count = sum(1 for indicator in manufacturing_indicators if indicator in text.upper())
+    service_count = sum(1 for indicator in service_indicators if indicator in text.upper())
+    
+    # Determine report type based on counts
+    if manufacturing_count > service_count:
+        return "Manufacturing"
+    elif service_count > manufacturing_count:
+        return "Service"
+    else:
+        # If we can't determine definitively, look for the word "service" vs "manufacturing"
+        service_mentions = len(re.findall(r'\bservice', text.lower()))
+        manufacturing_mentions = len(re.findall(r'\bmanufacturing', text.lower()))
+        
+        if service_mentions > manufacturing_mentions:
+            return "Service"
+        else:
+            return "Manufacturing"  # Default to Manufacturing if unsure
+
 def extract_text_from_pdf(pdf_path):
     """Extract all text from a PDF file."""
     try:

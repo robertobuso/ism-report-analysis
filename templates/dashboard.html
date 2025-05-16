@@ -439,7 +439,37 @@
                     <i class="bi bi-upload me-2"></i>Upload New Report
                 </a>
             </div>
-            
+
+            <div class="report-type-toggle mb-4">
+                <ul class="nav nav-pills">
+                    <li class="nav-item">
+                        <a class="nav-link {% if report_type == 'combined' %}active{% endif %}" href="{{ url_for('filtered_dashboard', report_type='combined') }}">
+                            All Reports
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if report_type == 'manufacturing' %}active{% endif %}" href="{{ url_for('filtered_dashboard', report_type='manufacturing') }}">
+                            Manufacturing
+                            {% for count in report_counts %}
+                                {% if count.report_type == 'Manufacturing' %}
+                                    <span class="badge bg-primary">{{ count.count }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if report_type == 'service' %}active{% endif %}" href="{{ url_for('filtered_dashboard', report_type='service') }}">
+                            Services
+                            {% for count in report_counts %}
+                                {% if count.report_type == 'Service' %}
+                                    <span class="badge bg-info">{{ count.count }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        </a>
+                    </li>
+                </ul>
+            </div>
+       
             <!-- KPI Cards Row -->
             <div class="row mb-4">
                 <div class="col-md-3 mb-3">
@@ -595,6 +625,7 @@
                     </div>
                 </div>
             </div>
+
             <!-- Growth Numerical Tab -->
             <div class="tab-pane fade" id="growth-num" role="tabpanel" aria-labelledby="growth-num-tab">
                 <div class="card">
@@ -621,6 +652,7 @@
                     </div>
                 </div>
             </div>
+
              <!-- Trends Tab -->
             <div class="tab-pane fade" id="trends" role="tabpanel">
                 <div class="content-card">
@@ -665,6 +697,15 @@
                         <div style="height: 400px;">
                             <canvas id="trendChart"></canvas>
                         </div>
+                    </div>
+                </div>
+
+                <div class="content-card" id="pmiComparisonCard" style="{% if report_type != 'combined' %}display: none;{% endif %}">
+                    <div class="content-card-header">
+                        <h5>Manufacturing vs Services PMI Comparison</h5>
+                    </div>
+                    <div class="content-card-body">
+                        <canvas id="pmiComparisonChart" height="300"></canvas>
                     </div>
                 </div>
             </div>
@@ -2177,6 +2218,85 @@
             });
         }
         }); 
+    
+        // PMI Comparison Chart
+        function loadPmiComparison() {
+            fetch('/api/compare_pmi')
+                .then(response => response.json())
+                .then(data => {
+                    const ctx = document.getElementById('pmiComparisonChart').getContext('2d');
+                    
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.dates,
+                            datasets: [
+                                {
+                                    label: 'Manufacturing PMI',
+                                    data: data.manufacturing,
+                                    borderColor: 'rgba(46, 204, 113, 1)',
+                                    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                                    tension: 0.2,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Services PMI',
+                                    data: data.service,
+                                    borderColor: 'rgba(52, 152, 219, 1)',
+                                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                                    tension: 0.2,
+                                    fill: false
+                                },
+                                {
+                                    label: 'Expansion/Contraction Line',
+                                    data: Array(data.dates.length).fill(50),
+                                    borderColor: 'rgba(0, 0, 0, 0.5)',
+                                    borderWidth: 2,
+                                    borderDash: [6, 6],
+                                    pointRadius: 0,
+                                    fill: false
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: false,
+                                    suggestedMin: 45,
+                                    suggestedMax: 65
+                                }
+                            },
+                            plugins: {
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false
+                                },
+                                legend: {
+                                    position: 'top'
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(error => console.error('Error loading PMI comparison:', error));
+        }
+        
+        // Call this function when the combined view is shown
+        document.addEventListener('DOMContentLoaded', function() {
+            if ('{{ report_type }}' === 'combined') {
+                loadPmiComparison();
+            }
+        });
+        
+        // Update the tab event listeners to show/hide comparison chart
+        document.getElementById('trends-tab').addEventListener('shown.bs.tab', function() {
+            if ('{{ report_type }}' === 'combined') {
+                document.getElementById('pmiComparisonCard').style.display = 'block';
+                loadPmiComparison();
+            }
+        });
     </script>
 </body>
 </html>

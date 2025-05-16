@@ -411,9 +411,9 @@ def fallback_regex_parsing(text):
             "industry_data": {}
         }
 
-def process_single_pdf(pdf_path, visualization_options=None):
+def process_single_pdf(pdf_path, visualization_options=None, report_type='auto'):
     """Process a single PDF file with optional visualization selections."""
-    logger.info(f"Processing PDF: {pdf_path}")
+    logger.info(f"Processing PDF: {pdf_path}, report_type: {report_type}")
 
     # If visualization_options is None, use default settings
     if visualization_options is None:
@@ -447,76 +447,50 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Always attempt direct PDF parsing first to get baseline data
         direct_data = None
+        detected_report_type = report_type
+        
         try:
+            # If auto-detect, detect the report type first
+            if report_type == 'auto':
+                from pdf_utils import extract_text_from_pdf, detect_report_type
+                text = extract_text_from_pdf(pdf_path)
+                detected_report_type = detect_report_type(text)
+                logger.info(f"Auto-detected report type: {detected_report_type}")
+            
             from pdf_utils import parse_ism_report
-            logger.info("Performing initial direct PDF parsing")
-            direct_data = parse_ism_report(pdf_path)
+            logger.info(f"Performing initial direct PDF parsing for {detected_report_type} report")
+            direct_data = parse_ism_report(pdf_path, detected_report_type)
 
         except Exception as e:
             logger.error(f"Error in initial direct PDF parsing: {str(e)}")
 
-        # Custom extraction task
+        # Custom extraction task with report type
         extraction_task = Task(
             description=f"""
-            Extract all relevant data from the ISM Manufacturing Report PDF.
+            Extract all relevant data from the ISM {detected_report_type} Report PDF.
             The PDF path is: {pdf_path}
+            The report type is: {detected_report_type}
 
-            When using the PDF Extraction Tool, pass the path in this format:
+            When using the PDF Extraction Tool, pass the path and type in this format:
             {{
                 "extracted_data": {{
-                    "pdf_path": "{pdf_path}"
+                    "pdf_path": "{pdf_path}",
+                    "report_type": "{detected_report_type}"
                 }}
             }}
 
             You must extract:
             1. The month and year of the report
-            2. The Manufacturing at a Glance table
-            3. All index-specific summaries (New Orders, Production, etc.)
+            2. The {'Manufacturing' if detected_report_type == 'Manufacturing' else 'Services'} at a Glance table
+            3. All index-specific summaries
             4. Industry mentions in each index summary
 
             VERY IMPORTANT CLASSIFICATION RULES:
-            For each index, you must carefully identify the correct category for each industry:
-
-            - New Orders, Production, Employment, Backlog of Orders, New Export Orders, Imports:
-            * GROWING category: Industries explicitly mentioned as reporting "growth", "expansion", "increase", or similar positive terms
-            * DECLINING category: Industries explicitly mentioned as reporting "contraction", "decline", "decrease" or similar negative terms
-
-            - Supplier Deliveries:
-            * SLOWER category: Industries reporting "slower" deliveries (NOTE: slower deliveries are a POSITIVE economic indicator)
-            * FASTER category: Industries reporting "faster" deliveries (NOTE: faster deliveries are a NEGATIVE economic indicator)
-
-            - Inventories:
-            * HIGHER category: Industries reporting "higher" or "increased" inventories
-            * LOWER category: Industries reporting "lower" or "decreased" inventories
-
-            - Customers' Inventories:
-            * TOO HIGH category: Industries reporting customers' inventories as "too high"
-            * TOO LOW category: Industries reporting customers' inventories as "too low"
-
-            - Prices:
-            * INCREASING category: Industries reporting "higher" or "increasing" prices
-            * DECREASING category: Industries reporting "lower" or "decreasing" prices
-
-            READ THE TEXT CAREFULLY AND LOOK FOR THESE SPECIFIC TERMS AND PHRASES. Do not guess or infer - only place industries in categories when the text explicitly states their status.
-
-            Look for sentences like:
-            - "The X industries reporting growth in February are..."
-            - "The Y industries reporting contraction in February are..."
-            - "The industries reporting slower supplier deliveries are..."
-
-            YOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.
-            Format your answer as:
-
-            {{
-                'month_year': 'Month Year',
-                'manufacturing_table': 'table content',
-                'index_summaries': {{...}},
-                'industry_data': {{...}}
-            }}
-
-            Ensure all data is correctly identified and structured for further processing.
+            For each index, you must carefully identify the correct category for each industry...
+            
+            # Rest of task description depends on report type
             """,
-            expected_output="A dictionary containing the extracted data with month_year, manufacturing_table, index_summaries, and industry_data",
+            expected_output="A dictionary containing the extracted data with month_year, report_type, and other fields",
             agent=extractor_agent
         )
 
@@ -533,6 +507,10 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
+        
+        # Ensure report_type is included in the extraction data
+        if extraction_data and 'report_type' not in extraction_data:
+            extraction_data['report_type'] = detected_report_type
 
         # Check if direct parsing found any industries
         industry_count = 0

@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 DATABASE_NAME = 'ism_data.db'
 
-# --- CORRECTED Path Determination ---
 # Check if running in Railway by looking for the volume mount path env var
 railway_volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
 
@@ -28,7 +27,6 @@ else:
     DB_DIR = os.getcwd()
     DATABASE_PATH = os.path.join(DB_DIR, DATABASE_NAME)
     logger.info(f"Running in local environment. Using DB path: {DATABASE_PATH}")
-# --- End Path Determination ---
 
 def initialize_database():
     """Initialize the SQLite database with the required schema."""
@@ -37,24 +35,30 @@ def initialize_database():
         # Check if directory exists
         db_dir = os.path.dirname(DATABASE_PATH)
         if not os.path.exists(db_dir):
-             logger.info(f"Attempting to create database directory: {db_dir}")
-             # exist_ok=True prevents error if dir already exists
-             os.makedirs(db_dir, exist_ok=True)
+            logger.info(f"Attempting to create database directory: {db_dir}")
+            os.makedirs(db_dir, exist_ok=True)
 
         logger.info(f"Initializing database connection at: {DATABASE_PATH}")
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         logger.debug("Executing CREATE TABLE IF NOT EXISTS statements...")
         
-        # Create reports table
+        # Create reports table with report_type field
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY,
-            report_date DATE UNIQUE NOT NULL,
+            report_date DATE NOT NULL,
             file_path TEXT,
             processing_date DATETIME NOT NULL,
-            month_year TEXT NOT NULL
+            month_year TEXT NOT NULL,
+            report_type TEXT NOT NULL DEFAULT 'Manufacturing'
         )
+        ''')
+        
+        # Add unique constraint that considers both date and type
+        cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_report_date_type
+        ON reports(report_date, report_type)
         ''')
         
         # Create pmi_indices table
@@ -124,6 +128,99 @@ def get_db_connection():
         # Re-raise the exception so the calling code knows connection failed
         raise
 
+def get_report_type_counts():
+    """Get counts of reports by type"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT report_type, COUNT(*) as count
+            FROM reports
+            GROUP BY report_type
+        """)
+        
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting report type counts: {str(e)}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def get_pmi_data_by_type(report_type=None, num_months=12):
+    """
+    Get PMI data filtered by report type.
+    
+    Args:
+        report_type: 'Manufacturing', 'Service', or None for both
+        num_months: Number of most recent months to include
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Build the query based on whether we want to filter by report_type
+        if report_type:
+            query = """
+                SELECT r.report_date, r.month_year, r.report_type
+                FROM reports r
+                WHERE r.report_type = ?
+                ORDER BY r.report_date DESC 
+                LIMIT ?
+            """
+            cursor.execute(query, (report_type, num_months))
+        else:
+            query = """
+                SELECT r.report_date, r.month_year, r.report_type
+                FROM reports r
+                ORDER BY r.report_date DESC 
+                LIMIT ?
+            """
+            cursor.execute(query, (num_months,))
+        
+        report_dates = [dict(row) for row in cursor.fetchall()]
+        
+        if not report_dates:
+            return []
+            
+        # For each report date, get all PMI indices
+        result = []
+        for date_info in report_dates:
+            date = date_info['report_date']
+            month_year = date_info['month_year']
+            report_type = date_info['report_type']
+            
+            # Get all indices for this date
+            cursor.execute("""
+                SELECT index_name, index_value, direction
+                FROM pmi_indices
+                WHERE report_date = ?
+            """, (date,))
+            
+            indices = {row['index_name']: {
+                'value': row['index_value'], 
+                'direction': row['direction']
+            } for row in cursor.fetchall()}
+            
+            row_data = {
+                'report_date': date,
+                'month_year': month_year,
+                'report_type': report_type,
+                'indices': indices
+            }
+            
+            result.append(row_data)
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error getting PMI data by type: {str(e)}")
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 def check_report_exists_in_db(month_year):
     """
@@ -528,7 +625,7 @@ def get_industry_status_over_time(index_name, num_months=12):
         if conn:
             conn.close()
             
-def get_all_indices():
+def get_all_indices(index_name):
     """Get a list of all indices in the database."""
     conn = None
     try:
@@ -574,6 +671,7 @@ def store_report_data_in_db(extracted_data, pdf_path):
         
         # Extract necessary data
         month_year = extracted_data.get('month_year', 'Unknown')
+        report_type = extracted_data.get('report_type', 'Manufacturing')  # Default to Manufacturing if not specified
         
         # Parse the date from month_year
         report_date = parse_date(month_year)
@@ -581,18 +679,19 @@ def store_report_data_in_db(extracted_data, pdf_path):
             logger.error(f"Could not parse date from '{month_year}' for {pdf_path}")
             return False
             
-        # Insert into reports table
+        # Insert into reports table with report_type
         cursor.execute(
             """
             INSERT OR REPLACE INTO reports
-            (report_date, file_path, processing_date, month_year)
-            VALUES (?, ?, ?, ?)
+            (report_date, file_path, processing_date, month_year, report_type)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 report_date.isoformat(),
                 pdf_path,
                 datetime.datetime.now().isoformat(),
-                month_year
+                month_year,
+                report_type
             )
         )
         
@@ -861,3 +960,43 @@ def clean_industry_name(industry):
         return None
     
     return industry
+
+def migrate_database():
+    """Migrate the database schema to support report types."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if report_type column exists
+        cursor.execute("PRAGMA table_info(reports)")
+        columns = [col['name'] for col in cursor.fetchall()]
+        
+        if 'report_type' not in columns:
+            logger.info("Adding report_type column to reports table")
+            
+            # Add the column
+            cursor.execute("""
+                ALTER TABLE reports
+                ADD COLUMN report_type TEXT NOT NULL DEFAULT 'Manufacturing'
+            """)
+            
+            # Create unique constraint that considers both date and type
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_report_date_type
+                ON reports(report_date, report_type)
+            """)
+            
+            conn.commit()
+            logger.info("Database migration completed successfully")
+        else:
+            logger.info("report_type column already exists, no migration needed")
+            
+    except Exception as e:
+        logger.error(f"Error migrating database: {str(e)}")
+        logger.error(traceback.format_exc())
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()

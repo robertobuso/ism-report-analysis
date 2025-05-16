@@ -28,7 +28,7 @@
         }
         
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             padding: 2rem;
             margin: 0 auto;
         }
@@ -324,6 +324,28 @@
                         <input class="form-control" type="file" id="fileInput" name="file" accept=".pdf" multiple>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Report Type:</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="reportTypeAuto" name="report_type" value="auto" checked>
+                            <label class="form-check-label" for="reportTypeAuto">
+                                Auto-detect
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="reportTypeManufacturing" name="report_type" value="Manufacturing">
+                            <label class="form-check-label" for="reportTypeManufacturing">
+                                Manufacturing Report
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="reportTypeService" name="report_type" value="Service">
+                            <label class="form-check-label" for="reportTypeService">
+                                Service Report
+                            </label>
+                        </div>
+                    </div>
+                    <!-- We should remove these Visualization Choices since they are all default now -->
+                    <!-- <div class="mb-3">
                         <label class="form-label">Visualization Options:</label>
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="basicViz" name="visualization_types" value="basic" checked>
@@ -349,7 +371,7 @@
                                 Industry Growth/Contraction Over Time
                             </label>
                         </div>
-                    </div>
+                    </div> -->
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary" id="uploadButton" disabled>
                             <span class="button-text">Upload and Process</span>

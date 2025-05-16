@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Database path
-DB_PATH = os.environ.get('ISM_DB_PATH', '/data/ism_data.db')
+DB_PATH = os.environ.get('ISM_DB_PATH', 'data/ism_data.db')
 
 def parse_date(month_str):
     """Parse date string in expected format MMM-YY (e.g., 'Oct-13')."""

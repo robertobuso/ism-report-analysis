@@ -6,7 +6,7 @@ import sys
 import traceback
 import uuid
 import threading
-from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
+from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, migrate_database, get_report_type_counts, get_pmi_data_by_type
 
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
@@ -58,6 +58,19 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 
 ALLOWED_EXTENSIONS = {'pdf'}
+
+# Run migration function during application startup
+def initialize_app():
+    try:
+        # Initialize and migrate the database
+        migrate_database()
+        logger.info("Database migration completed successfully")
+    except Exception as e:
+        logger.error(f"Error during database migration: {str(e)}")
+        logger.error(traceback.format_exc())
+
+# Call the initialization function
+initialize_app()
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -152,9 +165,13 @@ def upload_view():
     except Exception as e:
         logger.error(f"Error checking database: {str(e)}")
     
+    # Get report type counts for UI
+    report_counts = get_report_type_counts()
+    
     return render_template('index.html', 
                           google_auth_ready=google_auth_ready,
-                          has_data=has_data)
+                          has_data=has_data,
+                          report_counts=report_counts)
 
 @app.route('/upload', methods=['POST'])
 @login_required
@@ -180,6 +197,9 @@ def upload_file():
         'industry': 'industry' in visualization_types
     }
 
+    # Check if report type was specified or if we should auto-detect
+    report_type = request.form.get('report_type', 'auto')
+
     # --- Process Files Directly ---
     results = {}
     saved_files_paths = [] # Keep track for deletion
@@ -193,8 +213,8 @@ def upload_file():
                 saved_files_paths.append(filepath)
                 # Process single file immediately (if only one)
                 if len(files) == 1:
-                     logger.info(f"Processing single file: {filename}")
-                     process_result = process_single_pdf(filepath, visualization_options)
+                     logger.info(f"Processing single file: {filename}, report_type: {report_type}")
+                     process_result = process_single_pdf(filepath, visualization_options, report_type)
                      results[filename] = "Success" if process_result else "Failed"
                 else:
                      # Mark for batch processing below
@@ -221,7 +241,7 @@ def upload_file():
                  with open(path, 'rb') as src, open(temp_path, 'wb') as dst:
                       dst.write(src.read())
 
-             batch_result_data = process_multiple_pdfs(temp_dir)
+             batch_result_data = process_multiple_pdfs(temp_dir, report_type)
              logger.info("Batch processing function returned.")
 
              if isinstance(batch_result_data, dict) and batch_result_data.get('success'):
@@ -342,6 +362,101 @@ def dashboard():
         flash(f"Error loading dashboard: {str(e)}")
         return redirect(url_for('upload_view'))
     
+@app.route('/dashboard/<report_type>')
+@login_required
+def filtered_dashboard(report_type):
+    """Display a dashboard filtered by report type."""
+    try:
+        # Validate report_type
+        if report_type not in ['manufacturing', 'service', 'combined']:
+            return redirect(url_for('dashboard'))
+        
+        # Get PMI heatmap data from database based on report type
+        if report_type == 'manufacturing':
+            heatmap_data = get_pmi_data_by_type('Manufacturing', 24)
+        elif report_type == 'service':
+            heatmap_data = get_pmi_data_by_type('Service', 24)
+        else:  # combined
+            heatmap_data = get_pmi_data_by_month(24)  # Get all types
+        
+        # Get all available indices (might differ by report type)
+        if report_type == 'manufacturing':
+            indices = get_all_indices('Manufacturing')
+        elif report_type == 'service':
+            indices = get_all_indices('Service')
+        else:
+            indices = get_all_indices()  # Get all indices
+        
+        # Get all report dates, possibly filtered by type
+        if report_type != 'combined':
+            report_dates = get_report_dates_by_type(report_type.capitalize())
+        else:
+            report_dates = get_all_report_dates()
+        
+        # Get counts for navigation badges
+        report_counts = get_report_type_counts()
+        
+        return render_template('dashboard.html', 
+                           heatmap_data=heatmap_data,
+                           indices=indices,
+                           report_dates=report_dates,
+                           report_type=report_type,
+                           report_counts=report_counts)
+    except Exception as e:
+        logger.error(f"Error loading dashboard: {str(e)}")
+        logger.error(traceback.format_exc())
+        flash(f"Error loading dashboard: {str(e)}")
+        return redirect(url_for('upload_view'))
+
+@app.route('/api/compare_pmi')
+def compare_pmi():
+    """API endpoint for comparing Manufacturing and Service PMI."""
+    try:
+        # Get data for both report types, limited to same timeframe
+        manufacturing_data = get_pmi_data_by_type('Manufacturing', 24)
+        service_data = get_pmi_data_by_type('Service', 24)
+        
+        # Prepare the comparison data
+        comparison_data = {
+            'dates': [],
+            'manufacturing': [],
+            'service': []
+        }
+        
+        # Get all unique dates from both datasets
+        all_dates = set()
+        for data in manufacturing_data:
+            all_dates.add(data['month_year'])
+        for data in service_data:
+            all_dates.add(data['month_year'])
+        
+        # Sort dates
+        all_dates = sorted(list(all_dates))
+        comparison_data['dates'] = all_dates
+        
+        # Fill in the manufacturing data
+        for date in all_dates:
+            # Find matching date in manufacturing data
+            match = next((d for d in manufacturing_data if d['month_year'] == date), None)
+            if match and 'indices' in match and 'Manufacturing PMI' in match['indices']:
+                comparison_data['manufacturing'].append(float(match['indices']['Manufacturing PMI']['value']))
+            else:
+                comparison_data['manufacturing'].append(None)  # No data for this date
+        
+        # Fill in the service data
+        for date in all_dates:
+            # Find matching date in service data
+            match = next((d for d in service_data if d['month_year'] == date), None)
+            if match and 'indices' in match and 'Services PMI' in match['indices']:
+                comparison_data['service'].append(float(match['indices']['Services PMI']['value']))
+            else:
+                comparison_data['service'].append(None)  # No data for this date
+        
+        return jsonify(comparison_data)
+    except Exception as e:
+        logger.error(f"Error comparing PMI data: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/index_trends/<index_name>')
 def get_index_trends(index_name):
     try:
