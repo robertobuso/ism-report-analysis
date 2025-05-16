@@ -708,6 +708,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 
             # Get extraction_data first since we'll use it in multiple places
             extraction_data = data.get('extraction_data', {})
+            report_type = extraction_data.get('report_type', 'Manufacturing')  # Get report type
 
             # Ensure month_year is extracted and preserved correctly
             month_year = extraction_data.get('month_year', 'Unknown')
@@ -734,7 +735,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 return False
             
             # Get or create the Google Sheet
-            sheet_id = self._get_or_create_sheet(service, "ISM Manufacturing Report Analysis")
+            sheet_id = self._get_or_create_sheet("ISM Reports Analysis")
             if not sheet_id:
                 logger.error("Failed to get or create Google Sheet")
                 return False
@@ -742,29 +743,66 @@ class GoogleSheetsFormatterTool(BaseTool):
             # Get all sheet IDs for tabs
             sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # ONLY CREATE THE THREE REQUESTED TABS
+            # ONLY CREATE THE REQUIRED TABS BASED ON REPORT TYPE
             try:
                 # 1. Update the heatmap tab with values only (no direction)
-                monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
-                heatmap_result = self.update_heatmap_tab(service, sheet_id, monthly_data)
+                monthly_data = get_pmi_data_by_type(report_type, 24)  # Get data filtered by report type
+                tab_name = f"{report_type} PMI Heatmap"
+                
+                # Make sure tab exists
+                if tab_name not in sheet_ids:
+                    self._create_sheet_tab(service, sheet_id, tab_name)
+                    # Refresh sheet IDs
+                    sheet_ids = self._get_all_sheet_ids(service, sheet_id)
+                
+                heatmap_result = self.update_heatmap_tab(service, sheet_id, monthly_data, tab_name)
                 if heatmap_result:
-                    logger.info("Successfully updated heatmap tab with values only")
+                    logger.info(f"Successfully updated {tab_name} tab")
                 else:
-                    logger.warning("Failed to update heatmap tab with values only")
+                    logger.warning(f"Failed to update {tab_name} tab")
                 
                 # 2. Create alphabetical growth tab
-                alpha_result = self.create_alphabetical_growth_tab(service, sheet_id, sheet_ids)
+                alpha_tab_name = f"{report_type} Growth Alphabetical"
+                if alpha_tab_name not in sheet_ids:
+                    self._create_sheet_tab(service, sheet_id, alpha_tab_name)
+                    # Refresh sheet IDs
+                    sheet_ids = self._get_all_sheet_ids(service, sheet_id)
+                    
+                alpha_result = self.create_alphabetical_growth_tab(service, sheet_id, sheet_ids, report_type)
                 if alpha_result:
-                    logger.info("Successfully created alphabetical growth tab")
+                    logger.info(f"Successfully created {alpha_tab_name} tab")
                 else:
-                    logger.warning("Failed to create alphabetical growth tab")
+                    logger.warning(f"Failed to create {alpha_tab_name} tab")
                 
                 # 3. Create numerical growth tab
-                num_result = self.create_numerical_growth_tab(service, sheet_id, sheet_ids)
+                num_tab_name = f"{report_type} Growth Numerical"
+                if num_tab_name not in sheet_ids:
+                    self._create_sheet_tab(service, sheet_id, num_tab_name)
+                    # Refresh sheet IDs
+                    sheet_ids = self._get_all_sheet_ids(service, sheet_id)
+                    
+                num_result = self.create_numerical_growth_tab(service, sheet_id, sheet_ids, report_type)
                 if num_result:
-                    logger.info("Successfully created numerical growth tab")
+                    logger.info(f"Successfully created {num_tab_name} tab")
                 else:
-                    logger.warning("Failed to create numerical growth tab")
+                    logger.warning(f"Failed to create {num_tab_name} tab")
+                
+                # If we have both types of data, create comparison tab
+                manufacturing_count = len(get_pmi_data_by_type('Manufacturing', 1))
+                service_count = len(get_pmi_data_by_type('Service', 1))
+                
+                if manufacturing_count > 0 and service_count > 0:
+                    comparison_tab_name = "Manufacturing vs Services"
+                    if comparison_tab_name not in sheet_ids:
+                        self._create_sheet_tab(service, sheet_id, comparison_tab_name)
+                        # Refresh sheet IDs
+                        sheet_ids = self._get_all_sheet_ids(service, sheet_id)
+                    
+                    comparison_result = self.create_comparison_tab(service, sheet_id, sheet_ids[comparison_tab_name])
+                    if comparison_result:
+                        logger.info(f"Successfully created {comparison_tab_name} tab")
+                    else:
+                        logger.warning(f"Failed to create {comparison_tab_name} tab")
                 
                 logger.info("Successfully created/updated required tabs")
                 logger.info(f"Successfully updated Google Sheets")
@@ -773,7 +811,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 logger.error(f"Error creating required tabs: {str(e)}")
                 logger.error(traceback.format_exc())
                 return False
-            
+                
         except Exception as e:
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -809,6 +847,291 @@ class GoogleSheetsFormatterTool(BaseTool):
             validation_results[index] = index in structured_data
         return validation_results
     
+    def create_comparison_tab(self, service, sheet_id, tab_id):
+        """
+        Create a tab comparing Manufacturing and Service PMI data
+        
+        Args:
+            service: Google Sheets API service
+            sheet_id: Spreadsheet ID
+            tab_id: Tab ID
+            
+        Returns:
+            Boolean indicating success
+        """
+        try:
+            # Get data for both report types
+            manufacturing_data = get_pmi_data_by_type('Manufacturing', 24)
+            service_data = get_pmi_data_by_type('Service', 24)
+            
+            # Create unified date list
+            all_dates = set()
+            for data in manufacturing_data:
+                all_dates.add(data['month_year'])
+            for data in service_data:
+                all_dates.add(data['month_year'])
+            
+            all_dates = sorted(list(all_dates), reverse=True)  # Most recent first
+            
+            # Create the header row
+            header_row = ["Month", "Manufacturing PMI", "Services PMI", "Difference (Services - Manufacturing)"]
+            
+            # Create data rows
+            data_rows = []
+            for date in all_dates:
+                # Find Manufacturing PMI for this date
+                mfg_pmi = None
+                for data in manufacturing_data:
+                    if data['month_year'] == date and 'indices' in data and 'Manufacturing PMI' in data['indices']:
+                        mfg_pmi = float(data['indices']['Manufacturing PMI']['value'])
+                        break
+                
+                # Find Services PMI for this date
+                svc_pmi = None
+                for data in service_data:
+                    if data['month_year'] == date and 'indices' in data and 'Services PMI' in data['indices']:
+                        svc_pmi = float(data['indices']['Services PMI']['value'])
+                        break
+                
+                # Calculate difference if both values exist
+                difference = None
+                if mfg_pmi is not None and svc_pmi is not None:
+                    difference = svc_pmi - mfg_pmi
+                
+                data_rows.append([date, mfg_pmi, svc_pmi, difference])
+            
+            # Combine header and data
+            all_rows = [header_row] + data_rows
+            
+            # Create formatting requests
+            formatting_requests = [
+                # Format header row
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 4
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {
+                                    "bold": True
+                                },
+                                "backgroundColor": {
+                                    "red": 0.9,
+                                    "green": 0.9,
+                                    "blue": 0.9
+                                }
+                            }
+                        },
+                        "fields": "userEnteredFormat.textFormat.bold,userEnteredFormat.backgroundColor"
+                    }
+                },
+                # Add borders
+                {
+                    "updateBorders": {
+                        "range": {
+                            "sheetId": tab_id,
+                            "startRowIndex": 0,
+                            "endRowIndex": len(all_rows),
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 4
+                        },
+                        "top": {"style": "SOLID"},
+                        "bottom": {"style": "SOLID"},
+                        "left": {"style": "SOLID"},
+                        "right": {"style": "SOLID"},
+                        "innerHorizontal": {"style": "SOLID"},
+                        "innerVertical": {"style": "SOLID"}
+                    }
+                },
+                # Freeze header row
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": tab_id,
+                            "gridProperties": {
+                                "frozenRowCount": 1
+                            }
+                        },
+                        "fields": "gridProperties.frozenRowCount"
+                    }
+                },
+                # Add conditional formatting for difference column
+                {
+                    "addConditionalFormatRule": {
+                        "rule": {
+                            "ranges": [
+                                {
+                                    "sheetId": tab_id,
+                                    "startRowIndex": 1,
+                                    "endRowIndex": len(all_rows),
+                                    "startColumnIndex": 3,
+                                    "endColumnIndex": 4
+                                }
+                            ],
+                            "gradientRule": {
+                                "minpoint": {
+                                    "color": {
+                                        "red": 0.8,
+                                        "green": 0.3,
+                                        "blue": 0.3
+                                    },
+                                    "type": "MIN"
+                                },
+                                "midpoint": {
+                                    "color": {
+                                        "red": 1.0,
+                                        "green": 1.0,
+                                        "blue": 1.0
+                                    },
+                                    "type": "NUMBER",
+                                    "value": "0"
+                                },
+                                "maxpoint": {
+                                    "color": {
+                                        "red": 0.3,
+                                        "green": 0.8,
+                                        "blue": 0.3
+                                    },
+                                    "type": "MAX"
+                                }
+                            }
+                        },
+                        "index": 0
+                    }
+                }
+            ]
+            
+            # Update the sheet
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f"'Manufacturing vs Services'!A1",
+                valueInputOption="RAW",
+                body={"values": all_rows}
+            ).execute()
+            
+            # Apply formatting
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={"requests": formatting_requests}
+            ).execute()
+            
+            # Create chart
+            chart_requests = [
+                {
+                    "addChart": {
+                        "chart": {
+                            "spec": {
+                                "title": "Manufacturing vs Services PMI Comparison",
+                                "basicChart": {
+                                    "chartType": "LINE",
+                                    "legendPosition": "TOP_LEGEND",
+                                    "axis": [
+                                        {
+                                            "position": "BOTTOM_AXIS",
+                                            "title": "Month"
+                                        },
+                                        {
+                                            "position": "LEFT_AXIS",
+                                            "title": "PMI Value"
+                                        }
+                                    ],
+                                    "domains": [
+                                        {
+                                            "domain": {
+                                                "sourceRange": {
+                                                    "sources": [
+                                                        {
+                                                            "sheetId": tab_id,
+                                                            "startRowIndex": 0,
+                                                            "endRowIndex": len(all_rows),
+                                                            "startColumnIndex": 0,
+                                                            "endColumnIndex": 1
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "series": [
+                                        {
+                                            "series": {
+                                                "sourceRange": {
+                                                    "sources": [
+                                                        {
+                                                            "sheetId": tab_id,
+                                                            "startRowIndex": 0,
+                                                            "endRowIndex": len(all_rows),
+                                                            "startColumnIndex": 1,
+                                                            "endColumnIndex": 2
+                                                        }
+                                                    ]
+                                                }
+                                            },
+                                            "targetAxis": "LEFT_AXIS",
+                                            "color": {
+                                                "red": 0.2,
+                                                "green": 0.6,
+                                                "blue": 0.2
+                                            }
+                                        },
+                                        {
+                                            "series": {
+                                                "sourceRange": {
+                                                    "sources": [
+                                                        {
+                                                            "sheetId": tab_id,
+                                                            "startRowIndex": 0,
+                                                            "endRowIndex": len(all_rows),
+                                                            "startColumnIndex": 2,
+                                                            "endColumnIndex": 3
+                                                        }
+                                                    ]
+                                                }
+                                            },
+                                            "targetAxis": "LEFT_AXIS",
+                                            "color": {
+                                                "red": 0.2,
+                                                "green": 0.4,
+                                                "blue": 0.8
+                                            }
+                                        }
+                                    ],
+                                    "headerCount": 1
+                                }
+                            },
+                            "position": {
+                                "overlayPosition": {
+                                    "anchorCell": {
+                                        "sheetId": tab_id,
+                                        "rowIndex": 0,
+                                        "columnIndex": 5
+                                    },
+                                    "widthPixels": 600,
+                                    "heightPixels": 400
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+            
+            # Add chart
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={"requests": chart_requests}
+            ).execute()
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error creating comparison tab: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
     def _force_valid_index(self, validation_results):
         """Force at least one index to be valid for processing."""
         logger.warning("All validations failed. Forcing an index to be valid to continue.")

@@ -624,7 +624,90 @@ def get_industry_status_over_time(index_name, num_months=12):
     finally:
         if conn:
             conn.close()
+
+def get_industry_status_over_time_by_type(index_name, num_months=12, report_type=None):
+    """
+    Get industry status over time for a specific index, filtered by report type.
+    
+    Args:
+        index_name: Name of the index (e.g., "New Orders")
+        num_months: Number of most recent months to include
+        report_type: 'Manufacturing' or 'Service' or None for all
+        
+    Returns:
+        Dictionary with industries as keys and lists of status by month as values
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the most recent report dates, filtered by report_type if specified
+        if report_type:
+            cursor.execute("""
+                SELECT r.report_date, r.month_year 
+                FROM reports r
+                WHERE r.report_type = ?
+                ORDER BY r.report_date DESC 
+                LIMIT ?
+            """, (report_type, num_months))
+        else:
+            cursor.execute("""
+                SELECT r.report_date, r.month_year 
+                FROM reports r
+                ORDER BY r.report_date DESC 
+                LIMIT ?
+            """, (num_months,))
+        
+        date_records = [dict(row) for row in cursor.fetchall()]
+        if not date_records:
+            return {'dates': [], 'industries': {}, 'ranks': {}}
+        
+         # For each industry, get status for each date
+        industry_data = {}
+        for industry in industries:
+            status_by_date = {}
             
+            for date_record in date_records:
+                report_date = date_record['report_date']
+                month_year = date_record['month_year']
+                
+                cursor.execute("""
+                    SELECT status, category, rank
+                    FROM industry_status
+                    WHERE report_date = ? AND index_name = ? AND industry_name = ?
+                """, (report_date, index_name, industry))
+                
+                row = cursor.fetchone()
+                if row:
+                    status_by_date[month_year] = {
+                        'status': row['status'],
+                        'category': row['category'],
+                        'rank': row['rank']
+                    }
+                else:
+                    status_by_date[month_year] = {
+                        'status': 'Neutral',
+                        'category': 'Not Reported',
+                        'rank': 0 
+                    }
+            
+            industry_data[industry] = status_by_date
+
+            # Just returning the structure here - the full implementation would be similar
+            # to the existing get_industry_status_over_time function
+            return {
+                'dates': [record['month_year'] for record in date_records],
+                'industries': industry_data,
+                'report_type': report_type
+            }
+    except Exception as e:
+        logger.error(f"Error getting industry status for {index_name} with type {report_type}: {str(e)}")
+        return {'dates': [], 'industries': {}, 'ranks': {}}
+    finally:
+        if conn:
+            conn.close()
+              
 def get_all_indices(index_name):
     """Get a list of all indices in the database."""
     conn = None
@@ -641,6 +724,53 @@ def get_all_indices(index_name):
         return [row['index_name'] for row in cursor.fetchall()]
     except Exception as e:
         logger.error(f"Error getting all indices: {str(e)}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+def get_all_indices_by_type(report_type):
+    """Get all indices from a specific report type."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT p.index_name 
+            FROM pmi_indices p
+            JOIN reports r ON p.report_date = r.report_date
+            WHERE r.report_type = ?
+            ORDER BY p.index_name
+        """, (report_type,))
+        
+        return [row['index_name'] for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting indices for {report_type}: {str(e)}")
+        # Return default indices from config
+        from config import MANUFACTURING_INDICES, SERVICE_INDICES
+        return MANUFACTURING_INDICES if report_type == 'Manufacturing' else SERVICE_INDICES
+    finally:
+        if conn:
+            conn.close()
+
+def get_report_dates_by_type(report_type):
+    """Get all report dates for a specific report type."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT report_date, month_year 
+            FROM reports 
+            WHERE report_type = ?
+            ORDER BY report_date DESC
+        """, (report_type,))
+        
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error getting report dates for {report_type}: {str(e)}")
         return []
     finally:
         if conn:

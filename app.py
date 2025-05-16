@@ -76,6 +76,41 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def get_dashboard_data(report_type='combined'):
+    """Get all data needed for dashboard based on report type."""
+    try:
+        data = {}
+        
+        # Get heatmap data based on report type
+        if report_type == 'manufacturing':
+            data['heatmap_data'] = get_pmi_data_by_type('Manufacturing', 24)
+            data['indices'] = get_all_indices_by_type('Manufacturing')
+            data['report_dates'] = get_report_dates_by_type('Manufacturing')
+        elif report_type == 'service':
+            data['heatmap_data'] = get_pmi_data_by_type('Service', 24)
+            data['indices'] = get_all_indices_by_type('Service')
+            data['report_dates'] = get_report_dates_by_type('Service')
+        else:  # combined
+            data['heatmap_data'] = get_pmi_data_by_month(24)
+            data['indices'] = get_all_indices()
+            data['report_dates'] = get_all_report_dates()
+        
+        # Get report type counts for UI badges
+        data['report_counts'] = get_report_type_counts()
+        data['report_type'] = report_type
+        
+        return data
+    except Exception as e:
+        logger.error(f"Error loading dashboard data: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            'heatmap_data': [],
+            'indices': [],
+            'report_dates': [],
+            'report_counts': [],
+            'report_type': report_type
+        }
+
 @app.route('/landing')
 @app.route('/welcome')
 def landing():
@@ -475,11 +510,16 @@ def get_industry_status(index_name):
         # Get industry status data for the specified index (last 12 months)
         months = request.args.get('months', 12, type=int)
         debug = request.args.get('debug', False, type=bool)
-        
+        report_type = request.args.get('report_type', None) 
+
         if debug:
             logger.info(f"Fetching industry status for {index_name}, {months} months")
             
-        industry_data = get_industry_status_over_time(index_name, months)
+         # Get industry status data filtered by report_type if specified
+        if report_type:
+            industry_data = get_industry_status_over_time_by_type(index_name, months, report_type)
+        else:
+            industry_data = get_industry_status_over_time(index_name, months)
         
         if debug and not industry_data['industries']:
             logger.warning(f"No industry data found for {index_name}")

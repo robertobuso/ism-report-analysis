@@ -514,6 +514,45 @@
              }
 
         }); // End DOMContentLoaded
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get elements
+            const reportTypeRadios = document.querySelectorAll('input[name="report_type"]');
+            const uploadButton = document.getElementById('uploadButton');
+            const fileInput = document.getElementById('fileInput');
+            
+            // Add event listeners for report type selection
+            reportTypeRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    // Enable file selection if report type is selected
+                    if (fileInput) {
+                        fileInput.disabled = false;
+                    }
+                    
+                    // Update form validation
+                    validateForm();
+                });
+            });
+            
+            // Add file input change listener
+            if (fileInput) {
+                fileInput.addEventListener('change', validateForm);
+            }
+            
+            // Form validation function
+            function validateForm() {
+                const files = fileInput?.files || [];
+                const reportTypeSelected = document.querySelector('input[name="report_type"]:checked') !== null;
+                
+                // Enable submit button if at least one file is selected and report type is chosen
+                if (uploadButton) {
+                    uploadButton.disabled = !(files.length > 0 && reportTypeSelected);
+                }
+            }
+            
+            // Initial validation
+            validateForm();
+        });
     </script>
 
     <div class="processing-overlay" id="processingOverlay">

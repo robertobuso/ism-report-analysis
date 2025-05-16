@@ -2297,6 +2297,227 @@
                 loadPmiComparison();
             }
         });
+    
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize report type UI
+            setupReportTypeUI();
+            
+            // Set initial state based on current URL
+            const currentUrl = window.location.pathname;
+            const reportType = currentUrl.includes('/dashboard/manufacturing') ? 'manufacturing' :
+                            currentUrl.includes('/dashboard/service') ? 'service' : 'combined';
+            
+            // Update UI based on report type
+            updateUIForReportType(reportType);
+        });
+
+        // Setup report type filter UI and event handlers
+        function setupReportTypeUI() {
+            // Get report type filter elements
+            const reportTypeLinks = document.querySelectorAll('.report-type-toggle .nav-link');
+            
+            // Add event listeners to report type links
+            reportTypeLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // Prevent default navigation
+                    e.preventDefault();
+                    
+                    // Get report type from href attribute
+                    const href = this.getAttribute('href');
+                    const reportType = href.includes('manufacturing') ? 'manufacturing' :
+                                    href.includes('service') ? 'service' : 'combined';
+                    
+                    // Update UI for selected report type
+                    updateUIForReportType(reportType);
+                    
+                    // Update URL without full page reload
+                    window.history.pushState({reportType: reportType}, '', href);
+                    
+                    // Load appropriate data
+                    if (reportType === 'combined') {
+                        loadComparisonChart();
+                    } else {
+                        // Hide comparison chart for single report types
+                        document.getElementById('pmiComparisonCard').style.display = 'none';
+                    }
+                });
+            });
+            
+            // Handle browser back/forward buttons
+            window.addEventListener('popstate', function(event) {
+                if (event.state && event.state.reportType) {
+                    updateUIForReportType(event.state.reportType);
+                }
+            });
+        }
+
+        // Update UI elements based on report type
+        function updateUIForReportType(reportType) {
+            // Update active state on nav links
+            const reportTypeLinks = document.querySelectorAll('.report-type-toggle .nav-link');
+            reportTypeLinks.forEach(link => {
+                const linkType = link.getAttribute('href').includes('manufacturing') ? 'manufacturing' :
+                                link.getAttribute('href').includes('service') ? 'service' : 'combined';
+                
+                if (linkType === reportType) {
+                    link.classList.add('active');
+                } else {
+                    link.classList.remove('active');
+                }
+            });
+            
+            // Show/hide UI elements based on report type
+            if (reportType === 'combined') {
+                // Show comparison elements
+                if (document.getElementById('pmiComparisonCard')) {
+                    document.getElementById('pmiComparisonCard').style.display = 'block';
+                }
+            } else {
+                // Hide comparison elements
+                if (document.getElementById('pmiComparisonCard')) {
+                    document.getElementById('pmiComparisonCard').style.display = 'none';
+                }
+            }
+            
+            // Reload data for the current tab
+            const activeTab = document.querySelector('.tab-pane.active');
+            if (activeTab) {
+                const tabId = activeTab.id;
+                
+                if (tabId === 'heatmap') {
+                    loadHeatmapData(reportType);
+                } else if (tabId === 'growth-alpha') {
+                    const indexSelect = document.getElementById('alphaIndexSelect');
+                    if (indexSelect) {
+                        loadGrowthTable('alpha', indexSelect.value, reportType);
+                    }
+                } else if (tabId === 'growth-num') {
+                    const numIndexSelect = document.getElementById('numIndexSelect');
+                    if (numIndexSelect) {
+                        loadNumericalGrowthTable(numIndexSelect.value, reportType);
+                    }
+                } else if (tabId === 'trends') {
+                    updateChart(reportType);
+                }
+            }
+        }
+    
+        function loadComparisonChart() {
+            // Show loading indicator
+            const chartContainer = document.getElementById('pmiComparisonChart');
+            if (!chartContainer) return;
+            
+            chartContainer.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div><p>Loading comparison data...</p></div>';
+            
+            // Fetch comparison data
+            fetch('/api/compare_pmi')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Create the comparison chart
+                    renderComparisonChart(chartContainer, data);
+                })
+                .catch(error => {
+                    console.error('Error fetching comparison data:', error);
+                    chartContainer.innerHTML = '<div class="alert alert-danger">Error loading comparison data</div>';
+                });
+        }
+
+        function renderComparisonChart(container, data) {
+            // Create canvas element
+            container.innerHTML = '<canvas height="300"></canvas>';
+            const ctx = container.querySelector('canvas').getContext('2d');
+            
+            // Create chart configuration
+            const config = {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [
+                        {
+                            label: 'Manufacturing PMI',
+                            data: data.manufacturing,
+                            borderColor: 'rgba(46, 204, 113, 1)',
+                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                            tension: 0.2,
+                            fill: false
+                        },
+                        {
+                            label: 'Services PMI',
+                            data: data.service,
+                            borderColor: 'rgba(52, 152, 219, 1)',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            tension: 0.2,
+                            fill: false
+                        },
+                        {
+                            label: 'Expansion/Contraction Line',
+                            data: Array(data.dates.length).fill(50),
+                            borderColor: 'rgba(0, 0, 0, 0.5)',
+                            borderWidth: 2,
+                            borderDash: [6, 6],
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            suggestedMin: 45,
+                            suggestedMax: 65
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        legend: {
+                            position: 'top'
+                        },
+                        annotation: {
+                            annotations: {
+                                line1: {
+                                    type: 'line',
+                                    yMin: 50,
+                                    yMax: 50,
+                                    borderColor: 'rgba(0, 0, 0, 0.5)',
+                                    borderWidth: 2,
+                                    borderDash: [6, 6],
+                                    label: {
+                                        content: 'Expansion/Contraction',
+                                        enabled: true,
+                                        position: 'end'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // Create the chart
+            new Chart(ctx, config);
+            
+            // Add chart explanation
+            const explanation = document.createElement('div');
+            explanation.className = 'mt-3 text-muted small';
+            explanation.innerHTML = `
+                <p>
+                    <strong>Chart Analysis:</strong> This chart compares the Manufacturing PMI and Services PMI over time. 
+                    Values above 50 indicate expansion, while values below 50 indicate contraction.
+                </p>
+            `;
+            container.appendChild(explanation);
+        }
     </script>
 </body>
 </html>
