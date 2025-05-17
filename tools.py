@@ -36,7 +36,7 @@ class SimplePDFExtractionTool(BaseTool):
     name: str = Field(default="extract_pdf_data")
     description: str = Field(
         default="""
-        Extracts ISM Manufacturing Report data from a PDF file.
+        Extracts ISM Report data from a PDF file.
         
         Args:
             pdf_path: The path to the PDF file to extract data from
@@ -71,27 +71,33 @@ class SimplePDFExtractionTool(BaseTool):
             # Now extract from the correct field
             if 'extracted_data' in extracted_data and isinstance(extracted_data['extracted_data'], dict) and 'pdf_path' in extracted_data['extracted_data']:
                 pdf_path = extracted_data['extracted_data']['pdf_path']
+                report_type = extracted_data['extracted_data'].get('report_type')
                 logger.info(f"Extracting data from PDF (nested structure): {pdf_path}")
                 
-                # Get the month_year first (we'll need this for LLM extraction)
-                from pdf_utils import extract_text_from_pdf, extract_month_year
+                # Create appropriate report handler based on the PDF content or specified type
+                from report_handlers import ReportTypeFactory
+                handler = ReportTypeFactory.create_handler(report_type, pdf_path)
+                
+                # Get the month_year using the handler
+                from pdf_utils import extract_text_from_pdf
                 text = extract_text_from_pdf(pdf_path)
                 month_year = "Unknown"
                 if text:
-                    month_year = extract_month_year(text)
+                    month_year = handler.parse_report_month_year(text)
                     if not month_year:
                         month_year = "Unknown"
                 
                 # Use LLM for primary extraction
-                logger.info("Using LLM for primary extraction of Manufacturing at a Glance data and industry data")
-                llm_data = self._extract_manufacturing_data_with_llm(pdf_path, month_year)
+                logger.info(f"Using LLM for primary extraction using {handler.__class__.__name__}")
+                llm_data = self._extract_data_with_llm(pdf_path, month_year, handler)
                 
                 if llm_data:
                     result = {
                         'month_year': llm_data.get('month_year', month_year),
                         'manufacturing_table': llm_data,
                         'pmi_data': llm_data.get('indices', {}),
-                        'industry_data': llm_data.get('industry_data', {})
+                        'industry_data': llm_data.get('industry_data', {}),
+                        'report_type': handler.__class__.__name__.replace('ReportHandler', '')  # 'Manufacturing' or 'Services'
                     }
                     logger.info("Successfully extracted data with LLM")
                     return result
@@ -102,7 +108,8 @@ class SimplePDFExtractionTool(BaseTool):
                         'manufacturing_table': {},
                         'index_summaries': {},
                         'industry_data': {},
-                        'pmi_data': {}
+                        'pmi_data': {},
+                        'report_type': handler.__class__.__name__.replace('ReportHandler', '')
                     }
                     
         except Exception as e:
@@ -114,13 +121,14 @@ class SimplePDFExtractionTool(BaseTool):
                 "manufacturing_table": {},
                 "index_summaries": {},
                 "industry_data": {},
-                "pmi_data": {}
+                "pmi_data": {},
+                "report_type": "Manufacturing"  # Default to Manufacturing
             }
         
-    def _extract_manufacturing_data_with_llm(self, pdf_path, month_year):
-        """Extract Manufacturing at a Glance data and industry data from entire PDF."""
+    def _extract_data_with_llm(self, pdf_path, month_year, handler):
+        """Extract data from PDF using LLM with the appropriate report handler."""
         try:
-            logger.info(f"Extracting data from complete PDF: {pdf_path} with LLM")
+            logger.info(f"Extracting data from PDF: {pdf_path} with handler: {handler.__class__.__name__}")
             
             # Extract text from ALL pages
             extracted_text = ""
@@ -156,104 +164,13 @@ class SimplePDFExtractionTool(BaseTool):
                 
             logger.info(f"Successfully extracted {len(extracted_text)} chars from full PDF")
             
-            # Construct the prompt WITHOUT using nested f-strings
-            prompt_part1 = """
-            I need you to analyze this ISM Manufacturing Report PDF and extract both the "Manufacturing at a Glance" table data AND industry classification data.
-
-            PART 1: Manufacturing at a Glance Table
-            Extract and return these data points:
-            - Month and Year of the report (should be """
+            # Get extraction prompt from handler
+            prompt = f"""
+            {handler.get_extraction_prompt()}
             
-            prompt_part2 = month_year
-            
-            prompt_part3 = """)
-            - Manufacturing PMI value and status (Growing/Contracting) 
-            - New Orders value and status
-            - Production value and status
-            - Employment value and status
-            - Supplier Deliveries value and status
-            - Inventories value and status
-            - Customers' Inventories value and status
-            - Prices value and status
-            - Backlog of Orders value and status
-            - New Export Orders value and status
-            - Imports value and status
-            - Overall Economy status
-            - Manufacturing Sector status
-
-            PART 2: Industry Data Classification
-            For each of the following indices, identify industries that are classified as growing/expanding or contracting/declining:
-
-            1. New Orders:
-            - Growing: List all industries mentioned as reporting growth, expansion, or increases
-            - Declining: List all industries mentioned as reporting contraction, decline, or decreases
-
-            2. Production:
-            - Growing: List all industries mentioned as reporting growth, expansion, or increases 
-            - Declining: List all industries mentioned as reporting contraction, decline, or decreases
-
-            3. Employment:
-            - Growing: List all industries mentioned as reporting growth, expansion, or increases
-            - Declining: List all industries mentioned as reporting contraction, decline, or decreases
-
-            4. Supplier Deliveries:
-            - Slower: List all industries mentioned as reporting slower deliveries
-            - Faster: List all industries mentioned as reporting faster deliveries
-
-            5. Inventories:
-            - Higher: List all industries mentioned as reporting higher inventories
-            - Lower: List all industries mentioned as reporting lower inventories
-
-            6. Customers' Inventories:
-            - Too High: List all industries mentioned as reporting customers' inventories as too high
-            - Too Low: List all industries mentioned as reporting customers' inventories as too low
-
-            7. Prices:
-            - Increasing: List all industries mentioned as reporting price increases
-            - Decreasing: List all industries mentioned as reporting price decreases
-
-            8. Backlog of Orders:
-            - Growing: List all industries mentioned as reporting growth or increases in backlogs
-            - Declining: List all industries mentioned as reporting contraction or decreases in backlogs
-
-            9. New Export Orders:
-            - Growing: List all industries mentioned as reporting growth in export orders
-            - Declining: List all industries mentioned as reporting decline in export orders
-
-            10. Imports:
-                - Growing: List all industries mentioned as reporting growth in imports
-                - Declining: List all industries mentioned as reporting decline in imports
-
-            Return ONLY a JSON object in this format:
-            {
-                "month_year": "Month Year",
-                "indices": {
-                    "Manufacturing PMI": {"current": "48.4", "direction": "Contracting"},
-                    "New Orders": {"current": "50.4", "direction": "Growing"},
-                    ...and so on for all indices,
-                    "OVERALL ECONOMY": {"direction": "Growing"},
-                    "Manufacturing Sector": {"direction": "Contracting"}
-                },
-                "industry_data": {
-                    "New Orders": {
-                        "Growing": ["Industry1", "Industry2", ...],
-                        "Declining": ["Industry3", "Industry4", ...]
-                    },
-                    "Production": {
-                        "Growing": [...],
-                        "Declining": [...]
-                    },
-                    ...and so on for all indices
-                }
-            }
-
             Here is the extracted text from the PDF:
+            {extracted_text}
             """
-            
-            prompt_part4 = extracted_text
-            
-            # Combine the prompt parts in a way that avoids nested f-strings
-            prompt = prompt_part1 + prompt_part2 + prompt_part3 + prompt_part4
             
             # Call OpenAI API with robust error handling and retries
             max_retries = 3
@@ -334,81 +251,10 @@ class SimplePDFExtractionTool(BaseTool):
             return {"month_year": month_year, "indices": {}, "industry_data": {}}
         
         except Exception as e:
-            logger.error(f"Error in _extract_manufacturing_data_with_llm: {str(e)}")
+            logger.error(f"Error in _extract_data_with_llm: {str(e)}")
             logger.error(traceback.format_exc())
             return {"month_year": month_year, "indices": {}, "industry_data": {}}
-    
-    def _parse_llm_response(self, response_text, month_year):
-        """Helper method to parse LLM response text into structured data"""
-        try:
-            # Clean up the response to extract just the JSON part
-            json_text = response_text
-            
-            # If it has markdown code blocks, extract just the JSON
-            if "```json" in response_text:
-                json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
-                if json_match:
-                    json_text = json_match.group(1)
-            elif "```" in response_text:
-                # Try to extract from any code block
-                json_match = re.search(r'```\n?(.*?)\n?```', response_text, re.DOTALL)
-                if json_match:
-                    json_text = json_match.group(1)
-            
-            # Try to parse as JSON
-            json_data = json.loads(json_text)
-            
-            # Validate the required fields exist
-            if "month_year" not in json_data or "indices" not in json_data:
-                logger.warning("JSON is missing required fields")
-                json_data = {"month_year": month_year, "indices": {}}
-            
-            # Add industry_data field if missing
-            if "industry_data" not in json_data:
-                json_data["industry_data"] = {}
-                
-            return json_data
-            
-        except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse JSON: {str(e)}")
-            # Fallback manual parsing code...
-            # ...existing fallback code...
-            return {"month_year": month_year, "indices": {}, "industry_data": {}}
-
-    def _extract_pdf_text(self, pdf_path, max_pages=None):
-        """Helper to extract text from ALL pages of PDF."""
-        try:
-            with pdfplumber.open(pdf_path) as pdf:
-                page_count = len(pdf.pages)
-                # Extract ALL pages if max_pages is None
-                pages_to_extract = page_count if max_pages is None else min(max_pages, page_count)
-                logger.info(f"Extracting all {pages_to_extract} pages from PDF with {page_count} total pages")
-                
-                extracted_text = ""
-                for i in range(pages_to_extract):
-                    page_text = pdf.pages[i].extract_text()
-                    if page_text:
-                        extracted_text += page_text + "\n\n"
-                return extracted_text
-        except Exception as e:
-            logger.warning(f"Error with pdfplumber: {str(e)}")
-            try:
-                from PyPDF2 import PdfReader
-                reader = PdfReader(pdf_path)
-                page_count = len(reader.pages)
-                pages_to_extract = page_count if max_pages is None else min(max_pages, page_count)
-                logger.info(f"Fallback: Extracting all {pages_to_extract} pages using PyPDF2")
-                
-                extracted_text = ""
-                for i in range(pages_to_extract):
-                    page_text = reader.pages[i].extract_text()
-                    if page_text:
-                        extracted_text += page_text + "\n\n"
-                return extracted_text
-            except Exception as e2:
-                logger.error(f"Both PDF extraction methods failed: {str(e2)}")
-                return ""
-
+        
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")
     description: str = Field(

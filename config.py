@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from config_loader import config_loader
 
 # Load environment variables
 load_dotenv()
@@ -11,7 +12,29 @@ OPENAI_MODEL = "gpt-4o"  # Using GPT-4 for better extraction accuracy
 # Google Sheets configuration
 GOOGLE_CREDENTIALS_FILE = "credentials.json"
 GOOGLE_TOKEN_FILE = "token.pickle"
-GOOGLE_SHEET_NAME = "ISM Manufacturing Report Analysis"
+GOOGLE_SHEET_NAME = "ISM Report Analysis"
+
+# Get ISM Report configuration from config loader
+MANUFACTURING_INDICES = config_loader.get_indices("Manufacturing")
+SERVICES_INDICES = config_loader.get_indices("Services")
+
+# Add configuration for Manufacturing at a Glance table
+MANUFACTURING_TABLE_TAB_NAME = "Manufacturing at a Glance"
+SERVICES_TABLE_TAB_NAME = "Services at a Glance"
+
+# Logging configuration
+LOG_FILE = "logs/ism_analysis.log"
+LOG_LEVEL = "INFO"
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
+
+# Ensure all required directories exist
+os.makedirs("logs", exist_ok=True)
+os.makedirs("pdfs", exist_ok=True)
+os.makedirs("uploads", exist_ok=True)
+os.makedirs("config", exist_ok=True)
 
 # ISM Report configuration
 ISM_INDICES = [
@@ -40,19 +63,3 @@ INDEX_CATEGORIES = {
     "New Export Orders": ["Growing", "Declining"],
     "Imports": ["Growing", "Declining"]
 }
-
-# Add configuration for Manufacturing at a Glance table
-MANUFACTURING_TABLE_TAB_NAME = "Manufacturing at a Glance"
-
-# Logging configuration
-LOG_FILE = "logs/ism_analysis.log"
-LOG_LEVEL = "INFO"
-
-# Retry configuration
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
-
-# Ensure all required directories exist
-os.makedirs("logs", exist_ok=True)
-os.makedirs("pdfs", exist_ok=True)
-os.makedirs("uploads", exist_ok=True)

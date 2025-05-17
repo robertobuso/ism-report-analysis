@@ -436,6 +436,11 @@ def process_single_pdf(pdf_path, visualization_options=None):
         else:
             logger.warning("sheet_id.txt not found. A new Google Sheet will be created.")
 
+        # Detect report type
+        from report_handlers import ReportTypeFactory
+        report_type = ReportTypeFactory.detect_report_type(pdf_path)
+        logger.info(f"Detected report type: {report_type}")
+
         # Create agents
         extractor_agent = create_extractor_agent()
         data_correction_agent = create_data_correction_agent()
@@ -443,66 +448,37 @@ def process_single_pdf(pdf_path, visualization_options=None):
         formatter_agent = create_formatter_agent()
 
         # Execute extraction
-        logger.info("Starting data extraction...")
+        logger.info(f"Starting data extraction for {report_type} report...")
 
         # Always attempt direct PDF parsing first to get baseline data
         direct_data = None
         try:
             from pdf_utils import parse_ism_report
             logger.info("Performing initial direct PDF parsing")
-            direct_data = parse_ism_report(pdf_path)
+            direct_data = parse_ism_report(pdf_path, report_type)
 
         except Exception as e:
             logger.error(f"Error in initial direct PDF parsing: {str(e)}")
 
-        # Custom extraction task
+        # Custom extraction task with report_type
         extraction_task = Task(
             description=f"""
-            Extract all relevant data from the ISM Manufacturing Report PDF.
+            Extract all relevant data from the ISM {report_type} Report PDF.
             The PDF path is: {pdf_path}
 
             When using the PDF Extraction Tool, pass the path in this format:
             {{
                 "extracted_data": {{
-                    "pdf_path": "{pdf_path}"
+                    "pdf_path": "{pdf_path}",
+                    "report_type": "{report_type}"
                 }}
             }}
 
             You must extract:
             1. The month and year of the report
-            2. The Manufacturing at a Glance table
-            3. All index-specific summaries (New Orders, Production, etc.)
+            2. The {'Manufacturing' if report_type == 'Manufacturing' else 'Services'} at a Glance table
+            3. All index-specific summaries
             4. Industry mentions in each index summary
-
-            VERY IMPORTANT CLASSIFICATION RULES:
-            For each index, you must carefully identify the correct category for each industry:
-
-            - New Orders, Production, Employment, Backlog of Orders, New Export Orders, Imports:
-            * GROWING category: Industries explicitly mentioned as reporting "growth", "expansion", "increase", or similar positive terms
-            * DECLINING category: Industries explicitly mentioned as reporting "contraction", "decline", "decrease" or similar negative terms
-
-            - Supplier Deliveries:
-            * SLOWER category: Industries reporting "slower" deliveries (NOTE: slower deliveries are a POSITIVE economic indicator)
-            * FASTER category: Industries reporting "faster" deliveries (NOTE: faster deliveries are a NEGATIVE economic indicator)
-
-            - Inventories:
-            * HIGHER category: Industries reporting "higher" or "increased" inventories
-            * LOWER category: Industries reporting "lower" or "decreased" inventories
-
-            - Customers' Inventories:
-            * TOO HIGH category: Industries reporting customers' inventories as "too high"
-            * TOO LOW category: Industries reporting customers' inventories as "too low"
-
-            - Prices:
-            * INCREASING category: Industries reporting "higher" or "increasing" prices
-            * DECREASING category: Industries reporting "lower" or "decreasing" prices
-
-            READ THE TEXT CAREFULLY AND LOOK FOR THESE SPECIFIC TERMS AND PHRASES. Do not guess or infer - only place industries in categories when the text explicitly states their status.
-
-            Look for sentences like:
-            - "The X industries reporting growth in February are..."
-            - "The Y industries reporting contraction in February are..."
-            - "The industries reporting slower supplier deliveries are..."
 
             YOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.
             Format your answer as:
@@ -533,6 +509,10 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
+
+        # Add report_type to extraction_data
+        if extraction_data and isinstance(extraction_data, dict):
+            extraction_data['report_type'] = report_type
 
         # Check if direct parsing found any industries
         industry_count = 0
@@ -619,10 +599,10 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 extraction_data['industry_data'] = merged_industry_data
                 logger.info(f"Keeping agent extraction with merged industry data")
 
-        # STORE DATA IN DATABASE - CRITICAL STEP - happen after EXTRACTION
+        # STORE DATA IN DATABASE - CRITICAL STEP - update to include report_type
         from db_utils import store_report_data_in_db
         try:
-            store_result = store_report_data_in_db(extraction_data, pdf_path)
+            store_result = store_report_data_in_db(extraction_data, pdf_path, report_type)
 
             if store_result:
                 logger.info(f"Successfully stored data from {pdf_path} in database")

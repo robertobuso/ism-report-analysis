@@ -1,0 +1,29 @@
+{
+  "indices": [
+    "Manufacturing PMI",
+    "New Orders", 
+    "Production", 
+    "Employment", 
+    "Supplier Deliveries",
+    "Inventories", 
+    "Customers' Inventories", 
+    "Prices", 
+    "Backlog of Orders",
+    "New Export Orders", 
+    "Imports"
+  ],
+  "index_categories": {
+    "New Orders": ["Growing", "Declining"],
+    "Production": ["Growing", "Declining"],
+    "Employment": ["Growing", "Declining"],
+    "Supplier Deliveries": ["Slower", "Faster"],
+    "Inventories": ["Higher", "Lower"],
+    "Customers' Inventories": ["Too High", "Too Low"],
+    "Prices": ["Increasing", "Decreasing"],
+    "Backlog of Orders": ["Growing", "Declining"],
+    "New Export Orders": ["Growing", "Declining"],
+    "Imports": ["Growing", "Declining"]
+  },
+  "extraction_prompt": "Extract all relevant data from the ISM Manufacturing Report PDF.\n\nYou must extract:\n1. The month and year of the report\n2. The Manufacturing at a Glance table\n3. All index-specific summaries (New Orders, Production, etc.)\n4. Industry mentions in each index summary\n\nVERY IMPORTANT CLASSIFICATION RULES:\nFor each index, you must carefully identify the correct category for each industry:\n\n- New Orders, Production, Employment, Backlog of Orders, New Export Orders, Imports:\n* GROWING category: Industries explicitly mentioned as reporting \"growth\", \"expansion\", \"increase\", or similar positive terms\n* DECLINING category: Industries explicitly mentioned as reporting \"contraction\", \"decline\", \"decrease\" or similar negative terms\n\n- Supplier Deliveries:\n* SLOWER category: Industries reporting \"slower\" deliveries\n* FASTER category: Industries reporting \"faster\" deliveries\n\n- Inventories:\n* HIGHER category: Industries reporting \"higher\" or \"increased\" inventories\n* LOWER category: Industries reporting \"lower\" or \"decreased\" inventories\n\n- Customers' Inventories:\n* TOO HIGH category: Industries reporting customers' inventories as \"too high\"\n* TOO LOW category: Industries reporting customers' inventories as \"too low\"\n\n- Prices:\n* INCREASING category: Industries reporting \"higher\" or \"increasing\" prices\n* DECREASING category: Industries reporting \"lower\" or \"decreasing\" prices\n\nYOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.",
+  "correction_prompt": "CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.\n\nSTEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions.\n\nSTEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:\n- GROWING vs DECLINING for most indices\n- SLOWER vs FASTER for Supplier Deliveries\n- HIGHER vs LOWER for Inventories\n- TOO HIGH vs TOO LOW for Customers' Inventories\n- INCREASING vs DECREASING for Prices\n\nSTEP 3: Compare your findings against industry_data to identify errors.\nCommon errors include:\n- Industries placed in the wrong category (e.g., growing when they should be declining)\n- Missing industries that were mentioned in the text\n- Industries appearing in both categories for a single index\n\nSTEP 4: Correct any errors by:\n- Moving industries to the correct category\n- Adding missing industries to appropriate categories\n- Removing industries from incorrect categories\n\nSTEP 5: Return a COMPLETE, CORRECTED copy of the data with your changes implemented."
+}
