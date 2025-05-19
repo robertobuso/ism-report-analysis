@@ -830,7 +830,12 @@ class SimpleDataStructurerTool(BaseTool):
                 if verification_result and 'corrected_industry_data' in verification_result:
                     industry_data = verification_result['corrected_industry_data']
                     logger.info("Using industry data from verification result")
-            
+
+            # Ensure we have a valid industry_data dictionary
+            if not industry_data:
+                industry_data = {}
+                logger.warning("No valid industry data found, using empty dictionary")
+                
             # Structure data for each index
             structured_data = {}
             
@@ -838,52 +843,42 @@ class SimpleDataStructurerTool(BaseTool):
             for index in ISM_INDICES:
                 # Get categories for this index if available
                 categories = {}
-                if industry_data and index in industry_data:
+                if index in industry_data:
                     categories = industry_data[index]
                 
                 # Clean up the categories but preserve order
                 cleaned_categories = {}
                 
-            # Process each category
-            for category_name, industries in categories.items():
-                cleaned_industries = []
-                
-                # Clean up each industry name in the list
-                for industry in industries:
-                    if not industry or not isinstance(industry, str):
-                        continue
-                        
-                    # Skip parsing artifacts and invalid entries
-                    if ("following order" in industry.lower() or 
-                        "are:" in industry.lower() or 
-                        industry.startswith(',') or 
-                        industry.startswith(':') or 
-                        len(industry.strip()) < 3):
-                        continue
-                        
-                    # Clean up the industry name
-                    industry = industry.strip()
+                # Process each category
+                for category_name, industries in categories.items():
+                    cleaned_industries = []
                     
-                    # Add to cleaned list if not already there
-                    if industry not in cleaned_industries:
-                        cleaned_industries.append(industry)
-                
-                # DEFINE category_count BEFORE USING IT - ADD THIS LINE
-                category_count = len(cleaned_industries)  
-                
-                if category_count < 0 or category_count > len(cleaned_industries):
-                    logger.warning(f"Invalid category_count {category_count} for {category_name}, using available count {len(cleaned_industries)}")
-                    category_count = len(cleaned_industries)
-
-                    # Only add categories that actually have industries
+                    # Clean up each industry name in the list
+                    for industry in industries:
+                        if not industry or not isinstance(industry, str):
+                            continue
+                            
+                        # Skip parsing artifacts and invalid entries
+                        if ("following order" in industry.lower() or 
+                            "are:" in industry.lower() or 
+                            industry.startswith(',') or 
+                            industry.startswith(':') or 
+                            len(industry.strip()) < 3):
+                            continue
+                            
+                        # Clean up the industry name
+                        industry = industry.strip()
+                        
+                        # Add to cleaned list if not already there
+                        if industry not in cleaned_industries:
+                            cleaned_industries.append(industry)
+                    
+                    # Add to cleaned categories if we have any industries
                     if cleaned_industries:
-                        actual_count = min(category_count, len(cleaned_industries))
-                        cleaned_categories[category_name] = cleaned_industries[:actual_count]
-
-                    if not cleaned_industries:
+                        cleaned_categories[category_name] = cleaned_industries
+                    else:
                         logger.warning(f"No cleaned industries for {category_name}, using empty list")
                         cleaned_categories[category_name] = []
-                        continue  
                 
                 # If no data for this index, create empty categories
                 if not cleaned_categories and index in INDEX_CATEGORIES:

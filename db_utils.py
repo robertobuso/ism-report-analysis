@@ -351,27 +351,61 @@ def get_pmi_data_by_month(num_months=12, report_type='Manufacturing'):
         
         # Get the most recent report dates for the specified report type
         cursor.execute("""
-            SELECT report_date 
+            SELECT report_date, month_year
             FROM reports 
             WHERE report_type = ?
             ORDER BY report_date DESC 
             LIMIT ?
-        """, (report_type, num_months)) #Corrected comma issue
+        """, (report_type, num_months))
         
-        report_dates = [row['report_date'] for row in cursor.fetchall()]
+        report_dates = [{'report_date': row['report_date'], 'month_year': row['month_year']} for row in cursor.fetchall()]
         
         if not report_dates:
+            logger.warning(f"No report dates found for {report_type}")
             return []
+        
+        # Get PMI data for each report date
+        result = []
+        for date_info in report_dates:
+            report_date = date_info['report_date']
+            month_year = date_info['month_year']
             
-        # Rest of the function remains the same
-        # ...
+            # Get all indices for this report date
+            cursor.execute("""
+                SELECT index_name, index_value, direction 
+                FROM pmi_indices 
+                WHERE report_date = ?
+            """, (report_date,))
+            
+            indices = {}
+            for row in cursor.fetchall():
+                indices[row['index_name']] = {
+                    'value': row['index_value'],
+                    'direction': row['direction']
+                }
+            
+            # Skip if no indices found
+            if not indices:
+                logger.warning(f"No PMI data found for report date {report_date}")
+                continue
+                
+            # Add to result
+            result.append({
+                'report_date': report_date,
+                'month_year': month_year,
+                'indices': indices
+            })
+        
+        logger.info(f"Retrieved PMI data for {len(result)} report dates")
+        return result
     except Exception as e:
         logger.error(f"Error getting PMI data by month: {str(e)}")
+        logger.error(traceback.format_exc())
         return []
     finally:
         if conn:
             conn.close()
-
+            
 def get_index_time_series(index_name, num_months=24):
     """
     Get time series data for a specific index.
@@ -601,54 +635,80 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             )
         )
 
-        # Process pmi_indices data
+        # Process indices data - MODIFIED: prioritize indices field
         indices_data = {}
-
-        # Try to extract from structured index_summaries if available
-        index_summaries = extracted_data.get('index_summaries', {})
-        for index_name, summary in index_summaries.items():
-            # Try to extract numeric value and direction from the summary
-            try:
-                # Pattern for values like "PMI® registered 50.9 percent in January"
-                import re
-                value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
-                value_match = re.search(value_pattern, summary, re.IGNORECASE)
-                
-                direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
-                direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
-                
-                if value_match:
-                    value = float(value_match.group(1))
-                    direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
-                    
-                    # Standardize direction terms
-                    if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
-                        direction = 'Growing'
-                    elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
-                        direction = 'Contracting'
-                    elif direction.lower() == 'slower':
-                        direction = 'Slowing'
-                    elif direction.lower() == 'faster':
-                        direction = 'Faster'
-                    
-                    indices_data[index_name] = {
-                        'value': value,
-                        'direction': direction
-                    }
-            except Exception as e:
-                logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
         
-        # Try pmi_data from direct source if above method didn't work
-        if not indices_data and 'pmi_data' in extracted_data:
-            indices_data = extracted_data['pmi_data']
-        
-        # Also try indices directly
-        if not indices_data and 'indices' in extracted_data:
+        # First, try to get indices directly from the extracted data
+        if 'indices' in extracted_data and extracted_data['indices']:
             indices_data = extracted_data['indices']
+            logger.info(f"Using indices directly - found {len(indices_data)} indices")
         
-        # Insert pmi_indices data
+        # If not available, try pmi_data
+        elif 'pmi_data' in extracted_data and extracted_data['pmi_data']:
+            indices_data = extracted_data['pmi_data']
+            logger.info(f"Using pmi_data - found {len(indices_data)} indices")
+            
+        # Last resort: try to extract from index_summaries
+        elif 'index_summaries' in extracted_data and extracted_data['index_summaries']:
+            logger.info("Trying to extract indices from index_summaries")
+            index_summaries = extracted_data['index_summaries']
+            
+            for index_name, summary in index_summaries.items():
+                try:
+                    # Pattern for values like "PMI® registered 50.9 percent in January"
+                    import re
+                    value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
+                    value_match = re.search(value_pattern, summary, re.IGNORECASE)
+                    
+                    direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
+                    direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
+                    
+                    if value_match:
+                        value = float(value_match.group(1))
+                        direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
+                        
+                        # Standardize direction terms
+                        direction = standardize_direction(direction)
+                        
+                        indices_data[index_name] = {
+                            'value': value,
+                            'direction': direction
+                        }
+                except Exception as e:
+                    logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
+        
+        # Insert indices data with improved error handling
         for index_name, data in indices_data.items():
             try:
+                # Extract index value with improved handling for different field names
+                index_value = None
+                if 'value' in data:
+                    index_value = data['value']
+                elif 'current' in data:
+                    index_value = data['current']
+                
+                # Ensure value is a float
+                if index_value is not None:
+                    try:
+                        if isinstance(index_value, str):
+                            index_value = float(index_value)
+                        else:
+                            index_value = float(index_value)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid index value '{index_value}' for {index_name}, using 0.0")
+                        index_value = 0.0
+                else:
+                    logger.warning(f"No valid index value for {index_name}, using 0.0")
+                    index_value = 0.0
+                
+                # Extract direction with improved handling
+                direction = data.get('direction', 'Unknown')
+                if not direction or not isinstance(direction, str):
+                    direction = 'Unknown'
+                    
+                # Standardize direction
+                direction = standardize_direction(direction)
+                
                 cursor.execute(
                     """
                     INSERT OR REPLACE INTO pmi_indices
@@ -658,10 +718,11 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                     (
                         report_date.isoformat(),
                         index_name,
-                        data.get('value', data.get('current', 0.0)),
-                        data.get('direction', 'Unknown')
+                        index_value,
+                        direction
                     )
                 )
+                logger.info(f"Inserted index data for {index_name}: {index_value} ({direction})")
             except Exception as e:
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
         
@@ -687,7 +748,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                         continue
                         
                     # Clean industry name
-                    industry = industry.strip()
+                    industry = clean_industry_name(industry)
                     if not industry:
                         continue
                         
@@ -736,6 +797,77 @@ def standardize_direction(direction):
     elif direction == 'faster':
         return 'Faster'
     return direction  # if None of the above apply
+
+def clean_industry_name(industry):
+    """Clean industry name to remove common artifacts."""
+    if not industry or not isinstance(industry, str):
+        return None
+
+    # Remove leading/trailing whitespace
+    industry = industry.strip()
+
+    # Skip parsing artifacts
+    artifacts = [
+        "following order",
+        "are:",
+        "in order",
+        "listed in order",
+        "in the following order",
+        "reporting",
+        "november", # also remove this artifact
+        "categories"
+    ]
+
+    industry_lower = industry.lower()
+    for artifact in artifacts:
+        if artifact in industry_lower:
+            return None
+
+    # Remove common prefixes and suffixes
+    industry = re.sub(r"^(the\s+|and\s+|november\s+|order\s+)", "", industry, flags=re.IGNORECASE)
+    industry = re.sub(r"(\s+products)$", "", industry, flags=re.IGNORECASE)
+    
+    # Normalize whitespace
+    industry = re.sub(r'\s+', ' ', industry).strip()  # remove multi-space
+
+    # Remove any parsing leftovers at the beginning, like stray letters/symbols
+    industry = re.sub(r"^[s]\s+", "", industry, flags=re.IGNORECASE) # s
+    industry = re.sub(r"^[-—]\s+", "", industry, flags=re.IGNORECASE) # dashes
+    industry = re.sub(r"^[a-z]\s+", "", industry, flags=re.IGNORECASE) # stray letters
+    
+    # Remove number + character
+    industry = re.sub(r"^\d+[a-zA-Z]", "", industry, flags=re.IGNORECASE)
+     # Fix "andPrimary Metals" issue
+    industry = re.sub(r"andprimarymetals", "Primary Metals", industry, flags=re.IGNORECASE)
+    industry = re.sub(r"AndPrimary", "Primary", industry, flags=re.IGNORECASE)
+
+    # Skip if starts with punctuation
+    if re.match(r'^[,;:.]+', industry):
+        return None
+
+    # Skip if too short
+    if len(industry) < 3:
+        return None
+    
+    return industry
+
+def standardize_direction(direction):
+    """Standardize direction terms."""
+    if not direction or not isinstance(direction, str):
+        return 'Unknown'
+        
+    direction = direction.lower()
+    if direction in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+        return 'Growing'
+    elif direction in ['contracting', 'contraction', 'declining', 'decreasing']:
+        return 'Contracting'
+    elif direction in ['slower', 'slowing']:
+        return 'Slowing'
+    elif direction in ['faster']:
+        return 'Faster'
+    
+    # Convert first letter to uppercase for other directions
+    return direction.capitalize()
 
 def clean_industry_name(industry):
     """Clean industry name to remove common artifacts."""
