@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 DATABASE_NAME = 'ism_data.db'
 
+# Constants for indices
+MANUFACTURING_PMI_INDEX = "Manufacturing PMI"
+SERVICES_PMI_INDEX = "Services PMI"
+
 # --- CORRECTED Path Determination ---
 # Check if running in Railway by looking for the volume mount path env var
 railway_volume_path = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
@@ -210,7 +214,9 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
     """
     try:
         if not date_str or date_str == "Unknown":
-            return None
+            # Return current date instead of None when unknown
+            today = datetime.date.today()
+            return datetime.date(today.year, today.month, 1)
         
         # Normalize case
         date_str = date_str.strip()

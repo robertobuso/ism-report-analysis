@@ -952,7 +952,7 @@ def extract_pmi_values_from_summaries(index_summaries):
     
     return pmi_data
 
-def parse_ism_report(pdf_path):
+def parse_ism_report(pdf_path, report_type=None):
     """Parse an ISM manufacturing report and extract key data using LLM."""
     try:
         # Extract text from PDF only for basic metadata
@@ -992,7 +992,7 @@ def parse_ism_report(pdf_path):
         extraction_tool = SimplePDFExtractionTool()
 
         # Call LLM extraction
-        llm_result = extraction_tool._extract_manufacturing_data_with_llm(pdf_path, month_year)
+        llm_result = extraction_tool._extract_data_with_llm(pdf_path, month_year)
         
         # Create result with proper structure
         result = {
@@ -1002,11 +1002,15 @@ def parse_ism_report(pdf_path):
             "industry_data": llm_result.get('industry_data', {}),
             "pmi_data": llm_result.get('indices', {})
         }
+
+        # Use report_type if provided
+        if report_type:
+            result["report_type"] = report_type
             
-        # Store data in database as-is
+        # Store data in database with report_type
         from db_utils import store_report_data_in_db
         try:
-            store_result = store_report_data_in_db(result, pdf_path)
+            store_result = store_report_data_in_db(result, pdf_path, report_type or "Manufacturing")
             if store_result:
                 logger.info(f"Successfully stored data from {pdf_path} in database")
             else:
@@ -1020,13 +1024,14 @@ def parse_ism_report(pdf_path):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
     
-def store_report_data_in_db(extracted_data, pdf_path):
+def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing"):
     """
     Store the extracted report data in the SQLite database.
     
     Args:
         extracted_data: Dictionary containing the extracted report data
         pdf_path: Path to the PDF file
+        report_type: Type of report (Manufacturing or Services)
         
     Returns:
         bool: True if successful, False otherwise
@@ -1052,18 +1057,19 @@ def store_report_data_in_db(extracted_data, pdf_path):
             logger.error(f"Could not parse date from '{month_year}' for {pdf_path}")
             return False
             
-        # Insert into reports table
+        # Insert into reports table with report_type
         cursor.execute(
             """
             INSERT OR REPLACE INTO reports
-            (report_date, file_path, processing_date, month_year)
-            VALUES (?, ?, ?, ?)
+            (report_date, file_path, processing_date, month_year, report_type)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 report_date.isoformat(),
                 pdf_path,
                 datetime.now().isoformat(),
-                month_year
+                month_year,
+                report_type
             )
         )
         

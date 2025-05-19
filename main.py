@@ -181,6 +181,29 @@ def extract_from_crew_output(crew_output):
         if isinstance(crew_output, dict):
             return crew_output
             
+        # If it's None, return a default structure
+        if crew_output is None:
+            logger.warning("CrewOutput is None, returning default structure")
+            return {
+                "month_year": "Unknown",
+                "report_type": "Manufacturing",
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {}
+            }
+        
+        # Handle the case where the agent responded with an error message
+        str_output = str(crew_output)
+        if "I tried reusing the same input" in str_output:
+            logger.warning("Agent reported input reuse error, providing fallback structure")
+            return {
+                "month_year": "Unknown",
+                "report_type": "Manufacturing",
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {}
+            }
+            
         # Try to access common attributes that might contain the output
         attributes_to_check = ['result', 'raw_output', 'content', 'output', 'final_answer']
         
@@ -356,6 +379,7 @@ def extract_from_crew_output(crew_output):
         # Return a minimal valid structure as a last resort
         return {
             "month_year": "Unknown",
+            "report_type": "Manufacturing",
             "manufacturing_table": "",
             "index_summaries": {},
             "industry_data": {}
@@ -366,6 +390,7 @@ def extract_from_crew_output(crew_output):
         # Return a minimal valid structure
         return {
             "month_year": "Unknown",
+            "report_type": "Manufacturing",
             "manufacturing_table": "",
             "index_summaries": {},
             "industry_data": {}

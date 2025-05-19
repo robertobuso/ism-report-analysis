@@ -60,64 +60,125 @@ class SimplePDFExtractionTool(BaseTool):
         if openai_api_key:
             openai.api_key = openai_api_key
 
-    def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Implementation of the required abstract _run method.
+        Enhanced implementation of the _run method to handle various input formats.
         This extracts ISM data using our enhanced framework.
         """
         try:
+            # Better logging of input for debugging
+            logger.info(f"SimplePDFExtractionTool received input of type {type(input_data)}")
+
+            report_type = self._standardize_report_type(input_data['extracted_data'].get('report_type', "Manufacturing"))
+            
+            # Handle string input (potential JSON)
+            if isinstance(input_data, str):
+                try:
+                    import json
+                    input_data = json.loads(input_data)
+                    logger.info("Successfully parsed JSON string input")
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse JSON input: {input_data[:100]}...")
+                    # Create a bare minimum structure to work with
+                    pdf_path = input_data if '.pdf' in input_data else None
+                    if pdf_path:
+                        logger.info(f"Extracted potential PDF path from string: {pdf_path}")
+                        input_data = {'pdf_path': pdf_path}
+                    else:
+                        logger.error("Could not extract PDF path from string input")
+                        return {
+                            "month_year": "Unknown",
+                            "report_type": "Manufacturing",
+                            "indices": {},
+                            "industry_data": {},
+                            "index_summaries": {}
+                        }
+            
+            # Special handling for CrewAI tool input format
+            if isinstance(input_data, dict) and 'tool_input' in input_data:
+                logger.info("Detected CrewAI tool input format")
+                try:
+                    tool_input = input_data['tool_input']
+                    if isinstance(tool_input, str):
+                        import json
+                        tool_input = json.loads(tool_input)
+                    if 'extracted_data' in tool_input:
+                        input_data = tool_input
+                        logger.info("Successfully extracted data from CrewAI tool input")
+                except Exception as e:
+                    logger.error(f"Error parsing CrewAI tool input: {str(e)}")
+            
             # Extract PDF path from input
-            if isinstance(extracted_data, dict) and 'pdf_path' in extracted_data and not any(k for k in extracted_data if k != 'pdf_path'):
-                # Wrap it in the expected format
-                extracted_data = {'extracted_data': extracted_data}
+            pdf_path = None
+            
+            # Try different input formats to find the PDF path
+            if isinstance(input_data, dict):
+                # Direct path in root
+                if 'pdf_path' in input_data:
+                    pdf_path = input_data['pdf_path']
+                    report_type = input_data.get('report_type', "Manufacturing")
+                    logger.info(f"Found PDF path in root of input dict: {pdf_path}")
+                # Path in extracted_data
+                elif 'extracted_data' in input_data and isinstance(input_data['extracted_data'], dict):
+                    if 'pdf_path' in input_data['extracted_data']:
+                        pdf_path = input_data['extracted_data']['pdf_path']
+                        report_type = input_data['extracted_data'].get('report_type', "Manufacturing")
+                        logger.info(f"Found PDF path in extracted_data: {pdf_path}")
+            
+            # Return error response if no PDF path found
+            if not pdf_path:
+                logger.error("No PDF path found in input data")
+                return {
+                    "month_year": "Unknown",
+                    "report_type": "Manufacturing",
+                    "indices": {},
+                    "industry_data": {},
+                    "index_summaries": {}
+                }
+            
+            logger.info(f"Extracting data from PDF: {pdf_path} (report type: {report_type})")
                 
-            # Now extract from the correct field
-            if 'extracted_data' in extracted_data and isinstance(extracted_data['extracted_data'], dict) and 'pdf_path' in extracted_data['extracted_data']:
-                pdf_path = extracted_data['extracted_data']['pdf_path']
-                report_type = extracted_data['extracted_data'].get('report_type')
-                logger.info(f"Extracting data from PDF: {pdf_path}")
+            # Step 1: Detect report type if not specified
+            if not report_type:
+                try:
+                    # Use enhanced detection
+                    report_type = EnhancedReportTypeDetector.detect_report_type(pdf_path)
+                except ImportError:
+                    # Fallback to ReportTypeFactory
+                    from report_handlers import ReportTypeFactory
+                    report_type = ReportTypeFactory.detect_report_type(pdf_path)
                 
-                # Step 1: Detect report type if not specified
-                if not report_type:
-                    try:
-                        # Use enhanced detection
-                        report_type = EnhancedReportTypeDetector.detect_report_type(pdf_path)
-                    except ImportError:
-                        # Fallback to ReportTypeFactory
-                        from report_handlers import ReportTypeFactory
-                        report_type = ReportTypeFactory.detect_report_type(pdf_path)
-                    
-                    logger.info(f"Detected report type: {report_type}")
-                
-                # Step 2: Create appropriate report handler
-                from report_handlers import ReportTypeFactory
-                handler = ReportTypeFactory.create_handler(report_type, pdf_path)
-                
-                # Step 3: Extract text from PDF
-                from pdf_utils import extract_text_from_pdf
-                text = extract_text_from_pdf(pdf_path)
-                
-                if not text:
-                    logger.error(f"Failed to extract text from {pdf_path}")
-                    return {
-                        "month_year": "Unknown",
-                        "report_type": report_type,
-                        "indices": {},
-                        "industry_data": {},
-                        "index_summaries": {}
-                    }
-                
-                # Step 4: Extract data using appropriate strategies
-                extracted_data = handler.extract_data_from_text(text, pdf_path)
-                
-                # Step 5: Validate and transform the extracted data
-                from data_validation import DataTransformationPipeline
-                validated_data = DataTransformationPipeline.process(extracted_data, report_type)
-                
-                # Step 6: Return the validated data
-                logger.info(f"Successfully extracted and validated data for {report_type} report")
-                return validated_data
-        
+                logger.info(f"Detected report type: {report_type}")
+            
+            # Step 2: Create appropriate report handler
+            from report_handlers import ReportTypeFactory
+            handler = ReportTypeFactory.create_handler(report_type, pdf_path)
+            
+            # Step 3: Extract text from PDF
+            from pdf_utils import extract_text_from_pdf
+            text = extract_text_from_pdf(pdf_path)
+            
+            if not text:
+                logger.error(f"Failed to extract text from {pdf_path}")
+                return {
+                    "month_year": "Unknown",
+                    "report_type": report_type,
+                    "indices": {},
+                    "industry_data": {},
+                    "index_summaries": {}
+                }
+            
+            # Step 4: Extract data using appropriate strategies
+            extracted_data = handler.extract_data_from_text(text, pdf_path)
+            
+            # Step 5: Validate and transform the extracted data
+            from data_validation import DataTransformationPipeline
+            validated_data = DataTransformationPipeline.process(extracted_data, report_type)
+            
+            # Step 6: Return the validated data
+            logger.info(f"Successfully extracted and validated data for {report_type} report")
+            return validated_data
+    
         except Exception as e:
             logger.error(f"Error in data extraction: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -130,9 +191,14 @@ class SimplePDFExtractionTool(BaseTool):
                 "index_summaries": {}
             }
         
-    def _extract_data_with_llm(self, pdf_path, month_year, handler, report_type=None):
+    def _extract_data_with_llm(self, pdf_path, month_year, handler=None, report_type=None):
         """Extract data from PDF using LLM with the appropriate report handler."""
         try:
+            # Create handler if not provided
+            if handler is None:
+                from report_handlers import ReportTypeFactory
+                handler = ReportTypeFactory.create_handler("Manufacturing", pdf_path)
+            
             logger.info(f"Extracting data from PDF: {pdf_path} with handler: {handler.__class__.__name__}")
             
             # Get report type from handler if not provided
@@ -304,6 +370,43 @@ class SimplePDFExtractionTool(BaseTool):
             logger.error(traceback.format_exc())
             return {"month_year": month_year, "indices": {}, "industry_data": {}}
         
+    def _extract_manufacturing_data_with_llm(self, pdf_path, month_year):
+        """
+        Alias for _extract_data_with_llm for backward compatibility.
+        
+        Args:
+            pdf_path: Path to the PDF file
+            month_year: Month and year of the report
+            
+        Returns:
+            Dictionary containing extracted data
+        """
+        logger.info(f"Called _extract_manufacturing_data_with_llm, forwarding to _extract_data_with_llm")
+        return self._extract_data_with_llm(pdf_path, month_year)
+        
+    def _standardize_report_type(self, report_type):
+        """
+        Standardize the report type string.
+        
+        Args:
+            report_type: The report type string to standardize
+            
+        Returns:
+            Standardized report type string
+        """
+        if not report_type:
+            return "Manufacturing"  # Default
+            
+        report_type = report_type.strip()
+        
+        # Convert to title case and handle variations
+        if report_type.lower() in ["manufacturing", "mfg", "man", "manufacturing pmi"]:
+            return "Manufacturing"
+        elif report_type.lower() in ["services", "svc", "service", "services pmi", "non-manufacturing"]:
+            return "Services"
+        else:
+            return "Manufacturing"  # Default to Manufacturing if unknown
+
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")
     description: str = Field(
@@ -2746,6 +2849,11 @@ class GoogleSheetsFormatterTool(BaseTool):
             Boolean indicating success
         """
         try:
+            # Add null check to prevent NoneType error
+            if not monthly_data:
+                logger.warning("No monthly data provided for heatmap update")
+                return False
+                
             tab_name = 'PMI Heatmap Summary'
             tab_id = self._get_all_sheet_ids(service, sheet_id).get(tab_name)
             
