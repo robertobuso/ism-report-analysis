@@ -60,162 +60,370 @@ class SimplePDFExtractionTool(BaseTool):
         if openai_api_key:
             openai.api_key = openai_api_key
 
-    def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Implementation of the required abstract _run method.
-        This structures the extracted ISM data.
+        Extract data from ISM Manufacturing Report PDF.
+        
+        Args:
+            input_data: Dictionary containing the PDF path or other extraction parameters
+            
+        Returns:
+            Dictionary with extracted data including month_year, manufacturing_table, 
+            index_summaries, and industry_data
         """
         try:
-            logger.info("Data Structurer Tool received input")
+            # Normalize input to get the PDF path
+            normalized_input = self._normalize_input(input_data)
+            pdf_path = normalized_input.get('pdf_path')
             
-            # Ensure extracted_data has the minimum required structure
-            if not extracted_data:
-                extracted_data = {}
+            if not pdf_path:
+                logger.error("No PDF path provided")
+                return {"month_year": "Unknown", "indices": {}, "industry_data": {}}
             
-            # Get month and year
-            month_year = extracted_data.get("month_year", "Unknown")
-            logger.info(f"Structuring data for {month_year}")
+            # Detect report type
+            try:
+                from report_handlers import ReportTypeFactory
+                report_type = ReportTypeFactory.detect_report_type(pdf_path)
+                logger.info(f"Detected report type: {report_type}")
+            except Exception as e:
+                logger.warning(f"Error detecting report type: {str(e)}, using default 'Manufacturing'")
+                report_type = "Manufacturing"
             
-            # Ensure required keys exist to prevent downstream errors
-            required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
-            for key in required_keys:
-                if key not in extracted_data:
-                    if key == "month_year":
-                        extracted_data[key] = month_year
-                    elif key == "manufacturing_table":
-                        extracted_data[key] = ""
-                    else:
-                        extracted_data[key] = {}
+            # Extract month and year from filename if possible
+            month_year = "Unknown"
+            filename = os.path.basename(pdf_path)
+            import re
+            match = re.search(r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*[-_\s]?(\d{2,4})', filename, re.IGNORECASE)
+            if match:
+                month_map = {
+                    'jan': 'January', 'feb': 'February', 'mar': 'March', 'apr': 'April',
+                    'may': 'May', 'jun': 'June', 'jul': 'July', 'aug': 'August',
+                    'sep': 'September', 'oct': 'October', 'nov': 'November', 'dec': 'December'
+                }
+                month = month_map.get(match.group(1).lower()[:3], 'Unknown')
+                year = match.group(2)
+                if len(year) == 2:
+                    year = f"20{year}"
+                month_year = f"{month} {year}"
             
-            # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
-            if not extracted_data.get("industry_data") and "corrected_industry_data" in extracted_data:
-                extracted_data["industry_data"] = extracted_data["corrected_industry_data"]
-                logger.info("Using corrected_industry_data as industry_data")
+            logger.info(f"Initial month_year from filename: {month_year}")
+            
+            # Extract text from ALL pages
+            extracted_text = ""
+            try:
+                with pdfplumber.open(pdf_path) as pdf:
+                    page_count = len(pdf.pages)
+                    logger.info(f"Extracting all {page_count} pages from PDF")
+                    
+                    for i in range(page_count):
+                        page_text = pdf.pages[i].extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n\n"
+            except Exception as e:
+                logger.warning(f"Error extracting text with pdfplumber: {str(e)}")
+                # Fallback to PyPDF2
+                try:
+                    from PyPDF2 import PdfReader
+                    reader = PdfReader(pdf_path)
+                    page_count = len(reader.pages)
+                    logger.info(f"Fallback: Extracting all {page_count} pages with PyPDF2")
+                    
+                    for i in range(page_count):
+                        page_text = reader.pages[i].extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n\n"
+                except Exception as e2:
+                    logger.error(f"Both PDF extraction methods failed: {str(e2)}")
+            
+            # Check if we have enough text
+            if len(extracted_text) < 500:
+                logger.warning(f"Extracted text is too short ({len(extracted_text)} chars)")
+                return {"month_year": month_year, "indices": {}, "industry_data": {}}
                 
-            # Get industry data - check all possible locations
-            industry_data = None
+            logger.info(f"Successfully extracted {len(extracted_text)} chars from full PDF")
             
-            # First try getting industry_data directly
-            if "industry_data" in extracted_data and extracted_data["industry_data"]:
-                industry_data = extracted_data["industry_data"]
-                logger.info("Using industry_data from extraction")
-                    
-            # If not available, check for corrected_industry_data
-            elif "corrected_industry_data" in extracted_data and extracted_data["corrected_industry_data"]:
-                industry_data = extracted_data["corrected_industry_data"]
-                logger.info("Using corrected_industry_data")
-                    
-            # If still not available, look inside "manufacturing_table" which may have the industry data
-            elif "manufacturing_table" in extracted_data and isinstance(extracted_data["manufacturing_table"], dict):
-                # The data verification specialist might put industry data in manufacturing_table
-                if any(k in ISM_INDICES for k in extracted_data["manufacturing_table"].keys()):
-                    industry_data = extracted_data["manufacturing_table"]
-                    logger.info("Using industry data from manufacturing_table")
+            # Try to parse month_year from extracted text if not already determined
+            if month_year == "Unknown":
+                try:
+                    from pdf_utils import extract_month_year
+                    text_month_year = extract_month_year(extracted_text)
+                    if text_month_year:
+                        month_year = text_month_year
+                        logger.info(f"Extracted month_year from text: {month_year}")
+                except Exception as e:
+                    logger.warning(f"Failed to extract month_year from text: {str(e)}")
             
-            # If we still don't have industry data, try a last resort extraction
-            if not industry_data or all(not industries for categories in industry_data.values() for industries in categories.values()):
-                logger.warning("Industry data is empty or contains no entries, attempting to re-extract from summaries")
-                    
-                if "index_summaries" in extracted_data and extracted_data["index_summaries"]:
-                    try:
-                        from pdf_utils import extract_industry_mentions
-                        industry_data = extract_industry_mentions("", extracted_data["index_summaries"])
-                        logger.info("Re-extracted industry data from summaries")
-                    except Exception as e:
-                        logger.error(f"Error re-extracting industry data: {str(e)}")
-                
-                # If still no valid industry data, check if there was a verification result
-                if not industry_data and hasattr(extracted_data, 'get') and callable(extracted_data.get):
-                    verification_result = extracted_data.get('verification_result', None)
-                    if verification_result and 'corrected_industry_data' in verification_result:
-                        industry_data = verification_result['corrected_industry_data']
-                        logger.info("Using industry data from verification result")
+            # Construct the prompt based on report type
+            if report_type == "Manufacturing":
+                prompt_title = "Manufacturing"
+                table_name = "Manufacturing at a Glance"
+            else:
+                prompt_title = "Services"
+                table_name = "Services at a Glance"
             
-            # Structure data for each index
-            structured_data = {}
-            
-            # Ensure we have entries for all expected indices
-            for index in ISM_INDICES:
-                # Get categories for this index if available
-                categories = {}
-                if industry_data and index in industry_data:
-                    categories = industry_data[index]
-                
-                # Clean up the categories but preserve order
-                cleaned_categories = {}
-                
-                # Process each category
-                for category_name, industries in categories.items():
-                    cleaned_industries = []
-                    
-                    # Clean up each industry name in the list
-                    for industry in industries:
-                        if not industry or not isinstance(industry, str):
-                            continue
-                            
-                        # Skip parsing artifacts and invalid entries
-                        if ("following order" in industry.lower() or 
-                            "are:" in industry.lower() or 
-                            industry.startswith(',') or 
-                            industry.startswith(':') or 
-                            len(industry.strip()) < 3):
-                            continue
-                            
-                        # Clean up the industry name
-                        industry = industry.strip()
-                        
-                        # Add to cleaned list if not already there
-                        if industry not in cleaned_industries:
-                            cleaned_industries.append(industry)
-                    
-                    # DEFINE category_count BEFORE USING IT - ADD THIS LINE
-                    category_count = len(cleaned_industries)  
-                    
-                    # Only add categories that actually have industries
-                    if cleaned_industries:
-                        actual_count = min(category_count, len(cleaned_industries))
-                        cleaned_categories[category_name] = cleaned_industries[:actual_count]
+            # Construct the prompt WITHOUT using nested f-strings
+            prompt = f"""
+            I need you to analyze this ISM {prompt_title} Report PDF and extract both the "{table_name}" table data AND industry classification data.
 
-                    if not cleaned_industries:
-                        logger.warning(f"No cleaned industries for {category_name}, using empty list")
-                        cleaned_categories[category_name] = []
-                        continue  
+            PART 1: {table_name} Table
+            Extract and return these data points:
+            - Month and Year of the report (should be {month_year})
+            - {prompt_title} PMI value and status (Growing/Contracting) 
+            - New Orders value and status
+            - Production value and status (or Business Activity for Services)
+            - Employment value and status
+            - Supplier Deliveries value and status
+            - Inventories value and status
+            - Customers' Inventories value and status (or Inventory Sentiment for Services)
+            - Prices value and status
+            - Backlog of Orders value and status
+            - New Export Orders value and status
+            - Imports value and status
+            - Overall Economy status
+            - {prompt_title} Sector status
+
+            PART 2: Industry Data Classification
+            For each of the following indices, identify industries that are classified as growing/expanding or contracting/declining:
+
+            1. New Orders:
+            - Growing: List all industries mentioned as reporting growth, expansion, or increases
+            - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+            2. {'Business Activity' if report_type == 'Services' else 'Production'}:
+            - Growing: List all industries mentioned as reporting growth, expansion, or increases 
+            - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+            3. Employment:
+            - Growing: List all industries mentioned as reporting growth, expansion, or increases
+            - Declining: List all industries mentioned as reporting contraction, decline, or decreases
+
+            4. Supplier Deliveries:
+            - Slower: List all industries mentioned as reporting slower deliveries
+            - Faster: List all industries mentioned as reporting faster deliveries
+
+            5. Inventories:
+            - Higher: List all industries mentioned as reporting higher inventories
+            - Lower: List all industries mentioned as reporting lower inventories
+
+            6. {'Inventory Sentiment' if report_type == 'Services' else "Customers' Inventories"}:
+            - Too High: List all industries mentioned as reporting {'inventory sentiment' if report_type == 'Services' else "customers' inventories"} as too high
+            - Too Low: List all industries mentioned as reporting {'inventory sentiment' if report_type == 'Services' else "customers' inventories"} as too low
+
+            7. Prices:
+            - Increasing: List all industries mentioned as reporting price increases
+            - Decreasing: List all industries mentioned as reporting price decreases
+
+            8. Backlog of Orders:
+            - Growing: List all industries mentioned as reporting growth or increases in backlogs
+            - Declining: List all industries mentioned as reporting contraction or decreases in backlogs
+
+            9. New Export Orders:
+            - Growing: List all industries mentioned as reporting growth in export orders
+            - Declining: List all industries mentioned as reporting decline in export orders
+
+            10. Imports:
+                - Growing: List all industries mentioned as reporting growth in imports
+                - Declining: List all industries mentioned as reporting decline in imports
+
+            Return ONLY a JSON object in this format:
+            {{
+                "month_year": "Month Year",
+                "indices": {{
+                    "{prompt_title} PMI": {{"current": "48.4", "direction": "Contracting"}},
+                    "New Orders": {{"current": "50.4", "direction": "Growing"}},
+                    ...and so on for all indices,
+                    "OVERALL ECONOMY": {{"direction": "Growing"}},
+                    "{prompt_title} Sector": {{"direction": "Contracting"}}
+                }},
+                "industry_data": {{
+                    "New Orders": {{
+                        "Growing": ["Industry1", "Industry2", ...],
+                        "Declining": ["Industry3", "Industry4", ...]
+                    }},
+                    "{'Business Activity' if report_type == 'Services' else 'Production'}": {{
+                        "Growing": [...],
+                        "Declining": [...]
+                    }},
+                    ...and so on for all indices
+                }},
+                "index_summaries": {{
+                    "New Orders": "full text of New Orders section...",
+                    "{'Business Activity' if report_type == 'Services' else 'Production'}": "full text of Production section...",
+                    ...and so on for all indices with their full text summaries
+                }}
+            }}
+
+            Here is the extracted text from the PDF:
+            {extracted_text[:80000]}  # Limit text length to 80,000 chars to avoid token limits
+            """
+            
+            # Call OpenAI API with robust error handling and retries
+            max_retries = 3
+            retry_delay = 2  # seconds
+            
+            for retry_count in range(max_retries):
+                try:
+                    # Use openai client
+                    client = openai.OpenAI()
+                    response = client.chat.completions.create(
+                        model="gpt-4o",  # Using gpt-4o
+                        messages=[
+                            {"role": "system", "content": "You are a data extraction specialist that returns only valid JSON."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.0  # Low temperature for deterministic output
+                    )
                     
-                # If no data for this index, create empty categories
-                if not cleaned_categories and index in INDEX_CATEGORIES:
-                    cleaned_categories = {category: [] for category in INDEX_CATEGORIES[index]}
+                    # Get the response text
+                    response_text = response.choices[0].message.content
+                    logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                    
+                    # Try to parse the JSON
+                    try:
+                        # Clean up the response to extract just the JSON part
+                        json_text = response_text
+                        
+                        # If it has markdown code blocks, extract just the JSON
+                        if "```json" in response_text:
+                            json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group(1)
+                        elif "```" in response_text:
+                            # Try to extract from any code block
+                            json_match = re.search(r'```\n?(.*?)\n?```', response_text, re.DOTALL)
+                            if json_match:
+                                json_text = json_match.group(1)
+                        
+                        # Try to parse as JSON
+                        json_data = json.loads(json_text)
+                        
+                        # Validate the required fields exist
+                        if "month_year" not in json_data:
+                            json_data["month_year"] = month_year
+                            
+                        if "indices" not in json_data:
+                            logger.warning("JSON is missing indices field")
+                            json_data["indices"] = {}
+                            
+                        if "industry_data" not in json_data:
+                            logger.warning("JSON is missing industry_data field")
+                            json_data["industry_data"] = {}
+                            
+                        if "index_summaries" not in json_data:
+                            logger.warning("JSON is missing index_summaries field")
+                            json_data["index_summaries"] = {}
+                        
+                        # Add report_type to the data
+                        json_data["report_type"] = report_type
+                        
+                        # Try to extract PMI values from summaries if they're not in indices
+                        if json_data["index_summaries"] and not json_data["indices"]:
+                            try:
+                                from pdf_utils import extract_pmi_values_from_summaries
+                                pmi_data = extract_pmi_values_from_summaries(json_data["index_summaries"])
+                                json_data["indices"] = pmi_data
+                                logger.info(f"Extracted PMI values from summaries: {len(pmi_data)} indices")
+                            except Exception as e:
+                                logger.warning(f"Failed to extract PMI values from summaries: {str(e)}")
+                        
+                        # If we still don't have any indices, try using the pdf_utils extractor
+                        if not json_data["indices"]:
+                            try:
+                                from pdf_utils import extract_manufacturing_at_a_glance
+                                table_text = extract_manufacturing_at_a_glance(extracted_text)
+                                if table_text:
+                                    # Include the extracted table text
+                                    json_data["manufacturing_table"] = table_text
+                                    logger.info(f"Extracted table text: {len(table_text)} chars")
+                                    
+                                    # Try to extract values from the table text
+                                    from pdf_utils import extract_pmi_values_from_summaries
+                                    pmi_data = extract_pmi_values_from_summaries({"Table": table_text})
+                                    if pmi_data:
+                                        json_data["indices"] = pmi_data
+                                        logger.info(f"Extracted PMI values from table: {len(pmi_data)} indices")
+                            except Exception as e:
+                                logger.warning(f"Failed to extract table: {str(e)}")
+                        
+                        # If we have extracted industry data but no index summaries, try to extract them
+                        if json_data["industry_data"] and not json_data["index_summaries"]:
+                            try:
+                                from pdf_utils import extract_index_summaries
+                                index_summaries = extract_index_summaries(extracted_text)
+                                if index_summaries:
+                                    json_data["index_summaries"] = index_summaries
+                                    logger.info(f"Extracted index summaries: {len(index_summaries)} indices")
+                            except Exception as e:
+                                logger.warning(f"Failed to extract index summaries: {str(e)}")
+                        
+                        # Success! Return the parsed JSON
+                        return json_data
+                        
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse JSON on retry {retry_count}: {str(e)}")
+                        # If on last retry, create a fallback response
+                        if retry_count == max_retries - 1:
+                            # Try to salvage the month_year from the response text
+                            month_year_match = re.search(r'"month_year":\s*"([^"]+)"', response_text)
+                            if month_year_match:
+                                month_year = month_year_match.group(1)
+                                
+                            # Create minimal valid structure for returning
+                            return {
+                                "month_year": month_year, 
+                                "indices": {}, 
+                                "industry_data": {},
+                                "index_summaries": {},
+                                "report_type": report_type
+                            }
+                        continue
                 
-                # Add to structured_data
-                structured_data[index] = {
-                    "month_year": month_year,
-                    "categories": cleaned_categories
-                }
+                except Exception as e:
+                    logger.warning(f"API request failed on retry {retry_count}: {str(e)}")
+                    
+                    # If it's not the last retry, wait and try again
+                    if retry_count < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay * (retry_count + 1))  # Exponential backoff
+                    else:
+                        logger.error(f"All API retries failed: {str(e)}")
+            
+            # If we get here, all retries failed
+            logger.error("All extraction attempts failed")
+            
+            # Create a fallback response using direct PDF parsing
+            try:
+                logger.info("Attempting direct PDF parsing as fallback")
+                from pdf_utils import parse_ism_report
+                direct_data = parse_ism_report(pdf_path, report_type)
+                if direct_data:
+                    logger.info("Successfully parsed PDF directly")
+                    return direct_data
+            except Exception as e:
+                logger.error(f"Direct PDF parsing failed: {str(e)}")
                 
-                # Count industries to log
-                total_industries = sum(len(industries) for industries in cleaned_categories.values())
-                logger.info(f"Structured {index}: {total_industries} industries across {len(cleaned_categories)} categories")
+            # Final fallback with minimal data
+            return {
+                "month_year": month_year, 
+                "indices": {}, 
+                "industry_data": {},
+                "index_summaries": {},
+                "report_type": report_type
+            }
             
-            # Log total industry count
-            total = sum(sum(len(industries) for industries in data["categories"].values()) for data in structured_data.values())
-            logger.info(f"Total industries in structured data: {total}")
-            
-            return structured_data
         except Exception as e:
-            logger.error(f"Error in data structuring: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            # Return minimal valid structure as fallback
-            structured_data = {}
-            for index in ISM_INDICES:
-                categories = {}
-                if index in INDEX_CATEGORIES:
-                    for category in INDEX_CATEGORIES[index]:
-                        categories[category] = []
-                structured_data[index] = {
-                    "month_year": month_year if 'month_year' in locals() else "Unknown",
-                    "categories": categories
-                }
-            return structured_data
-        
+            logger.error(f"Error in PDF extraction: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Final fallback with empty data
+            return {
+                "month_year": "Unknown", 
+                "indices": {}, 
+                "industry_data": {},
+                "index_summaries": {},
+                "report_type": "Manufacturing"
+            }
+    
     def _extract_data_with_llm(self, pdf_path, month_year, handler=None, report_type=None):
         """Extract data from PDF using LLM with the appropriate report handler."""
         try:
