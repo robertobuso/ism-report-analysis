@@ -5,6 +5,7 @@ import traceback
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, Union
 import re
+from extraction_strategy import StrategyRegistry
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -39,6 +40,59 @@ class ReportTypeHandler(ABC):
         except Exception as e:
             logger.error(f"Error loading config from {config_path}: {str(e)}")
             return {}
+    
+    def extract_data_from_text(self, text: str, pdf_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Extract data from report text using appropriate strategies.
+        If the extraction_strategy module is available, use it; otherwise fall back to simpler extraction.
+        
+        Args:
+            text: The extracted text from the report
+            pdf_path: Optional path to the original PDF
+            
+        Returns:
+            Dictionary containing all extracted data
+        """
+        try:
+            # Try to import and use the strategy registry
+            from extraction_strategy import StrategyRegistry
+            
+            result = {}
+            
+            # Get all applicable strategies for this report type
+            report_type = self.__class__.__name__.replace('ReportHandler', '')
+            strategies = StrategyRegistry.get_strategies_for_report_type(report_type)
+            
+            # Apply each strategy
+            for strategy_class in strategies:
+                try:
+                    strategy = strategy_class()
+                    strategy_result = strategy.extract(text, pdf_path)
+                    
+                    # Merge with existing result
+                    for key, value in strategy_result.items():
+                        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                            # Merge dictionaries
+                            result[key].update(value)
+                        else:
+                            # Replace or add the value
+                            result[key] = value
+                except Exception as e:
+                    logger.error(f"Error applying strategy {strategy_class.__name__}: {str(e)}")
+            
+            return result
+        except ImportError:
+            # Fall back to basic extraction
+            logger.warning("Extraction strategy module not available, falling back to basic extraction")
+            
+            result = {
+                "month_year": self.parse_report_month_year(text) or "Unknown",
+                "industry_data": self.extract_industry_data(text, {}),
+                "index_summaries": {},
+                "indices": {}
+            }
+            
+            return result
     
     @abstractmethod
     def get_indices(self) -> List[str]:
@@ -675,7 +729,7 @@ class ReportTypeFactory:
     @staticmethod
     def detect_report_type(pdf_path: str) -> str:
         """
-        Detect the report type based on the content of the PDF.
+        Detect the report type based on the content of the PDF using enhanced detection.
         
         Args:
             pdf_path: Path to the PDF file
@@ -684,45 +738,51 @@ class ReportTypeFactory:
             Report type as a string ('Manufacturing' or 'Services')
         """
         try:
-            from pdf_utils import extract_text_from_pdf
-            text = extract_text_from_pdf(pdf_path)
-            
-            if not text:
-                logger.error(f"Failed to extract text from {pdf_path}")
-                # Default to Manufacturing if text extraction fails
+            from report_detection import EnhancedReportTypeDetector
+            return EnhancedReportTypeDetector.detect_report_type(pdf_path)
+        except ImportError:
+            logger.warning("Enhanced detector not available, falling back to basic detection")
+            # Fall back to basic detection if enhanced detector is not available
+            try:
+                from pdf_utils import extract_text_from_pdf
+                text = extract_text_from_pdf(pdf_path)
+                
+                if not text:
+                    logger.error(f"Failed to extract text from {pdf_path}")
+                    # Default to Manufacturing if text extraction fails
+                    return 'Manufacturing'
+                
+                # Check for Services keywords
+                services_keywords = [
+                    "SERVICES PMI",
+                    "SERVICES ISM",
+                    "SERVICES INDEX",
+                    "NON-MANUFACTURING",
+                    "BUSINESS ACTIVITY"
+                ]
+                
+                # Check for Manufacturing keywords
+                manufacturing_keywords = [
+                    "MANUFACTURING PMI",
+                    "MANUFACTURING ISM",
+                    "MANUFACTURING INDEX",
+                    "PRODUCTION INDEX",
+                    "NEW ORDERS INDEX"
+                ]
+                
+                # Count keyword matches for each type
+                services_matches = sum(1 for keyword in services_keywords if keyword in text.upper())
+                manufacturing_matches = sum(1 for keyword in manufacturing_keywords if keyword in text.upper())
+                
+                # Determine report type based on matches
+                if services_matches > manufacturing_matches:
+                    return 'Services'
+                else:
+                    return 'Manufacturing'
+            except Exception as e:
+                logger.error(f"Error detecting report type: {str(e)}")
+                # Default to Manufacturing if error occurs
                 return 'Manufacturing'
-            
-            # Check for Services keywords
-            services_keywords = [
-                "SERVICES PMI",
-                "SERVICES ISM",
-                "SERVICES INDEX",
-                "NON-MANUFACTURING",
-                "BUSINESS ACTIVITY"
-            ]
-            
-            # Check for Manufacturing keywords
-            manufacturing_keywords = [
-                "MANUFACTURING PMI",
-                "MANUFACTURING ISM",
-                "MANUFACTURING INDEX",
-                "PRODUCTION INDEX",
-                "NEW ORDERS INDEX"
-            ]
-            
-            # Count keyword matches for each type
-            services_matches = sum(1 for keyword in services_keywords if keyword in text.upper())
-            manufacturing_matches = sum(1 for keyword in manufacturing_keywords if keyword in text.upper())
-            
-            # Determine report type based on matches
-            if services_matches > manufacturing_matches:
-                return 'Services'
-            else:
-                return 'Manufacturing'
-        except Exception as e:
-            logger.error(f"Error detecting report type: {str(e)}")
-            # Default to Manufacturing if error occurs
-            return 'Manufacturing'
     
     @staticmethod
     def create_handler(report_type: str = None, pdf_path: str = None, config_path: str = None) -> ReportTypeHandler:

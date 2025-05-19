@@ -24,6 +24,9 @@ from config import ISM_INDICES, INDEX_CATEGORIES
 from crewai.tools import BaseTool
 from pydantic import Field
 from googleapiclient.errors import HttpError
+from report_detection import EnhancedReportTypeDetector
+from extraction_strategy import StrategyRegistry
+from data_validation import DataTransformationPipeline
 
 # Create logs directory first
 os.makedirs("logs", exist_ok=True)
@@ -60,10 +63,10 @@ class SimplePDFExtractionTool(BaseTool):
     def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Implementation of the required abstract _run method.
-        This extracts ISM data using LLM approach.
+        This extracts ISM data using our enhanced framework.
         """
         try:
-            # Check if input is already a dictionary with pdf_path
+            # Extract PDF path from input
             if isinstance(extracted_data, dict) and 'pdf_path' in extracted_data and not any(k for k in extracted_data if k != 'pdf_path'):
                 # Wrap it in the expected format
                 extracted_data = {'extracted_data': extracted_data}
@@ -72,64 +75,70 @@ class SimplePDFExtractionTool(BaseTool):
             if 'extracted_data' in extracted_data and isinstance(extracted_data['extracted_data'], dict) and 'pdf_path' in extracted_data['extracted_data']:
                 pdf_path = extracted_data['extracted_data']['pdf_path']
                 report_type = extracted_data['extracted_data'].get('report_type')
-                logger.info(f"Extracting data from PDF (nested structure): {pdf_path}")
+                logger.info(f"Extracting data from PDF: {pdf_path}")
                 
-                # Create appropriate report handler based on the PDF content or specified type
+                # Step 1: Detect report type if not specified
+                if not report_type:
+                    try:
+                        # Use enhanced detection
+                        report_type = EnhancedReportTypeDetector.detect_report_type(pdf_path)
+                    except ImportError:
+                        # Fallback to ReportTypeFactory
+                        from report_handlers import ReportTypeFactory
+                        report_type = ReportTypeFactory.detect_report_type(pdf_path)
+                    
+                    logger.info(f"Detected report type: {report_type}")
+                
+                # Step 2: Create appropriate report handler
                 from report_handlers import ReportTypeFactory
                 handler = ReportTypeFactory.create_handler(report_type, pdf_path)
                 
-                # Get the month_year using the handler
+                # Step 3: Extract text from PDF
                 from pdf_utils import extract_text_from_pdf
                 text = extract_text_from_pdf(pdf_path)
-                month_year = "Unknown"
-                if text:
-                    month_year = handler.parse_report_month_year(text)
-                    if not month_year:
-                        month_year = "Unknown"
                 
-                # Use LLM for primary extraction
-                logger.info(f"Using LLM for primary extraction using {handler.__class__.__name__}")
-                llm_data = self._extract_data_with_llm(pdf_path, month_year, handler)
-                
-                if llm_data:
-                    result = {
-                        'month_year': llm_data.get('month_year', month_year),
-                        'manufacturing_table': llm_data,
-                        'pmi_data': llm_data.get('indices', {}),
-                        'industry_data': llm_data.get('industry_data', {}),
-                        'report_type': handler.__class__.__name__.replace('ReportHandler', '')  # 'Manufacturing' or 'Services'
-                    }
-                    logger.info("Successfully extracted data with LLM")
-                    return result
-                else:
-                    logger.warning("LLM extraction returned empty data")
+                if not text:
+                    logger.error(f"Failed to extract text from {pdf_path}")
                     return {
-                        'month_year': month_year,
-                        'manufacturing_table': {},
-                        'index_summaries': {},
-                        'industry_data': {},
-                        'pmi_data': {},
-                        'report_type': handler.__class__.__name__.replace('ReportHandler', '')
+                        "month_year": "Unknown",
+                        "report_type": report_type,
+                        "indices": {},
+                        "industry_data": {},
+                        "index_summaries": {}
                     }
-                    
+                
+                # Step 4: Extract data using appropriate strategies
+                extracted_data = handler.extract_data_from_text(text, pdf_path)
+                
+                # Step 5: Validate and transform the extracted data
+                from data_validation import DataTransformationPipeline
+                validated_data = DataTransformationPipeline.process(extracted_data, report_type)
+                
+                # Step 6: Return the validated data
+                logger.info(f"Successfully extracted and validated data for {report_type} report")
+                return validated_data
+        
         except Exception as e:
             logger.error(f"Error in data extraction: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             # Return minimal valid structure as fallback
             return {
                 "month_year": "Unknown",
-                "manufacturing_table": {},
-                "index_summaries": {},
+                "report_type": "Manufacturing",  # Default to Manufacturing
+                "indices": {},
                 "industry_data": {},
-                "pmi_data": {},
-                "report_type": "Manufacturing"  # Default to Manufacturing
+                "index_summaries": {}
             }
         
-    def _extract_data_with_llm(self, pdf_path, month_year, handler):
+    def _extract_data_with_llm(self, pdf_path, month_year, handler, report_type=None):
         """Extract data from PDF using LLM with the appropriate report handler."""
         try:
             logger.info(f"Extracting data from PDF: {pdf_path} with handler: {handler.__class__.__name__}")
             
+            # Get report type from handler if not provided
+            if not report_type:
+                report_type = handler.__class__.__name__.replace('ReportHandler', '')
+                
             # Extract text from ALL pages
             extracted_text = ""
             try:
@@ -163,6 +172,38 @@ class SimplePDFExtractionTool(BaseTool):
                 return {"month_year": month_year, "indices": {}, "industry_data": {}}
                 
             logger.info(f"Successfully extracted {len(extracted_text)} chars from full PDF")
+            
+            # NEW ENHANCEMENT: Try using the extraction strategy framework if available
+            try:
+                from extraction_strategy import StrategyRegistry
+                
+                # Check if handler has the extract_data_from_text method
+                if hasattr(handler, 'extract_data_from_text'):
+                    logger.info("Using extraction strategy framework")
+                    extracted_data = handler.extract_data_from_text(extracted_text, pdf_path)
+                    
+                    # If we got meaningful data, validate and return it
+                    if extracted_data and (
+                        'industry_data' in extracted_data and extracted_data['industry_data'] or
+                        'indices' in extracted_data and extracted_data['indices']
+                    ):
+                        try:
+                            # Validate with the new pipeline if available
+                            from data_validation import DataTransformationPipeline
+                            validated_data = DataTransformationPipeline.process(extracted_data, report_type)
+                            logger.info("Successfully extracted data using strategy framework")
+                            return validated_data
+                        except ImportError:
+                            # If validation isn't available, still return the extracted data
+                            logger.info("Successfully extracted data using strategy framework (no validation)")
+                            return extracted_data
+            except ImportError:
+                logger.info("Extraction strategy framework not available, using LLM extraction")
+            except Exception as e:
+                logger.warning(f"Error using extraction strategy framework: {str(e)}, falling back to LLM")
+            
+            # If we get here, either the extraction strategy framework isn't available or it failed
+            # Continue with the existing LLM-based extraction
             
             # Get extraction prompt from handler
             prompt = f"""
@@ -226,8 +267,16 @@ class SimplePDFExtractionTool(BaseTool):
                         if "industry_data" not in json_data:
                             json_data["industry_data"] = {}
                         
-                        # Success! Return the parsed JSON
-                        return json_data
+                        # NEW ENHANCEMENT: Validate with the new pipeline if available
+                        try:
+                            from data_validation import DataTransformationPipeline
+                            validated_data = DataTransformationPipeline.process(json_data, report_type)
+                            logger.info("Successfully extracted and validated data using LLM")
+                            return validated_data
+                        except ImportError:
+                            # If validation isn't available, return the LLM data as-is
+                            logger.info("Successfully extracted data using LLM (no validation)")
+                            return json_data
                         
                     except json.JSONDecodeError as e:
                         logger.warning(f"Failed to parse JSON on retry {retry_count}: {str(e)}")
