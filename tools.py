@@ -60,136 +60,161 @@ class SimplePDFExtractionTool(BaseTool):
         if openai_api_key:
             openai.api_key = openai_api_key
 
-    def _run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _run(self, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Enhanced implementation of the _run method to handle various input formats.
-        This extracts ISM data using our enhanced framework.
+        Implementation of the required abstract _run method.
+        This structures the extracted ISM data.
         """
         try:
-            # Better logging of input for debugging
-            logger.info(f"SimplePDFExtractionTool received input of type {type(input_data)}")
-
-            report_type = self._standardize_report_type(input_data['extracted_data'].get('report_type', "Manufacturing"))
+            logger.info("Data Structurer Tool received input")
             
-            # Handle string input (potential JSON)
-            if isinstance(input_data, str):
-                try:
-                    import json
-                    input_data = json.loads(input_data)
-                    logger.info("Successfully parsed JSON string input")
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to parse JSON input: {input_data[:100]}...")
-                    # Create a bare minimum structure to work with
-                    pdf_path = input_data if '.pdf' in input_data else None
-                    if pdf_path:
-                        logger.info(f"Extracted potential PDF path from string: {pdf_path}")
-                        input_data = {'pdf_path': pdf_path}
+            # Ensure extracted_data has the minimum required structure
+            if not extracted_data:
+                extracted_data = {}
+            
+            # Get month and year
+            month_year = extracted_data.get("month_year", "Unknown")
+            logger.info(f"Structuring data for {month_year}")
+            
+            # Ensure required keys exist to prevent downstream errors
+            required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
+            for key in required_keys:
+                if key not in extracted_data:
+                    if key == "month_year":
+                        extracted_data[key] = month_year
+                    elif key == "manufacturing_table":
+                        extracted_data[key] = ""
                     else:
-                        logger.error("Could not extract PDF path from string input")
-                        return {
-                            "month_year": "Unknown",
-                            "report_type": "Manufacturing",
-                            "indices": {},
-                            "industry_data": {},
-                            "index_summaries": {}
-                        }
+                        extracted_data[key] = {}
             
-            # Special handling for CrewAI tool input format
-            if isinstance(input_data, dict) and 'tool_input' in input_data:
-                logger.info("Detected CrewAI tool input format")
-                try:
-                    tool_input = input_data['tool_input']
-                    if isinstance(tool_input, str):
-                        import json
-                        tool_input = json.loads(tool_input)
-                    if 'extracted_data' in tool_input:
-                        input_data = tool_input
-                        logger.info("Successfully extracted data from CrewAI tool input")
-                except Exception as e:
-                    logger.error(f"Error parsing CrewAI tool input: {str(e)}")
-            
-            # Extract PDF path from input
-            pdf_path = None
-            
-            # Try different input formats to find the PDF path
-            if isinstance(input_data, dict):
-                # Direct path in root
-                if 'pdf_path' in input_data:
-                    pdf_path = input_data['pdf_path']
-                    report_type = input_data.get('report_type', "Manufacturing")
-                    logger.info(f"Found PDF path in root of input dict: {pdf_path}")
-                # Path in extracted_data
-                elif 'extracted_data' in input_data and isinstance(input_data['extracted_data'], dict):
-                    if 'pdf_path' in input_data['extracted_data']:
-                        pdf_path = input_data['extracted_data']['pdf_path']
-                        report_type = input_data['extracted_data'].get('report_type', "Manufacturing")
-                        logger.info(f"Found PDF path in extracted_data: {pdf_path}")
-            
-            # Return error response if no PDF path found
-            if not pdf_path:
-                logger.error("No PDF path found in input data")
-                return {
-                    "month_year": "Unknown",
-                    "report_type": "Manufacturing",
-                    "indices": {},
-                    "industry_data": {},
-                    "index_summaries": {}
-                }
-            
-            logger.info(f"Extracting data from PDF: {pdf_path} (report type: {report_type})")
+            # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
+            if not extracted_data.get("industry_data") and "corrected_industry_data" in extracted_data:
+                extracted_data["industry_data"] = extracted_data["corrected_industry_data"]
+                logger.info("Using corrected_industry_data as industry_data")
                 
-            # Step 1: Detect report type if not specified
-            if not report_type:
-                try:
-                    # Use enhanced detection
-                    report_type = EnhancedReportTypeDetector.detect_report_type(pdf_path)
-                except ImportError:
-                    # Fallback to ReportTypeFactory
-                    from report_handlers import ReportTypeFactory
-                    report_type = ReportTypeFactory.detect_report_type(pdf_path)
+            # Get industry data - check all possible locations
+            industry_data = None
+            
+            # First try getting industry_data directly
+            if "industry_data" in extracted_data and extracted_data["industry_data"]:
+                industry_data = extracted_data["industry_data"]
+                logger.info("Using industry_data from extraction")
+                    
+            # If not available, check for corrected_industry_data
+            elif "corrected_industry_data" in extracted_data and extracted_data["corrected_industry_data"]:
+                industry_data = extracted_data["corrected_industry_data"]
+                logger.info("Using corrected_industry_data")
+                    
+            # If still not available, look inside "manufacturing_table" which may have the industry data
+            elif "manufacturing_table" in extracted_data and isinstance(extracted_data["manufacturing_table"], dict):
+                # The data verification specialist might put industry data in manufacturing_table
+                if any(k in ISM_INDICES for k in extracted_data["manufacturing_table"].keys()):
+                    industry_data = extracted_data["manufacturing_table"]
+                    logger.info("Using industry data from manufacturing_table")
+            
+            # If we still don't have industry data, try a last resort extraction
+            if not industry_data or all(not industries for categories in industry_data.values() for industries in categories.values()):
+                logger.warning("Industry data is empty or contains no entries, attempting to re-extract from summaries")
+                    
+                if "index_summaries" in extracted_data and extracted_data["index_summaries"]:
+                    try:
+                        from pdf_utils import extract_industry_mentions
+                        industry_data = extract_industry_mentions("", extracted_data["index_summaries"])
+                        logger.info("Re-extracted industry data from summaries")
+                    except Exception as e:
+                        logger.error(f"Error re-extracting industry data: {str(e)}")
                 
-                logger.info(f"Detected report type: {report_type}")
+                # If still no valid industry data, check if there was a verification result
+                if not industry_data and hasattr(extracted_data, 'get') and callable(extracted_data.get):
+                    verification_result = extracted_data.get('verification_result', None)
+                    if verification_result and 'corrected_industry_data' in verification_result:
+                        industry_data = verification_result['corrected_industry_data']
+                        logger.info("Using industry data from verification result")
             
-            # Step 2: Create appropriate report handler
-            from report_handlers import ReportTypeFactory
-            handler = ReportTypeFactory.create_handler(report_type, pdf_path)
+            # Structure data for each index
+            structured_data = {}
             
-            # Step 3: Extract text from PDF
-            from pdf_utils import extract_text_from_pdf
-            text = extract_text_from_pdf(pdf_path)
-            
-            if not text:
-                logger.error(f"Failed to extract text from {pdf_path}")
-                return {
-                    "month_year": "Unknown",
-                    "report_type": report_type,
-                    "indices": {},
-                    "industry_data": {},
-                    "index_summaries": {}
+            # Ensure we have entries for all expected indices
+            for index in ISM_INDICES:
+                # Get categories for this index if available
+                categories = {}
+                if industry_data and index in industry_data:
+                    categories = industry_data[index]
+                
+                # Clean up the categories but preserve order
+                cleaned_categories = {}
+                
+                # Process each category
+                for category_name, industries in categories.items():
+                    cleaned_industries = []
+                    
+                    # Clean up each industry name in the list
+                    for industry in industries:
+                        if not industry or not isinstance(industry, str):
+                            continue
+                            
+                        # Skip parsing artifacts and invalid entries
+                        if ("following order" in industry.lower() or 
+                            "are:" in industry.lower() or 
+                            industry.startswith(',') or 
+                            industry.startswith(':') or 
+                            len(industry.strip()) < 3):
+                            continue
+                            
+                        # Clean up the industry name
+                        industry = industry.strip()
+                        
+                        # Add to cleaned list if not already there
+                        if industry not in cleaned_industries:
+                            cleaned_industries.append(industry)
+                    
+                    # DEFINE category_count BEFORE USING IT - ADD THIS LINE
+                    category_count = len(cleaned_industries)  
+                    
+                    # Only add categories that actually have industries
+                    if cleaned_industries:
+                        actual_count = min(category_count, len(cleaned_industries))
+                        cleaned_categories[category_name] = cleaned_industries[:actual_count]
+
+                    if not cleaned_industries:
+                        logger.warning(f"No cleaned industries for {category_name}, using empty list")
+                        cleaned_categories[category_name] = []
+                        continue  
+                    
+                # If no data for this index, create empty categories
+                if not cleaned_categories and index in INDEX_CATEGORIES:
+                    cleaned_categories = {category: [] for category in INDEX_CATEGORIES[index]}
+                
+                # Add to structured_data
+                structured_data[index] = {
+                    "month_year": month_year,
+                    "categories": cleaned_categories
                 }
+                
+                # Count industries to log
+                total_industries = sum(len(industries) for industries in cleaned_categories.values())
+                logger.info(f"Structured {index}: {total_industries} industries across {len(cleaned_categories)} categories")
             
-            # Step 4: Extract data using appropriate strategies
-            extracted_data = handler.extract_data_from_text(text, pdf_path)
+            # Log total industry count
+            total = sum(sum(len(industries) for industries in data["categories"].values()) for data in structured_data.values())
+            logger.info(f"Total industries in structured data: {total}")
             
-            # Step 5: Validate and transform the extracted data
-            from data_validation import DataTransformationPipeline
-            validated_data = DataTransformationPipeline.process(extracted_data, report_type)
-            
-            # Step 6: Return the validated data
-            logger.info(f"Successfully extracted and validated data for {report_type} report")
-            return validated_data
-    
+            return structured_data
         except Exception as e:
-            logger.error(f"Error in data extraction: {str(e)}")
+            logger.error(f"Error in data structuring: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             # Return minimal valid structure as fallback
-            return {
-                "month_year": "Unknown",
-                "report_type": "Manufacturing",  # Default to Manufacturing
-                "indices": {},
-                "industry_data": {},
-                "index_summaries": {}
-            }
+            structured_data = {}
+            for index in ISM_INDICES:
+                categories = {}
+                if index in INDEX_CATEGORIES:
+                    for category in INDEX_CATEGORIES[index]:
+                        categories[category] = []
+                structured_data[index] = {
+                    "month_year": month_year if 'month_year' in locals() else "Unknown",
+                    "categories": categories
+                }
+            return structured_data
         
     def _extract_data_with_llm(self, pdf_path, month_year, handler=None, report_type=None):
         """Extract data from PDF using LLM with the appropriate report handler."""
@@ -383,7 +408,113 @@ class SimplePDFExtractionTool(BaseTool):
         """
         logger.info(f"Called _extract_manufacturing_data_with_llm, forwarding to _extract_data_with_llm")
         return self._extract_data_with_llm(pdf_path, month_year)
+
+    def _normalize_input(self, input_data):
+        """
+        Normalize input data format regardless of how it's provided.
         
+        This handles multiple input formats:
+        - String path to PDF: "path/to/file.pdf"
+        - Direct dictionary: {"pdf_path": "path/to/file.pdf"}
+        - Nested dictionary: {"extracted_data": {"pdf_path": "path/to/file.pdf"}}
+        - CrewAI format: {"tool_input": {"pdf_path": "..."}} or {"tool_input": "path/to/file.pdf"}
+        
+        Returns:
+            A normalized dictionary with at least pdf_path (if available)
+        """
+        try:
+            # Handle string input
+            if isinstance(input_data, str):
+                if '.pdf' in input_data:
+                    return {"pdf_path": input_data}
+                try:
+                    # Try parsing as JSON
+                    import json
+                    parsed = json.loads(input_data)
+                    return self._normalize_input(parsed)
+                except json.JSONDecodeError:
+                    return {"pdf_path": input_data}
+            
+            # Handle dictionary input
+            if isinstance(input_data, dict):
+                # Direct format: {"pdf_path": "..."}
+                if "pdf_path" in input_data:
+                    return input_data
+                
+                # Nested format: {"extracted_data": {"pdf_path": "..."}}
+                if "extracted_data" in input_data and isinstance(input_data["extracted_data"], dict):
+                    if "pdf_path" in input_data["extracted_data"]:
+                        return input_data["extracted_data"]
+                
+                # CrewAI format: {"tool_input": "..."}
+                if "tool_input" in input_data:
+                    tool_input = input_data["tool_input"]
+                    if isinstance(tool_input, dict):
+                        return self._normalize_input(tool_input)
+                    elif isinstance(tool_input, str):
+                        try:
+                            import json
+                            parsed = json.loads(tool_input)
+                            return self._normalize_input(parsed)
+                        except json.JSONDecodeError:
+                            if '.pdf' in tool_input:
+                                return {"pdf_path": tool_input}
+            
+            # Return original with warning if unable to normalize
+            logger.warning(f"Unable to normalize input format: {type(input_data)}")
+            return input_data
+        except Exception as e:
+            logger.error(f"Error normalizing input: {str(e)}")
+            # Return empty dict with no pdf_path as a fallback
+            return {}
+
+    def _ensure_complete_data_structure(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure all expected components of the data structure exist.
+        
+        Args:
+            data: The data structure to check and complete
+            
+        Returns:
+            The completed data structure
+        """
+        if not data or not isinstance(data, dict):
+            data = {}
+        
+        # Ensure top-level fields exist
+        if 'month_year' not in data:
+            data['month_year'] = "Unknown"
+        
+        if 'report_type' not in data:
+            data['report_type'] = "Manufacturing"
+        
+        if 'industry_data' not in data:
+            data['industry_data'] = {}
+        
+        if 'index_summaries' not in data:
+            data['index_summaries'] = {}
+        
+        if 'indices' not in data:
+            data['indices'] = {}
+        
+        # If we have empty industry_data but industry info in other fields, try to recover
+        if not data['industry_data'] and 'corrected_industry_data' in data and data['corrected_industry_data']:
+            data['industry_data'] = data['corrected_industry_data']
+            logger.info("Using corrected_industry_data for industry_data")
+        
+        # Ensure all expected indices exist in industry_data
+        expected_indices = [
+            "New Orders", "Production", "Employment", "Supplier Deliveries",
+            "Inventories", "Customers' Inventories", "Prices", "Backlog of Orders",
+            "New Export Orders", "Imports"
+        ]
+        
+        for index in expected_indices:
+            if index not in data['industry_data']:
+                data['industry_data'][index] = {}
+        
+        return data
+
     def _standardize_report_type(self, report_type):
         """
         Standardize the report type string.
@@ -429,10 +560,30 @@ class SimpleDataStructurerTool(BaseTool):
         try:
             logger.info("Data Structurer Tool received input")
             
+            # Ensure extracted_data has the minimum required structure
+            if not extracted_data:
+                extracted_data = {}
+            
             # Get month and year
             month_year = extracted_data.get("month_year", "Unknown")
             logger.info(f"Structuring data for {month_year}")
             
+            # Ensure required keys exist to prevent downstream errors
+            required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
+            for key in required_keys:
+                if key not in extracted_data:
+                    if key == "month_year":
+                        extracted_data[key] = month_year
+                    elif key == "manufacturing_table":
+                        extracted_data[key] = ""
+                    else:
+                        extracted_data[key] = {}
+            
+            # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
+            if not extracted_data.get("industry_data") and "corrected_industry_data" in extracted_data:
+                extracted_data["industry_data"] = extracted_data["corrected_industry_data"]
+                logger.info("Using corrected_industry_data as industry_data")
+                
             # Get industry data - check all possible locations
             industry_data = None
             
@@ -440,12 +591,12 @@ class SimpleDataStructurerTool(BaseTool):
             if "industry_data" in extracted_data and extracted_data["industry_data"]:
                 industry_data = extracted_data["industry_data"]
                 logger.info("Using industry_data from extraction")
-                
+                    
             # If not available, check for corrected_industry_data
             elif "corrected_industry_data" in extracted_data and extracted_data["corrected_industry_data"]:
                 industry_data = extracted_data["corrected_industry_data"]
                 logger.info("Using corrected_industry_data")
-                
+                    
             # If still not available, look inside "manufacturing_table" which may have the industry data
             elif "manufacturing_table" in extracted_data and isinstance(extracted_data["manufacturing_table"], dict):
                 # The data verification specialist might put industry data in manufacturing_table
@@ -454,9 +605,9 @@ class SimpleDataStructurerTool(BaseTool):
                     logger.info("Using industry data from manufacturing_table")
             
             # If we still don't have industry data, try a last resort extraction
-            if not industry_data or all(not industries for categories in industry_data.values() for industries in categories.values()):
+            if not industry_data or not isinstance(industry_data, dict) or not any(industry_data.values()):
                 logger.warning("Industry data is empty or contains no entries, attempting to re-extract from summaries")
-                
+                    
                 if "index_summaries" in extracted_data and extracted_data["index_summaries"]:
                     try:
                         from pdf_utils import extract_industry_mentions
@@ -704,7 +855,8 @@ class GoogleSheetsFormatterTool(BaseTool):
             try:
                 if extraction_data and 'month_year' in extraction_data:
                     pdf_path = data.get('pdf_path', 'unknown_path')
-                    store_result = store_report_data_in_db(extraction_data, pdf_path)
+                    report_type = extraction_data.get('report_type', 'Manufacturing')
+                    store_result = store_report_data_in_db(extraction_data, pdf_path, report_type)
                     logger.info(f"Database storage result: {store_result}")
             except Exception as e:
                 logger.error(f"Error storing data in database: {str(e)}")

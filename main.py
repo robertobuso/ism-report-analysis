@@ -23,6 +23,7 @@ from agents import (
     create_orchestrator_agent,
     create_data_correction_agent
 )
+from db_utils import store_report_data_in_db
 
 # Configure logging
 logging.basicConfig(
@@ -624,10 +625,64 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 extraction_data['industry_data'] = merged_industry_data
                 logger.info(f"Keeping agent extraction with merged industry data")
 
+        # After extraction
+        if extraction_data:
+            # Add report_type to extraction_data if not present
+            if 'report_type' not in extraction_data:
+                extraction_data['report_type'] = report_type
+                logger.info(f"Adding missing report_type: {report_type}")
+            
+            # Ensure month_year exists and is not Unknown if we can get it from somewhere
+            if 'month_year' not in extraction_data or extraction_data['month_year'] == "Unknown":
+                if direct_data and 'month_year' in direct_data and direct_data['month_year'] != "Unknown":
+                    extraction_data['month_year'] = direct_data['month_year']
+                    logger.info(f"Using month_year from direct parsing: {extraction_data['month_year']}")
+            
+            # Ensure index_summaries exists
+            if 'index_summaries' not in extraction_data or not extraction_data['index_summaries']:
+                logger.warning("Missing index_summaries, creating empty structure")
+                extraction_data['index_summaries'] = {}
+                
+                # Try to extract summaries from PDF directly if available
+                if direct_data and 'index_summaries' in direct_data and direct_data['index_summaries']:
+                    extraction_data['index_summaries'] = direct_data['index_summaries']
+                    logger.info("Populated index_summaries from direct parsing")
+            
+            # Ensure industry_data exists
+            if 'industry_data' not in extraction_data or not extraction_data['industry_data']:
+                logger.warning("Missing industry_data, creating empty structure")
+                extraction_data['industry_data'] = {}
+                
+                # Try to populate from direct parsing
+                if direct_data and 'industry_data' in direct_data and direct_data['industry_data']:
+                    extraction_data['industry_data'] = direct_data['industry_data']
+                    logger.info("Populated industry_data from direct parsing")
+            elif all(not industries for categories in extraction_data['industry_data'].values() 
+                    for industries in categories.values() if isinstance(categories, dict)):
+                logger.warning("industry_data exists but contains no actual industries")
+                # Try to populate from direct parsing if it has industries
+                if direct_data and 'industry_data' in direct_data:
+                    direct_count = sum(len(industries) for categories in direct_data['industry_data'].values() 
+                                    for industries in categories.values() if isinstance(categories, dict))
+                    if direct_count > 0:
+                        extraction_data['industry_data'] = direct_data['industry_data']
+                        logger.info(f"Replaced empty industry_data with direct parsing data ({direct_count} industries)")
+
+            # If verification result has industry data but extraction doesn't, use the verification data
+            if 'verified_data' in locals() and verified_data and isinstance(verified_data, dict):
+                if 'corrected_industry_data' in verified_data:
+                    if not extraction_data['industry_data']:
+                        extraction_data['industry_data'] = verified_data['corrected_industry_data']
+                        logger.info("Using corrected_industry_data from verified_data")
+
         # STORE DATA IN DATABASE - CRITICAL STEP - update to include report_type
         from db_utils import store_report_data_in_db
         try:
-            store_result = store_report_data_in_db(extraction_data, pdf_path, report_type)
+            # Ensure report_type exists in extraction_data
+            if 'report_type' not in extraction_data:
+                extraction_data['report_type'] = report_type
+                
+            store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data['report_type'])
 
             if store_result:
                 logger.info(f"Successfully stored data from {pdf_path} in database")

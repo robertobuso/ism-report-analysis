@@ -2,7 +2,7 @@ import os
 import re
 import sqlite3
 import logging
-import datetime
+from datetime import date, datetime
 from dateutil import parser
 from typing import Optional, Dict, List, Any, Tuple
 import traceback
@@ -201,22 +201,22 @@ def check_report_exists_in_db(month_year, report_type='Manufacturing'):
         if conn:
             conn.close()
 
-def parse_date(date_str: str) -> Optional[datetime.date]:
+def parse_date(date_str: str) -> Optional[date]:
     """
-    Parse a date string into a datetime.date object.
+    Parse a date string into a date object.
     Always returns the 1st day of the month for consistency.
     
     Args:
         date_str: Date string in various possible formats
         
     Returns:
-        datetime.date object (always with day=1) or None if parsing fails
+        date object (always with day=1) or None if parsing fails
     """
     try:
         if not date_str or date_str == "Unknown":
             # Return current date instead of None when unknown
-            today = datetime.date.today()
-            return datetime.date(today.year, today.month, 1)
+            today = date.today()
+            return date(today.year, today.month, 1)
         
         # Normalize case
         date_str = date_str.strip()
@@ -225,7 +225,7 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
         try:
             dt = parser.parse(date_str)
             # Always set day to 1 for consistency
-            return datetime.date(dt.year, dt.month, 1)
+            return date(dt.year, dt.month, 1)
         except:
             # Continue to manual parsing
             pass
@@ -247,7 +247,7 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
                 
                 month_num = month_map.get(month_name.lower(), 1)
                 # Return with day=1
-                return datetime.date(year, month_num, 1)
+                return date(year, month_num, 1)
                 
             # Try all caps format (e.g., "JANUARY 2025")
             month_year_match = re.match(r'([A-Z]+)\s+(\d{4})', date_str)
@@ -263,7 +263,7 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
                 
                 month_num = month_map.get(month_name, 1)
                 # Return with day=1
-                return datetime.date(year, month_num, 1)
+                return date(year, month_num, 1)
                 
             # Try date format like Sep-24 or Oct-13
             abbr_match = re.match(r'(\w{3})-(\d{2})', date_str)
@@ -282,19 +282,19 @@ def parse_date(date_str: str) -> Optional[datetime.date]:
                 year = 2000 + year_short if year_short < 50 else 1900 + year_short
                 
                 # Return with day=1
-                return datetime.date(year, month_num, 1)
+                return date(year, month_num, 1)
         except Exception as e:
             logger.warning(f"Manual date parsing failed: {str(e)}")
             
         # Last resort: return current date with day=1
         logger.error(f"Could not parse date '{date_str}', using current date")
-        today = datetime.date.today()
-        return datetime.date(today.year, today.month, 1)
+        today = date.today()
+        return date(today.year, today.month, 1)
     except Exception as e:
         logger.error(f"Failed to parse date '{date_str}': {str(e)}")
-        today = datetime.date.today()
-        return datetime.date(today.year, today.month, 1)
-     
+        today = date.today()
+        return date(today.year, today.month, 1)
+    
 def get_all_report_dates(report_type=None):
     """
     Get all report dates in descending order.
@@ -547,14 +547,15 @@ def extract_pmi_data(data: dict) -> dict or None:
             }
         return None
 
-def store_report_data_in_db(extracted_data, pdf_path, report_type):
+def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing"):
     """
     Store the extracted report data in the SQLite database.
-
+    
     Args:
         extracted_data: Dictionary containing the extracted report data
         pdf_path: Path to the PDF file
-        report_type: Type of report
+        report_type: Type of report (Manufacturing or Services), defaults to Manufacturing
+        
     Returns:
         bool: True if successful, False otherwise
     """
@@ -579,6 +580,11 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type):
             logger.error(f"Could not parse date from '{month_year}' for {pdf_path}")
             return False
 
+        # Ensure report_type is valid
+        if not report_type or not isinstance(report_type, str):
+            logger.warning(f"Invalid report_type '{report_type}', using 'Manufacturing'")
+            report_type = "Manufacturing"  # Default
+        
         # Insert into reports table
         cursor.execute(
             """
@@ -589,7 +595,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type):
             (
                 report_date.isoformat(),
                 pdf_path,
-                datetime.datetime.now().isoformat(),
+                datetime.now().isoformat(),
                 month_year,
                 report_type
             )
@@ -598,53 +604,49 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type):
         # Process pmi_indices data
         indices_data = {}
 
-        # Try to extract Manufacturing PMI first from multiple sources
-        if 'manufacturing_table' in extracted_data and 'indices' in extracted_data['manufacturing_table']:
-            pmi_data = extracted_data['manufacturing_table']['indices'].get(MANUFACTURING_PMI_INDEX)
-            if pmi_data:
-               extracted_pmi = extract_pmi_data(pmi_data)
-
-               if extracted_pmi:
-                   indices_data[MANUFACTURING_PMI_INDEX] = extracted_pmi
-                   logger.info(f"Added Manufacturing PMI from manufacturing table: {extracted_pmi.get('value')} ({extracted_pmi.get('direction')})")
-
-        # Check direct pmi_data
-        if not indices_data.get(MANUFACTURING_PMI_INDEX) and 'pmi_data' in extracted_data:
-            pmi_data = extracted_data['pmi_data'].get(MANUFACTURING_PMI_INDEX)
-            if pmi_data:
-                extracted_pmi = extract_pmi_data(pmi_data)
-                if extracted_pmi:
-                    indices_data[MANUFACTURING_PMI_INDEX] = extracted_pmi
-                    logger.info(f"Added Manufacturing PMI from pmi_data: {extracted_pmi.get('value')} ({extracted_pmi.get('direction')})")
-
-        # try to extract from structured index_summaries if available
-        if not indices_data.get(MANUFACTURING_PMI_INDEX) and extracted_data.get('index_summaries'):
-            index_summaries = extracted_data['index_summaries']
-            if MANUFACTURING_PMI_INDEX in index_summaries:
-                summary = index_summaries[MANUFACTURING_PMI_INDEX]
-
+        # Try to extract from structured index_summaries if available
+        index_summaries = extracted_data.get('index_summaries', {})
+        for index_name, summary in index_summaries.items():
+            # Try to extract numeric value and direction from the summary
+            try:
+                # Pattern for values like "PMI® registered 50.9 percent in January"
                 import re
                 value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
                 value_match = re.search(value_pattern, summary, re.IGNORECASE)
-
+                
                 direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
                 direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
-
-                if value_match and direction_match:
+                
+                if value_match:
                     value = float(value_match.group(1))
-                    direction = direction_match.group(1).capitalize()
-
+                    direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
+                    
                     # Standardize direction terms
-                    direction = standardize_direction(direction)  # Replace all of the if-then-else with this call
-
-                    indices_data[MANUFACTURING_PMI_INDEX] = {
+                    if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+                        direction = 'Growing'
+                    elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
+                        direction = 'Contracting'
+                    elif direction.lower() == 'slower':
+                        direction = 'Slowing'
+                    elif direction.lower() == 'faster':
+                        direction = 'Faster'
+                    
+                    indices_data[index_name] = {
                         'value': value,
                         'direction': direction
                     }
-                    logger.info(f"Added Manufacturing PMI from summary: {value} ({direction})")
-
-        # insert pmi_indices data - this section was fine
-        indices_processed = 0
+            except Exception as e:
+                logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
+        
+        # Try pmi_data from direct source if above method didn't work
+        if not indices_data and 'pmi_data' in extracted_data:
+            indices_data = extracted_data['pmi_data']
+        
+        # Also try indices directly
+        if not indices_data and 'indices' in extracted_data:
+            indices_data = extracted_data['indices']
+        
+        # Insert pmi_indices data
         for index_name, data in indices_data.items():
             try:
                 cursor.execute(
@@ -656,42 +658,39 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type):
                     (
                         report_date.isoformat(),
                         index_name,
-                        data.get('value', 0.0),
+                        data.get('value', data.get('current', 0.0)),
                         data.get('direction', 'Unknown')
                     )
                 )
-                indices_processed += 1
-                logger.info(f"Successfully inserted {index_name} with value {data.get('value')} ({data.get('direction')})")
             except Exception as e:
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
-
-        logger.info(f"Successfully processed {indices_processed} out of {len(indices_data)} indices")
-
-        # Process industry_status data - this section had a lot of conditional branches
+        
+        # Process industry_status data
         industry_data = extracted_data.get('industry_data', {})
-
-        # Status mappings - this is much more readable and clear, rather than all the if-else conditionals
-        status_mapping = {
-            'Supplier Deliveries': {'Slower': 'Slowing', 'Faster': 'Faster'},
-            'Inventories': {'Higher': 'Higher', 'Lower': 'Lower'},
-            "Customers' Inventories": {'Too High': 'Too High', 'Too Low': 'Too Low'},
-            'Prices': {'Increasing': 'Increasing', 'Decreasing': 'Decreasing'},
-        }
-
         for index_name, categories in industry_data.items():
             for category, industries in categories.items():
-                # Determine status based on the mapping or default to Growing/Contracting
-
                 # Determine status based on category
-                status = status_mapping.get(index_name, {}).get(category, 'Growing' if category == 'Growing' else 'Contracting')
-
+                if index_name == 'Supplier Deliveries':
+                    status = 'Slowing' if category == 'Slower' else 'Faster'
+                elif index_name == 'Inventories':
+                    status = 'Higher' if category == 'Higher' else 'Lower'
+                elif index_name == "Customers' Inventories":
+                    status = category  # 'Too High' or 'Too Low'
+                elif index_name == 'Prices':
+                    status = 'Increasing' if category == 'Increasing' else 'Decreasing'
+                else:
+                    status = 'Growing' if category == 'Growing' else 'Contracting'
+                
                 # Insert each industry
                 for idx, industry in enumerate(industries):
-                    # Clean and validate the industry name
-                    cleaned_industry = clean_industry_name(industry)
-                    if not cleaned_industry:
+                    if not industry or not isinstance(industry, str):
                         continue
-
+                        
+                    # Clean industry name
+                    industry = industry.strip()
+                    if not industry:
+                        continue
+                        
                     try:
                         cursor.execute(
                             """
@@ -702,27 +701,19 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type):
                             (
                                 report_date.isoformat(),
                                 index_name,
-                                cleaned_industry,
+                                industry,
                                 status,
                                 category,
                                 idx  # Use the order in the list as the rank
                             )
                         )
                     except Exception as e:
-                        logger.error(f"Error inserting industry_status data for {cleaned_industry}: {str(e)}")
-
-        # Log Manufacturing PMI status after processing is complete
-        if MANUFACTURING_PMI_INDEX in indices_data:
-            pmi_value = indices_data[MANUFACTURING_PMI_INDEX].get('value')
-            pmi_direction = indices_data[MANUFACTURING_PMI_INDEX].get('direction')
-            logger.info(f"FINAL: Manufacturing PMI saved to database: {pmi_value} ({pmi_direction})")
-        else:
-            logger.warning(f"FINAL: Manufacturing PMI not found or saved to database for {month_year}")
-
+                        logger.error(f"Error inserting industry_status data for {industry}: {str(e)}")
+        
         conn.commit()
-        logger.info(f"Successfully stored data for report {month_year} in database")
+        logger.info(f"Successfully stored data for report {month_year} (type: {report_type}) in database")
         return True
-
+        
     except Exception as e:
         logger.error(f"Error storing report data in database: {str(e)}")
         logger.error(traceback.format_exc())
