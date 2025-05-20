@@ -356,6 +356,26 @@ class SimplePDFExtractionTool(BaseTool):
                             except Exception as e:
                                 logger.warning(f"Failed to extract index summaries: {str(e)}")
                         
+                        # Standardize the extracted data structure before returning
+                        if 'indices' in json_data:
+                            # Ensure Manufacturing PMI is in indices
+                            if 'manufacturing_table' in json_data and isinstance(json_data['manufacturing_table'], dict):
+                                for key in ['Manufacturing PMI', 'New Orders', 'Production', 'Employment']:
+                                    if key in json_data['manufacturing_table'] and key not in json_data['indices']:
+                                        json_data['indices'][key] = json_data['manufacturing_table'][key]
+                                        logger.info(f"Moved {key} from manufacturing_table to indices")
+                        elif 'manufacturing_table' in json_data and isinstance(json_data['manufacturing_table'], dict):
+                            # If no indices field exists but manufacturing_table does, copy it to indices
+                            has_pmi_data = False
+                            for key in ['Manufacturing PMI', 'New Orders', 'Production']:
+                                if key in json_data['manufacturing_table']:
+                                    has_pmi_data = True
+                                    break
+                                    
+                            if has_pmi_data:
+                                json_data['indices'] = json_data['manufacturing_table']
+                                logger.info("Copied manufacturing_table to indices field")
+
                         # Success! Return the parsed JSON
                         return json_data
                         

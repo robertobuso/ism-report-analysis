@@ -7,6 +7,8 @@ import traceback
 import uuid
 import threading
 from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
+from config_loader import config_loader 
+from typing import List, Optional
 
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
@@ -323,19 +325,25 @@ def oauth2callback():
 @login_required
 def dashboard():
     try:
-        # Get PMI heatmap data from database
-        heatmap_data = get_pmi_data_by_month(24)  # Get last 24 months of data
+        # Get report_type from query parameter, default to Manufacturing
+        report_type = request.args.get('report_type', 'Manufacturing')
         
-        # Get all available indices
-        indices = get_all_indices()
+        # Get PMI heatmap data from database for the specified report type
+        heatmap_data = get_pmi_data_by_month(24, report_type)  # Get last 24 months of data
         
-        # Get all report dates
-        report_dates = get_all_report_dates()
+        # Get all available indices for this report type
+        indices = get_all_indices(report_type)
         
+        # Get all report dates for this report type
+        report_dates = get_all_report_dates(report_type)
+        
+        # Include report_type in template context
         return render_template('dashboard.html', 
-                               heatmap_data=heatmap_data,
-                               indices=indices,
-                               report_dates=report_dates)
+                           heatmap_data=heatmap_data,
+                           indices=indices,
+                           report_dates=report_dates,
+                           report_type=report_type,
+                           available_report_types=get_report_types())
     except Exception as e:
         logger.error(f"Error loading dashboard: {str(e)}")
         logger.error(traceback.format_exc())
@@ -345,50 +353,37 @@ def dashboard():
 @app.route('/api/index_trends/<index_name>')
 def get_index_trends(index_name):
     try:
-        # Get time series data for the specified index (last 24 months)
-        time_series_data = get_index_time_series(index_name, 24)
+        # Get optional parameters
+        months = request.args.get('months', 24, type=int)
+        report_type = request.args.get('report_type')
+        
+        # Get time series data for the specified index
+        time_series_data = get_index_time_series(index_name, months, report_type)
         
         # Return as JSON
         return jsonify(time_series_data)
     except Exception as e:
         logger.error(f"Error getting index trends: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @app.route('/api/industry_status/<index_name>')
 def get_industry_status(index_name):
     try:
-        # Get industry status data for the specified index (last 12 months)
+        # Get optional parameters
         months = request.args.get('months', 12, type=int)
+        report_type = request.args.get('report_type')
         debug = request.args.get('debug', False, type=bool)
         
         if debug:
-            logger.info(f"Fetching industry status for {index_name}, {months} months")
+            logger.info(f"Fetching industry status for {index_name}, {months} months, report type: {report_type}")
             
-        industry_data = get_industry_status_over_time(index_name, months)
+        industry_data = get_industry_status_over_time(index_name, months, report_type)
         
         if debug and not industry_data['industries']:
             logger.warning(f"No industry data found for {index_name}")
             
-        # Ensure all standard industries are included
-        standard_industries = [
-            "Chemical",
-            "Computer & Electronic",
-            "Electrical Equipment, Appliances & Components",
-            "Fabricated Metal",
-            "Food, Beverage & Tobacco",
-            "Furniture & Related",
-            "Machinery",
-            "Miscellaneous Manufacturing",
-            "Nonmetallic Mineral",
-            "Paper",
-            "Petroleum & Coal",
-            "Plastics & Rubber",
-            "Primary Metals",
-            "Printing & Related Support Activities",
-            "Textile Mills",
-            "Transportation Equipment",
-            "Wood"
-        ]
+        # Ensure all standard industries are included based on report type
+        standard_industries = get_standard_industries(report_type)
         
         # Add any missing standard industries with neutral status
         if 'industries' in industry_data:
@@ -403,37 +398,51 @@ def get_industry_status(index_name):
                         }
         
         # Fetch rank information for the industries from the database
-        from db_utils import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Find most recent report date
-        cursor.execute("""
-            SELECT report_date FROM reports ORDER BY report_date DESC LIMIT 1
-        """)
-        latest_date_row = cursor.fetchone()
-        
-        if latest_date_row:
-            latest_date = latest_date_row['report_date']
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
             
-            # Get ranks for each industry in this index
-            cursor.execute("""
-                SELECT industry_name, rank 
-                FROM industry_status 
-                WHERE index_name = ? AND report_date = ?
-            """, (index_name, latest_date))
+            # Find most recent report date with optional report_type filter
+            query = """
+                SELECT report_date FROM reports 
+                {}
+                ORDER BY report_date DESC LIMIT 1
+            """
             
-            # Add rank to response
-            ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}
-            industry_data['ranks'] = ranks
-        
-        conn.close()
+            params = []
+            if report_type:
+                query = query.format("WHERE report_type = ?")
+                params = [report_type]
+            else:
+                query = query.format("")
+                
+            cursor.execute(query, params)
+            latest_date_row = cursor.fetchone()
+            
+            if latest_date_row:
+                latest_date = latest_date_row['report_date']
+                
+                # Get ranks for each industry in this index
+                cursor.execute("""
+                    SELECT industry_name, rank 
+                    FROM industry_status 
+                    WHERE index_name = ? AND report_date = ?
+                """, (index_name, latest_date))
+                
+                # Add rank to response
+                ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}
+                industry_data['ranks'] = ranks
+            
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error fetching ranks: {str(e)}")
+            
         return jsonify(industry_data)
     except Exception as e:
         logger.error(f"Error getting industry status: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({"error": str(e), "industries": {}, "dates": []}), 500
-          
+     
 @app.route('/api/industry_alphabetical/<index_name>')
 def get_industry_alphabetical(index_name):
     try:
@@ -462,31 +471,123 @@ def get_industry_numerical(index_name):
 @app.route('/api/heatmap_data/all')
 def api_heatmap_data(months=None):
     try:
+        # Get report_type from query params (optional)
+        report_type = request.args.get('report_type')
+        
         if months == 'all':
             months = None
-        heatmap_data = get_pmi_data_by_month(months)
+            
+        heatmap_data = get_pmi_data_by_month(months, report_type)
         return jsonify(heatmap_data)
     except Exception as e:
         logger.error(f"Error getting heatmap data: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
+    
 @app.route('/api/all_indices')
 def get_indices_list():
     try:
+        # Get optional report_type parameter
+        report_type = request.args.get('report_type')
+        
         # Get list of indices directly from database
-        indices = get_all_indices()
+        indices = get_all_indices(report_type)
         return jsonify(indices)
     except Exception as e:
         logger.error(f"Error getting indices list: {str(e)}")
         logger.error(traceback.format_exc())
         # Return at least a fallback list
-        fallback_indices = [
-            'New Orders', 'Production', 'Employment', 'Supplier Deliveries',
-            'Inventories', 'Customers\' Inventories', 'Prices', 'Backlog of Orders',
-            'New Export Orders', 'Imports'
-        ]
+        fallback_indices = []
+        if report_type == 'Services':
+            fallback_indices = [
+                'Services PMI', 'Business Activity', 'New Orders', 'Employment', 'Supplier Deliveries',
+                'Inventories', 'Inventory Sentiment', 'Prices', 'Backlog of Orders',
+                'New Export Orders', 'Imports'
+            ]
+        else:
+            fallback_indices = [
+                'Manufacturing PMI', 'New Orders', 'Production', 'Employment', 'Supplier Deliveries',
+                'Inventories', 'Customers\' Inventories', 'Prices', 'Backlog of Orders',
+                'New Export Orders', 'Imports'
+            ]
         return jsonify(fallback_indices)
+    
+def get_standard_industries(report_type_str: Optional[str]) -> List[str]: # Added type hint
+    """
+    Get the standard list of industries based on report type, primarily from config.
+    """
+    report_type = (report_type_str or "Manufacturing").capitalize() # Default and capitalize
+    
+    canonical_list = config_loader.get_canonical_industries(report_type)
+    if canonical_list:
+        logger.debug(f"Using canonical industries from config for report type: {report_type}")
+        return canonical_list
 
+    # Fallback to hardcoded lists if config is missing or empty for the type
+    logger.warning(f"Canonical industries not found in config for {report_type}. Using hardcoded fallback.")
+    if report_type == 'Services':
+        return [
+            "Accommodation & Food Services", 
+            "Agriculture, Forestry, Fishing & Hunting",
+            "Arts, Entertainment & Recreation", 
+            "Construction", 
+            "Educational Services",
+            "Finance & Insurance", 
+            "Health Care & Social Assistance", 
+            "Information",
+            "Management of Companies & Support Services", 
+            "Mining", 
+            "Professional, Scientific & Technical Services",
+            "Public Administration", 
+            "Real Estate, Rental & Leasing", 
+            "Retail Trade",
+            "Transportation & Warehousing", 
+            "Utilities", 
+            "Wholesale Trade",
+            "Other Services" # Common in Services reports
+        ]
+    else:  # Manufacturing or default
+        return [
+            "Apparel, Leather & Allied Products",
+            "Chemical Products",
+            "Computer & Electronic Products",
+            "Electrical Equipment, Appliances & Components",
+            "Fabricated Metal Products",
+            "Food, Beverage & Tobacco Products",
+            "Furniture & Related Products",
+            "Machinery",
+            "Miscellaneous Manufacturing",
+            "Nonmetallic Mineral Products",
+            "Paper Products",
+            "Petroleum & Coal Products",
+            "Plastics & Rubber Products",
+            "Primary Metals",
+            "Printing & Related Support Activities",
+            "Textile Mills",
+            "Transportation Equipment",
+            "Wood Products"
+        ]
+    
+@app.route('/api/report_types')
+def get_report_types():
+    """Get available report types."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT report_type 
+            FROM reports 
+            ORDER BY report_type
+        """)
+        
+        report_types = [row['report_type'] for row in cursor.fetchall()]
+        conn.close()
+        
+        return jsonify(report_types)
+    except Exception as e:
+        logger.error(f"Error getting report types: {str(e)}")
+        return jsonify(["Manufacturing", "Services"]), 500  # Default fallback
+    
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy"})

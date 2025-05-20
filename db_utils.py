@@ -332,10 +332,9 @@ def get_all_report_dates(report_type=None):
         if conn:
             conn.close()
 
-def get_pmi_data_by_month(num_months=12, report_type='Manufacturing'):
+def get_pmi_data_by_month(num_months=12, report_type=None):
     """
     Get PMI data for all indices by month, for the last N months.
-    This is used for the monthly heatmap summary.
     
     Args:
         num_months: Number of most recent months to include
@@ -349,19 +348,29 @@ def get_pmi_data_by_month(num_months=12, report_type='Manufacturing'):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get the most recent report dates for the specified report type
-        cursor.execute("""
+        # Build the query based on whether report_type is provided
+        query = """
             SELECT report_date, month_year
             FROM reports 
-            WHERE report_type = ?
+            {}
             ORDER BY report_date DESC 
             LIMIT ?
-        """, (report_type, num_months))
+        """
+        
+        params = []
+        if report_type:
+            query = query.format("WHERE report_type = ?")
+            params = [report_type, num_months]
+        else:
+            query = query.format("")
+            params = [num_months]
+            
+        cursor.execute(query, params)
         
         report_dates = [{'report_date': row['report_date'], 'month_year': row['month_year']} for row in cursor.fetchall()]
         
         if not report_dates:
-            logger.warning(f"No report dates found for {report_type}")
+            logger.warning(f"No report dates found for {report_type if report_type else 'any type'}")
             return []
         
         # Get PMI data for each report date
@@ -393,7 +402,8 @@ def get_pmi_data_by_month(num_months=12, report_type='Manufacturing'):
             result.append({
                 'report_date': report_date,
                 'month_year': month_year,
-                'indices': indices
+                'indices': indices,
+                'report_type': report_type  # Include report_type in the response
             })
         
         logger.info(f"Retrieved PMI data for {len(result)} report dates")
@@ -405,15 +415,15 @@ def get_pmi_data_by_month(num_months=12, report_type='Manufacturing'):
     finally:
         if conn:
             conn.close()
-            
-def get_index_time_series(index_name, num_months=24):
+
+def get_index_time_series(index_name, num_months=24, report_type=None):
     """
     Get time series data for a specific index.
-    This is used for the Index Time-Series Analysis.
     
     Args:
         index_name: Name of the index (e.g., "Manufacturing PMI")
         num_months: Number of most recent months to include
+        report_type: Type of report ('Manufacturing' or 'Services')
         
     Returns:
         List of dictionaries with date, value, and month-over-month change
@@ -422,24 +432,27 @@ def get_index_time_series(index_name, num_months=24):
     try:
         conn = get_db_connection()
         
-        # Use a raw SQL query with window functions for efficiency
+        # Modify query to include report_type filtering
         query = """
         WITH IndexData AS (
             SELECT 
                 r.report_date,
                 r.month_year,
+                r.report_type,
                 p.index_value,
                 p.direction,
                 LAG(p.index_value) OVER (ORDER BY r.report_date) AS prev_value
             FROM pmi_indices p
             JOIN reports r ON p.report_date = r.report_date
             WHERE p.index_name = ?
+            {}
             ORDER BY r.report_date DESC
             LIMIT ?
         )
         SELECT 
             report_date,
             month_year,
+            report_type,
             index_value,
             direction,
             ROUND(index_value - prev_value, 1) AS change
@@ -447,8 +460,16 @@ def get_index_time_series(index_name, num_months=24):
         ORDER BY report_date DESC
         """
         
+        params = []
+        if report_type:
+            query = query.format("AND r.report_type = ?")
+            params = [index_name, report_type, num_months]
+        else:
+            query = query.format("")
+            params = [index_name, num_months]
+        
         cursor = conn.cursor()
-        cursor.execute(query, (index_name, num_months))
+        cursor.execute(query, params)
         
         return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
@@ -458,14 +479,14 @@ def get_index_time_series(index_name, num_months=24):
         if conn:
             conn.close()
 
-def get_industry_status_over_time(index_name, num_months=12):
+def get_industry_status_over_time(index_name, num_months=12, report_type=None):
     """
     Get industry status over time for a specific index.
-    This is used for the Industry Growth/Contraction visualization.
     
     Args:
         index_name: Name of the index (e.g., "New Orders")
         num_months: Number of most recent months to include
+        report_type: Type of report ('Manufacturing' or 'Services')
         
     Returns:
         Dictionary with industries as keys and lists of status by month as values
@@ -475,25 +496,39 @@ def get_industry_status_over_time(index_name, num_months=12):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get the most recent report dates
-        cursor.execute("""
+        # Get the most recent report dates with optional report_type filter
+        query = """
             SELECT report_date, month_year 
             FROM reports 
+            {}
             ORDER BY report_date DESC 
             LIMIT ?
-        """, (num_months,))
+        """
+        
+        params = []
+        if report_type:
+            query = query.format("WHERE report_type = ?")
+            params = [report_type, num_months]
+        else:
+            query = query.format("")
+            params = [num_months]
+            
+        cursor.execute(query, params)
         
         date_records = [dict(row) for row in cursor.fetchall()]
         if not date_records:
-            return {'dates': [], 'industries': {}, 'ranks': {}}
+            return {'dates': [], 'industries': {}, 'ranks': {}, 'report_type': report_type}
             
         # Get all unique industries for this index
         cursor.execute("""
-            SELECT DISTINCT industry_name 
-            FROM industry_status 
-            WHERE index_name = ?
-            ORDER BY rank
-        """, (index_name,))
+            SELECT DISTINCT i.industry_name 
+            FROM industry_status i
+            JOIN reports r ON i.report_date = r.report_date
+            WHERE i.index_name = ?
+            {}
+            ORDER BY i.rank
+        """.format("AND r.report_type = ?" if report_type else ""), 
+        [index_name] + ([report_type] if report_type else []))
 
         industries = [row['industry_name'] for row in cursor.fetchall()]
         
@@ -540,27 +575,49 @@ def get_industry_status_over_time(index_name, num_months=12):
         
         return {
             'dates': [record['month_year'] for record in date_records],
-            'industries': industry_data
+            'industries': industry_data,
+            'ranks': ranks,
+            'report_type': report_type  # Include report_type in the response
         }
     except Exception as e:
         logger.error(f"Error getting industry status for {index_name}: {str(e)}")
-        return {'dates': [], 'industries': {}, 'ranks': {}}
+        return {'dates': [], 'industries': {}, 'ranks': {}, 'report_type': report_type}
     finally:
         if conn:
             conn.close()
-            
-def get_all_indices():
-    """Get a list of all indices in the database."""
+
+def get_all_indices(report_type=None):
+    """
+    Get a list of all indices in the database.
+    
+    Args:
+        report_type: Type of report ('Manufacturing' or 'Services')
+        
+    Returns:
+        List of index names
+    """
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            SELECT DISTINCT index_name 
-            FROM pmi_indices 
-            ORDER BY index_name
-        """)
+        if report_type:
+            # Get indices specific to the report type
+            query = """
+                SELECT DISTINCT i.index_name 
+                FROM pmi_indices i
+                JOIN reports r ON i.report_date = r.report_date
+                WHERE r.report_type = ?
+                ORDER BY i.index_name
+            """
+            cursor.execute(query, (report_type,))
+        else:
+            # Get all indices
+            cursor.execute("""
+                SELECT DISTINCT index_name 
+                FROM pmi_indices 
+                ORDER BY index_name
+            """)
         
         return [row['index_name'] for row in cursor.fetchall()]
     except Exception as e:
@@ -635,7 +692,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             )
         )
 
-        # Process indices data - MODIFIED: prioritize indices field
+        # Process indices data - MODIFIED to handle both report types
         indices_data = {}
         
         # First, try to get indices directly from the extracted data
@@ -643,13 +700,49 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             indices_data = extracted_data['indices']
             logger.info(f"Using indices directly - found {len(indices_data)} indices")
         
-        # If not available, try pmi_data
-        elif 'pmi_data' in extracted_data and extracted_data['pmi_data']:
+        # If not available, check for report-specific table data
+        elif not indices_data:
+            # Define possible table keys based on report type
+            possible_table_keys = []
+            
+            # Add report-specific keys
+            if report_type.lower() == 'manufacturing':
+                possible_table_keys.extend(['manufacturing_table', 'mfg_table', 'pmi_data'])
+            elif report_type.lower() == 'services':
+                possible_table_keys.extend(['services_table', 'service_table', 'services_data'])
+            
+            # Add generic keys that might be used
+            possible_table_keys.extend(['at_a_glance', 'table_data', 'index_data'])
+            
+            # Check each possible key
+            for key in possible_table_keys:
+                if key in extracted_data and isinstance(extracted_data[key], dict):
+                    # Check if this dict contains index data
+                    has_indices = False
+                    key_count = 0
+                    
+                    # List of common indices to check for
+                    index_indicators = ['PMI', 'New Orders', 'Production', 'Employment', 
+                                       'Business Activity', 'Supplier Deliveries']
+                    
+                    for index in index_indicators:
+                        if index in extracted_data[key]:
+                            has_indices = True
+                            key_count += 1
+                    
+                    # If we found multiple indices, use this data
+                    if has_indices and key_count >= 2:
+                        indices_data = extracted_data[key]
+                        logger.info(f"Using {key} - found {len(indices_data)} indices")
+                        break
+        
+        # If we still have no indices, try pmi_data
+        if not indices_data and 'pmi_data' in extracted_data and extracted_data['pmi_data']:
             indices_data = extracted_data['pmi_data']
             logger.info(f"Using pmi_data - found {len(indices_data)} indices")
             
         # Last resort: try to extract from index_summaries
-        elif 'index_summaries' in extracted_data and extracted_data['index_summaries']:
+        if not indices_data and 'index_summaries' in extracted_data and extracted_data['index_summaries']:
             logger.info("Trying to extract indices from index_summaries")
             index_summaries = extracted_data['index_summaries']
             
@@ -668,8 +761,17 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                         direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
                         
                         # Standardize direction terms
-                        direction = standardize_direction(direction)
+                        if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+                            direction = 'Growing'
+                        elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
+                            direction = 'Contracting'
+                        elif direction.lower() == 'slower':
+                            direction = 'Slowing'
+                        elif direction.lower() == 'faster':
+                            direction = 'Faster'
                         
+                        if not indices_data:
+                            indices_data = {}
                         indices_data[index_name] = {
                             'value': value,
                             'direction': direction
@@ -677,20 +779,51 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 except Exception as e:
                     logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
         
-        # Insert indices data with improved error handling
+        # Insert indices data with improved extraction logic
         for index_name, data in indices_data.items():
             try:
-                # Extract index value with improved handling for different field names
+                if index_name.upper() in ["OVERALL ECONOMY", "MANUFACTURING SECTOR", "SERVICES SECTOR"]:
+                    logger.info(f"DB_STORE: Skipping non-PMI summary item '{index_name}' for pmi_indices table.")
+                    continue  # This will skip the rest of the current iteration of THIS loop and go to the next index_name
+
+                # IMPROVED INDEX VALUE EXTRACTION LOGIC
                 index_value = None
-                if 'value' in data:
-                    index_value = data['value']
-                elif 'current' in data:
-                    index_value = data['current']
+                
+                # Identify the primary value field and avoid using percent_point_change
+                if isinstance(data, dict):
+                    # Priority order for value fields
+                    priority_fields = ['current', 'value', 'series_index', 'index']
+                    
+                    # Fields to avoid
+                    avoid_fields = ['percent_point_change', 'change', 'delta']
+                    
+                    # First try priority fields
+                    for field in priority_fields:
+                        if field in data and data[field] is not None:
+                            index_value = data[field]
+                            break
+                    
+                    # If still not found, try any numeric field except those to avoid
+                    if index_value is None:
+                        for field, val in data.items():
+                            if field not in avoid_fields and field != 'direction' and val is not None:
+                                try:
+                                    # Test if it can be converted to float
+                                    float_test = float(val)
+                                    index_value = val
+                                    break
+                                except (ValueError, TypeError):
+                                    continue
+                else:
+                    # If data is not a dict, try using it directly
+                    index_value = data
                 
                 # Ensure value is a float
                 if index_value is not None:
                     try:
                         if isinstance(index_value, str):
+                            # If string has percentage sign, remove it
+                            index_value = index_value.replace('%', '')
                             index_value = float(index_value)
                         else:
                             index_value = float(index_value)
@@ -701,11 +834,33 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                     logger.warning(f"No valid index value for {index_name}, using 0.0")
                     index_value = 0.0
                 
-                # Extract direction with improved handling
-                direction = data.get('direction', 'Unknown')
-                if not direction or not isinstance(direction, str):
+                # IMPROVED DIRECTION EXTRACTION LOGIC
+                direction = None
+                
+                # Identify the primary direction and avoid using rate_of_change
+                if isinstance(data, dict):
+                    # Priority order for direction fields
+                    priority_fields = ['direction', 'status', 'trend']
+                    
+                    # Fields to avoid
+                    avoid_fields = ['rate_of_change', 'pace', 'speed']
+                    
+                    # First try priority fields
+                    for field in priority_fields:
+                        if field in data and data[field] is not None:
+                            direction = data[field]
+                            break
+                    
+                    # If not found, use default
+                    if direction is None:
+                        direction = 'Unknown'
+                else:
                     direction = 'Unknown'
                     
+                # Ensure direction is a string
+                if not isinstance(direction, str):
+                    direction = str(direction)
+                
                 # Standardize direction
                 direction = standardize_direction(direction)
                 
@@ -726,7 +881,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             except Exception as e:
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
         
-        # Process industry_status data
+        # Process industry_status data (unchanged)
         industry_data = extracted_data.get('industry_data', {})
         for index_name, categories in industry_data.items():
             for category, industries in categories.items():
@@ -784,7 +939,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
     finally:
         if conn:
             conn.close()
-
+            
 def standardize_direction(direction):
     """Standardize direction terms."""
     direction = direction.lower()
@@ -869,55 +1024,59 @@ def standardize_direction(direction):
     # Convert first letter to uppercase for other directions
     return direction.capitalize()
 
-def clean_industry_name(industry):
-    """Clean industry name to remove common artifacts."""
+def clean_industry_name(industry: Optional[str]) -> Optional[str]: # Added type hints
+    """Clean industry name to remove common artifacts, but NOT canonical parts like 'Products'."""
     if not industry or not isinstance(industry, str):
         return None
 
-    # Remove leading/trailing whitespace
-    industry = industry.strip()
+    cleaned = industry.strip()
 
-    # Skip parsing artifacts
-    artifacts = [
-        "following order",
-        "are:",
-        "in order",
-        "listed in order",
-        "in the following order",
-        "reporting",
-        "november", # also remove this artifact
-        "categories"
+    # Regex for artifacts (more specific to start/end of string or whole string matches)
+    # These should target non-industry text often appearing in lists
+    artifact_patterns = [
+        r"^\s*in\s+(the\s+)?following\s+order\s*:?.*$",
+        r"^\s*industries\s+reporting.*$",
+        r"^\s*reporting\s+(?:growth|decline|contraction|expansion|increase|decrease|slower|faster).*$",
+        r"^\s*are\s*:?\s*$",
+        r"^\s*listed\s+in\s+order\s*:?.*$",
+        r"^\s*\d+\.\s+",  # e.g., "1. "
+        r"^\s*-\s*",      # e.g., "- "
+        r"\s*\(\d+\)$",   # e.g., " (3)"
+        # Common months that might be extracted as part of an industry list if parsing is poor
+        r"^(january|february|march|april|may|june|july|august|september|october|november|december)\s*:?\s*$",
+        r"^\s*categories\s*:?\s*$"
     ]
 
-    industry_lower = industry.lower()
-    for artifact in artifacts:
-        if artifact in industry_lower:
-            return None
+    for pattern in artifact_patterns:
+        if re.match(pattern, cleaned, flags=re.IGNORECASE):
+            logger.debug(f"Industry '{industry}' matched artifact pattern '{pattern}', cleaning to None.")
+            return None # If it's clearly an artifact, discard
 
-    # Remove common prefixes and suffixes
-    industry = re.sub(r"^(the\s+|and\s+|november\s+|order\s+)", "", industry, flags=re.IGNORECASE)
-    industry = re.sub(r"(\s+products)$", "", industry, flags=re.IGNORECASE)
+    # Remove common prefixes ONLY if they are followed by significant text
+    cleaned = re.sub(r"^(the|and|only|of|in|is|are|november|order)\s+", "", cleaned, flags=re.IGNORECASE).strip()
     
-    # Normalize whitespace
-    industry = re.sub(r'\s+', ' ', industry).strip()  # remove multi-space
+    # DO NOT STRIP " Products" here as it's part of the canonical name.
+    # industry = re.sub(r"(\s+products)$", "", industry, flags=re.IGNORECASE) # <-- REMOVED THIS LINE
 
-    # Remove any parsing leftovers at the beginning, like stray letters/symbols
-    industry = re.sub(r"^[s]\s+", "", industry, flags=re.IGNORECASE) # s
-    industry = re.sub(r"^[-—]\s+", "", industry, flags=re.IGNORECASE) # dashes
-    industry = re.sub(r"^[a-z]\s+", "", industry, flags=re.IGNORECASE) # stray letters
+    # Normalize internal whitespace (e.g., multiple spaces to one)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     
-    # Remove number + character
-    industry = re.sub(r"^\d+[a-zA-Z]", "", industry, flags=re.IGNORECASE)
-     # Fix "andPrimary Metals" issue
-    industry = re.sub(r"andprimarymetals", "Primary Metals", industry, flags=re.IGNORECASE)
-    industry = re.sub(r"AndPrimary", "Primary", industry, flags=re.IGNORECASE)
+    # Remove stray leading/trailing specific characters if they are isolated
+    cleaned = re.sub(r"^[sS]\s+(?=\w)", "", cleaned) # "s Textile Mills" -> "Textile Mills"
+    cleaned = re.sub(r"^[-—]\s+", "", cleaned)
 
-    # Skip if starts with punctuation
-    if re.match(r'^[,;:.]+', industry):
+    # Fix "andPrimary Metals" type issues if they occur before standardization
+    # This should ideally be handled by better LLM output or more robust standardization
+    cleaned = cleaned.replace("andPrimary", "Primary") # Example specific fix
+    cleaned = cleaned.replace("AndPrimary", "Primary")
+
+    if not cleaned or len(cleaned) < 3: # Check length AFTER cleaning
+        logger.debug(f"Industry '{industry}' cleaned to too short ('{cleaned}'). Returning None.")
+        return None
+        
+    non_industry_phrases = ["no change", "none reported", "not applicable", "none"]
+    if cleaned.lower() in non_industry_phrases:
+        logger.debug(f"Industry '{industry}' identified as non-industry phrase ('{cleaned}'). Returning None.")
         return None
 
-    # Skip if too short
-    if len(industry) < 3:
-        return None
-    
-    return industry
+    return cleaned

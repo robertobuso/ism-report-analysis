@@ -1,8 +1,9 @@
 import logging
 import re
-from typing import Dict, List, Optional, Any, Union, Set, Tuple
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, validator, model_validator
+from pydantic import BaseModel, Field, validator, model_validator, ValidationError
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,18 +14,20 @@ class PMIValue(BaseModel):
     
     @validator('value')
     def validate_value(cls, v):
+        if v is None: # Allow None
+            return None
         if isinstance(v, str):
             try:
-                # Try to convert string to float
-                return float(v)
+                cleaned_v = re.sub(r'[^\d\.\-]', '', v) # Keep digits, dot, minus
+                if cleaned_v:
+                    return float(cleaned_v)
+                else: # String was non-numeric
+                    logger.warning(f"PMI value string '{v}' is non-numeric after cleaning. Returning None.")
+                    return None 
             except ValueError:
-                # If it's a string with other text, try to extract just the number
-                match = re.search(r'(\d+\.\d+)', v)
-                if match:
-                    return float(match.group(1))
-                # If no number is found, keep as string but log a warning
-                logger.warning(f"Could not convert PMI value to float: {v}")
-        return v
+                logger.warning(f"Could not convert PMI value string to float: {v}. Returning None.")
+                return None
+        return v # Already float or int
     
     @validator('direction')
     def validate_direction(cls, v):
@@ -261,25 +264,50 @@ class DataTransformationPipeline:
     def process(extracted_data: Dict[str, Any], report_type: str) -> Dict[str, Any]:
         """
         Process extracted data through the validation and transformation pipeline.
-        
-        Args:
-            extracted_data: The raw extracted data
-            report_type: The report type ('Manufacturing' or 'Services')
-            
-        Returns:
-            Validated and transformed data
         """
         try:
-            # Step 1: Add report_type to the data
-            extracted_data['report_type'] = report_type
+            if not isinstance(extracted_data, dict): # Ensure input is a dict
+                logger.error(f"Extracted data is not a dictionary: {type(extracted_data)}. Cannot process.")
+                # Return a minimal valid structure for this report_type
+                return {
+                    "month_year": datetime.now().strftime("%B %Y"),
+                    "report_type": report_type,
+                    "indices": {}, "industry_data": {}, "index_summaries": {}
+                }
+
+            # Step 1: Add/ensure report_type
+            extracted_data['report_type'] = report_type.capitalize() # Standardize case
             
             # Step 2: Create and validate using Pydantic model
-            report_model = ISMReport(**extracted_data)
-            
+            try:
+                report_model = ISMReport(**extracted_data)
+            except ValidationError as ve:
+                logger.error(f"Pydantic validation failed during initial model creation: {ve}")
+                logger.error(f"Problematic extracted_data: {json.dumps(extracted_data, indent=2)}")
+                # Fallback: try to create a model with minimal required fields if possible
+                minimal_data = {
+                    "month_year": extracted_data.get("month_year", datetime.now().strftime("%B %Y")),
+                    "report_type": report_type.capitalize(),
+                    "indices": extracted_data.get("indices", {}),
+                    "industry_data": extracted_data.get("industry_data", {}),
+                    "index_summaries": extracted_data.get("index_summaries", {})
+                }
+                try:
+                    report_model = ISMReport(**minimal_data)
+                    logger.warning("Created ISMReport model with minimal data due to initial validation errors.")
+                except ValidationError as ve_minimal:
+                    logger.error(f"Pydantic validation failed even with minimal data: {ve_minimal}")
+                    # If even minimal creation fails, return a very basic dict
+                    return {
+                        "month_year": minimal_data["month_year"],
+                        "report_type": minimal_data["report_type"],
+                        "indices": {}, "industry_data": {}, "index_summaries": {}
+                    }
+
             # Step 3: Apply additional transformations
             DataTransformationPipeline._standardize_industry_names(report_model)
             DataTransformationPipeline._infer_missing_values(report_model)
-            DataTransformationPipeline._validate_industry_consistency(report_model)
+            # DataTransformationPipeline._validate_industry_consistency(report_model)
             
             # Step 4: Convert back to dictionary
             return report_model.to_dict()
@@ -318,79 +346,89 @@ class DataTransformationPipeline:
     @staticmethod
     def _standardize_industry_names(report: ISMReport) -> None:
         """
-        Standardize industry names across all indices.
-        
-        Args:
-            report: The report model to update
+        Standardize industry names across all indices using canonical list from config
+        and deduplicate them within each category after standardization.
         """
-        # Get standard industry lists based on report type
-        if report.report_type == 'Manufacturing':
-            standard_industries = [
-                "Chemical Products", "Computer & Electronic Products",
-                "Electrical Equipment, Appliances & Components", "Fabricated Metal Products",
-                "Food, Beverage & Tobacco Products", "Furniture & Related Products",
-                "Machinery", "Miscellaneous Manufacturing", "Nonmetallic Mineral Products",
-                "Paper Products", "Petroleum & Coal Products", "Plastics & Rubber Products",
-                "Primary Metals", "Printing & Related Support Activities", "Textile Mills",
-                "Transportation Equipment", "Wood Products"
-            ]
-        else:  # Services
-            standard_industries = [
-                "Accommodation & Food Services", "Agriculture, Forestry, Fishing & Hunting",
-                "Arts, Entertainment & Recreation", "Construction", "Educational Services",
-                "Finance & Insurance", "Health Care & Social Assistance", "Information",
-                "Management of Companies & Support Services", "Mining", "Professional, Scientific & Technical Services",
-                "Public Administration", "Real Estate, Rental & Leasing", "Retail Trade",
-                "Transportation & Warehousing", "Utilities", "Wholesale Trade"
-            ]
-        
-        # Create mapping from various forms to standard names
-        industry_mapping = {}
-        for industry in standard_industries:
-            # Add the full name
-            industry_mapping[industry.lower()] = industry
+        canonical_industries = config_loader.get_canonical_industries(report.report_type)
+        if not canonical_industries:
+            logger.warning(f"No canonical industries loaded for report type '{report.report_type}'. Skipping standardization.")
+            return
+
+        # Create a mapping for quick lookups (lowercase for case-insensitivity)
+        # This map helps find the canonical name from various potential inputs.
+        # More sophisticated matching (e.g., fuzzy matching) could be added if needed.
+        industry_mapping_to_canonical: Dict[str, str] = {}
+        for canon_name in canonical_industries:
+            industry_mapping_to_canonical[canon_name.lower()] = canon_name
+            # Add common variations (e.g., without "Products", without "& Allied")
+            # This part needs to be robust based on observed LLM outputs.
+            name_no_products = re.sub(r'\s+Products$', '', canon_name, flags=re.IGNORECASE).strip()
+            if name_no_products.lower() != canon_name.lower():
+                industry_mapping_to_canonical[name_no_products.lower()] = canon_name
             
-            # Add abbreviated forms
-            parts = industry.split()
+            name_with_and = canon_name.replace(" & ", " and ")
+            if name_with_and.lower() != canon_name.lower():
+                industry_mapping_to_canonical[name_with_and.lower()] = canon_name
+            
+            # Consider splitting by " & " or " and " and checking parts
+            parts = re.split(r'\s+&\s+|\s+and\s+', canon_name, flags=re.IGNORECASE)
             if len(parts) > 1:
-                abbr = ''.join(word[0] for word in parts)
-                industry_mapping[abbr.lower()] = industry
-                
-                # Add first words
-                industry_mapping[parts[0].lower()] = industry
-                
-                # Add combinations of two words
-                if len(parts) > 2:
-                    industry_mapping[f"{parts[0]} {parts[1]}".lower()] = industry
-        
-        # Apply standardization to each industry in the report
+                industry_mapping_to_canonical[parts[0].lower()] = canon_name # e.g., "Computer" -> "Computer & Electronic Products"
+
+        updated_industry_data = {}
         for index_name, categories in report.industry_data.items():
-            for category, industries in categories.items():
-                standardized = []
-                for industry in industries:
-                    # Check if this industry has a standard form
-                    if industry.lower() in industry_mapping:
-                        standardized.append(industry_mapping[industry.lower()])
-                    else:
-                        # Try to find the best match based on words
-                        industry_words = set(industry.lower().split())
-                        best_match = None
-                        best_score = 0
-                        
-                        for std_industry in standard_industries:
-                            std_words = set(std_industry.lower().split())
-                            score = len(industry_words.intersection(std_words))
-                            if score > best_score:
-                                best_score = score
-                                best_match = std_industry
-                        
-                        if best_score > 0:
-                            standardized.append(best_match)
+            updated_categories = {}
+            for category_name, raw_industries_from_llm in categories.items():
+                standardized_for_this_category = []
+                if not isinstance(raw_industries_from_llm, list):
+                    logger.warning(f"Industries for {index_name} - {category_name} is not a list: {raw_industries_from_llm}. Skipping.")
+                    continue
+
+                for raw_industry in raw_industries_from_llm:
+                    if not isinstance(raw_industry, str): 
+                        logger.debug(f"Skipping non-string industry entry: {raw_industry}")
+                        continue
+                    
+                    clean_raw_industry = raw_industry.strip().lower()
+                    canonical_name = industry_mapping_to_canonical.get(clean_raw_industry)
+
+                    if not canonical_name:
+                        # Try a simple "best match" if direct map fails - find a canonical name that contains the raw_industry (or vice-versa)
+                        # This is a basic attempt; more advanced matching (e.g., Levenshtein distance) could be used.
+                        best_match_score = 0
+                        potential_match = None
+                        for canon_ind in canonical_industries:
+                            if clean_raw_industry in canon_ind.lower() or canon_ind.lower() in clean_raw_industry:
+                                # Simple containment check (could be improved)
+                                current_score = len(clean_raw_industry) if clean_raw_industry in canon_ind.lower() else len(canon_ind)
+                                if current_score > best_match_score:
+                                    best_match_score = current_score
+                                    potential_match = canon_ind
+                        if potential_match:
+                            canonical_name = potential_match
                         else:
-                            standardized.append(industry)
+                            # If still no match, keep original (after basic cleaning), but log it
+                            logger.warning(f"Industry '{raw_industry}' not found in canonical list or mappings for {report.report_type}. Keeping original.")
+                            # Basic cleaning for non-standardized names
+                            cleaned_non_canonical = re.sub(r'\s*\(\d+\)$', '', raw_industry.strip()).strip() # Remove (1) type notes
+                            if len(cleaned_non_canonical) > 2: # Only keep if somewhat substantial
+                                standardized_for_this_category.append(cleaned_non_canonical)
+                            continue # Skip adding to list if it's too short or problematic
+
+                    if canonical_name: # Ensure we have a name
+                        standardized_for_this_category.append(canonical_name)
                 
-                # Update the category with standardized names
-                report.industry_data[index_name][category] = standardized
+                # Deduplicate the list of standardized canonical names for this category
+                unique_standardized_industries = []
+                seen_in_category = set()
+                for std_name in standardized_for_this_category:
+                    if std_name.lower() not in seen_in_category:
+                        unique_standardized_industries.append(std_name)
+                        seen_in_category.add(std_name.lower())
+                
+                updated_categories[category_name] = unique_standardized_industries
+            updated_industry_data[index_name] = updated_categories
+        report.industry_data = updated_industry_data
     
     @staticmethod
     def _infer_missing_values(report: ISMReport) -> None:
