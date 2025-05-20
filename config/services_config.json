@@ -44,6 +44,6 @@
     "Transportation & Warehousing",
     "Utilities",
     "Wholesale Trade",
-    "Other Services" // It's common for Services reports to have an "Other Services" category.
+    "Other Services"
   ]
 }

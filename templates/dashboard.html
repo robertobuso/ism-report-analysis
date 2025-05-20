@@ -280,15 +280,18 @@
             background-color: var(--color-growing) !important;
             color: white !important; /* White text should be fine */
         }
+
         .bg-contracting, .bg-danger { /* Included .bg-danger for KPI badges */
             background-color: var(--color-contracting) !important;
             color: white !important;
         }
+
         .bg-neutral {
             /* Consider updating neutral? Maybe a gray? */
             background-color: #ffc107 !important; /* Bootstrap warning yellow */
             color: #333 !important; /* Dark text for yellow */
         }
+
          /* Default gray for "no change" */
          .bg-secondary {
             background-color: #6c757d !important;
@@ -398,6 +401,116 @@
                 padding: 1.25rem;
             }
         }
+
+         /* Reusable Component Library */
+        .ism-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+            transition: transform 0.2s ease;
+        }
+        
+        .ism-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.08);
+        }
+        
+        .ism-card-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .ism-card-body {
+            padding: 1.5rem;
+        }
+        
+        /* Loading States */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            border-radius: inherit;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Error States */
+        .error-container {
+            padding: 1rem;
+            background-color: #fff3f3;
+            border-left: 4px solid #ea4335;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+        }
+        
+        .error-title {
+            color: #d32f2f;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Data Visualization Containers */
+        .viz-container {
+            position: relative;
+            min-height: 300px;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 576px) {
+            .ism-card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            }
+            
+            .ism-card-header .btn-group {
+            margin-top: 0.75rem;
+            align-self: flex-end;
+            }
+        }
+        
+        /* Report Type Indicators */
+        .report-type-indicator {
+            font-size: 0.875rem;
+            font-weight: 600;
+            padding: 0.35rem 0.75rem;
+            border-radius: 2rem;
+            margin-left: 1rem;
+            display: inline-flex;
+            align-items: center;
+        }
+        
+        .report-type-manufacturing {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .report-type-services {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
     </style>
 </head>
 <body>
@@ -434,11 +547,33 @@
         <div class="content-container">
             <!-- Dashboard Header -->
             <div class="dashboard-header">
-                <h1>ISM Manufacturing Report Dashboard</h1>
-                <a href="{{ url_for('upload_view') }}" class="btn btn-primary">
+                <div>
+                    <h1>ISM Report Dashboard</h1>
+                    <div id="reportTypeSelector" class="mt-2 mb-3">
+                    <div class="btn-group" role="group" aria-label="Report Type">
+                        <button type="button" class="btn btn-outline-primary report-type-btn active" data-report-type="Manufacturing">
+                        <i class="bi bi-gear-fill me-1"></i>Manufacturing
+                        </button>
+                        <button type="button" class="btn btn-outline-primary report-type-btn" data-report-type="Services">
+                        <i class="bi bi-people-fill me-1"></i>Services
+                        </button>
+                    </div>
+                    
+                    <span id="currentReportBadge" class="report-type-indicator report-type-manufacturing ms-3">
+                        <i class="bi bi-gear-fill me-1"></i>Manufacturing Report
+                    </span>
+                    </div>
+                </div>
+                
+                <div>
+                    <a href="{{ url_for('upload_view') }}" class="btn btn-primary">
                     <i class="bi bi-upload me-2"></i>Upload New Report
-                </a>
-            </div>
+                    </a>
+                    <button id="compareViewBtn" class="btn btn-outline-secondary ms-2">
+                    <i class="bi bi-arrow-left-right me-1"></i>Compare Reports
+                    </button>
+                </div>
+                </div>
             
             <!-- KPI Cards Row -->
             <div class="row mb-4">
@@ -501,22 +636,22 @@
                 <!-- Navigation Tabs -->
                 <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
+                        <button class="nav-link tab-level active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
                             <i class="bi bi-grid-3x3 me-2"></i>Heatmap Summary
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
+                        <button class="nav-link tab-level" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
                             <i class="bi bi-sort-alpha-down me-2"></i>Alphabetical View
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
+                        <button class="nav-link tab-level" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
                             <i class="bi bi-sort-numeric-down me-2"></i>Numerical View
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
+                        <button class="nav-link tab-level" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
                             <i class="bi bi-graph-up-arrow me-2"></i>Index Trends
                         </button>
                     </li>
@@ -971,115 +1106,156 @@
         }
 
         // Heatmap Functions
-        function loadHeatmapData() {
+        async function loadHeatmapData(reportType = getCurrentReportType()) {
             const heatmapContainer = document.querySelector('.heatmap-container');
-            // Clear any existing content to ensure fresh rendering
-            heatmapContainer.innerHTML = '';
-            
-            // Check if we have heatmap data
-            if (!heatmap_data || heatmap_data.length === 0) {
-                heatmapContainer.innerHTML = '<p class="text-center text-muted">No heatmap data available</p>';
+            if (!heatmapContainer) {
+                console.error("Heatmap container not found!");
                 return;
             }
+            heatmapContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
             
-            // Create table for heatmap
-            const table = document.createElement('table');
-            table.className = 'table table-bordered';
+            // Get time range selection from the persistent select
+            const timeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent'); // Use the ID of the persistent select
+            const timeRangeValue = timeRangeSelect ? timeRangeSelect.value : '12'; // Default to 12 if select not found yet
+            const timeRangeUrl = timeRangeValue === 'all' ? 'all' : timeRangeValue;
             
-            // Create header row with months
-            const headerRow = document.createElement('tr');
-            headerRow.innerHTML = '<th>Index</th>';
-            
-            // Use the monthly data already available in heatmap_data
-            const months = heatmap_data.slice(0, 12).map(data => data.month_year);
-            
-            months.forEach(month => {
-                headerRow.innerHTML += `<th>${month}</th>`;
-            });
-            
-            const thead = document.createElement('thead');
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-            
-            // Create tbody and rows for each index
-            const tbody = document.createElement('tbody');
-            
-            // Get all unique indices
-            const allIndices = new Set();
-            heatmap_data.forEach(data => {
-                Object.keys(data.indices).forEach(index => allIndices.add(index));
-            });
-            
-            // Set fixed scale boundaries
-            const minScale = 40;  // Threshold for bright red
-            const midScale = 50;  // Neutral threshold - light green
-            const maxScale = 60;  // Threshold for bright green
-            
-            // Create row for each index
-            Array.from(allIndices).sort().forEach(index => {
-                const row = document.createElement('tr');
-                row.innerHTML = `<td>${index}</td>`;
+            try {
+                const response = await fetch(`/api/heatmap_data/${timeRangeUrl}?report_type=${reportType}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status} while fetching heatmap data for ${reportType}`);
+                }
+                const fetchedData = await response.json(); // Use a different variable name to avoid confusion
                 
-                // Add data for each month
+                window.heatmap_data = fetchedData; // Update global variable if other parts rely on it directly (though ideally they'd also use fetchedData or DataProvider)
+                
+                heatmapContainer.innerHTML = ''; // Clear loading indicator
+                
+                if (!fetchedData || fetchedData.length === 0) {
+                    heatmapContainer.innerHTML = '<p class="text-center text-muted">No heatmap data available for selected criteria.</p>';
+                    updateKpiCards(reportType); // Update KPIs even if heatmap is empty (to show '--')
+                    return;
+                }
+
+                const table = document.createElement('table');
+                table.className = 'table table-bordered data-table'; // Added data-table for styling
+                
+                const headerRow = document.createElement('tr');
+                headerRow.innerHTML = '<th>Index</th>';
+                
+                // Use the months from the actual fetchedData
+                const months = fetchedData.map(item => item.month_year); 
+                
                 months.forEach(month => {
-                    const monthData = heatmap_data.find(data => data.month_year === month);
-                    const indexData = monthData && monthData.indices[index];
-                    
-                    if (indexData) {
-                        const value = parseFloat(indexData.value);
-                        if (!isNaN(value)) {
-                            const cellColor = calculateGlobalCellColor(value, minScale, midScale, maxScale);
-                            row.innerHTML += `<td style="background-color: ${cellColor}">${value}</td>`;
-                        } else {
-                            row.innerHTML += `<td>-</td>`;
-                        }
-                    } else {
-                        row.innerHTML += `<td>-</td>`;
+                    headerRow.innerHTML += `<th>${month}</th>`;
+                });
+                
+                const thead = document.createElement('thead');
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                const tbody = document.createElement('tbody');
+                const allIndices = new Set();
+                // Iterate over fetchedData to collect all unique indices present in *this specific dataset*
+                fetchedData.forEach(monthEntry => {
+                    if (monthEntry.indices) {
+                        Object.keys(monthEntry.indices).forEach(index => allIndices.add(index));
                     }
                 });
                 
-                tbody.appendChild(row);
-            });
-            
-            table.appendChild(tbody);
-            heatmapContainer.appendChild(table);
-            
-            // Add time range filter below the table
-            const timeRangeControlDiv = document.createElement('div');
-            timeRangeControlDiv.className = 'mt-4 d-flex justify-content-end';
-            
-            // If we're using a clone instead of moving the actual element
-            const timeRangeClone = document.createElement('div');
-            timeRangeClone.className = 'filter-select';
-            timeRangeClone.innerHTML = `
-                <label for="heatmapTimeRange" class="form-label">Time Range:</label>
-                <select class="form-select" id="heatmapTimeRange">
-                    <option value="6">Last 6 Months</option>
-                    <option value="12" selected>Last 12 Months</option>
-                    <option value="24">Last 24 Months</option>
-                    <option value="36">Last 36 Months</option>
-                    <option value="all">All Available Data</option>
-                </select>
-            `;
-            
-            // Add event listener for the time range filter
-            timeRangeClone.querySelector('select').addEventListener('change', function() {
-                // Update the original time range filter value to maintain sync
-                const originalFilter = document.getElementById('timeRangeFilter');
-                if (originalFilter) {
-                    originalFilter.value = this.value;
-                }
+                const minScale = 40;
+                const midScale = 50;
+                const maxScale = 60;
                 
-                // Reload heatmap with new time range
-                loadHeatmapData();
-            });
-            
-            timeRangeControlDiv.appendChild(timeRangeClone);
-            heatmapContainer.appendChild(timeRangeControlDiv);
-            
-            console.log("Heatmap loaded successfully with time range control below");
-        }
+                // Define the desired order of indices
+                const pmiKey = reportType === "Services" ? "Services PMI" : "Manufacturing PMI";
+                const productionKey = reportType === "Services" ? "Business Activity" : "Production";
+                const customerInvKey = reportType === "Services" ? "Inventory Sentiment" : "Customers' Inventories";
 
+                const orderedPrimaryIndices = [
+                    pmiKey, "New Orders", productionKey, "Employment", "Supplier Deliveries", 
+                    "Inventories", customerInvKey, "Prices", "Backlog of Orders", 
+                    "New Export Orders", "Imports"
+                ];
+                
+                const otherIndicesPresent = [...allIndices].filter(index => !orderedPrimaryIndices.includes(index) && !index.toUpperCase().includes("ECONOMY") && !index.toUpperCase().includes("SECTOR")).sort();
+                const finalOrderedIndicesToDisplay = [...orderedPrimaryIndices.filter(index => allIndices.has(index)), ...otherIndicesPresent];
+
+                finalOrderedIndicesToDisplay.forEach(index => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${index}</td>`;
+                    
+                    months.forEach(month => {
+                        const monthEntry = fetchedData.find(item => item.month_year === month);
+                        const indexDataForMonth = monthEntry && monthEntry.indices ? monthEntry.indices[index] : null;
+                        
+                        let cellContent = '-';
+                        let cellStyle = '';
+
+                        if (indexDataForMonth && (typeof indexDataForMonth.value !== 'undefined' && indexDataForMonth.value !== null)) {
+                            const value = parseFloat(indexDataForMonth.value);
+                            if (!isNaN(value)) {
+                                cellContent = value.toFixed(1); // Display one decimal place
+                                const cellColor = calculateGlobalCellColor(value, minScale, midScale, maxScale);
+                                const textColor = getTextColorForBackground(cellColor);
+                                cellStyle = `background-color: ${cellColor}; color: ${textColor};`;
+                            }
+                        }
+                        row.innerHTML += `<td style="${cellStyle}">${cellContent}</td>`;
+                    });
+                    tbody.appendChild(row);
+                });
+                
+                table.appendChild(tbody);
+                heatmapContainer.appendChild(table);
+                
+                // --- Persistent Time Range Filter ---
+                // Ensure the time range filter is part of the static HTML in the heatmap tab,
+                // or manage its creation/update carefully to avoid duplicates.
+                // For this example, assuming it exists with ID 'heatmapTimeRangeSelectPersistent'
+                let persistentTimeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent');
+                if (!persistentTimeRangeSelect) {
+                    // If it wasn't in HTML, create it (less ideal than static HTML for this control)
+                    const timeRangeControlDiv = document.createElement('div');
+                    timeRangeControlDiv.className = 'mt-4 d-flex justify-content-end heatmap-time-range-controls';
+                    const timeRangeSelectHTML = `
+                        <div class="filter-select">
+                            <label for="heatmapTimeRangeSelectPersistent" class="form-label">Time Range:</label>
+                            <select class="form-select" id="heatmapTimeRangeSelectPersistent">
+                                <option value="6">Last 6 Months</option>
+                                <option value="12">Last 12 Months</option>
+                                <option value="24">Last 24 Months</option>
+                                <option value="36">Last 36 Months</option>
+                                <option value="all">All Available Data</option>
+                            </select>
+                        </div>
+                    `;
+                    timeRangeControlDiv.innerHTML = timeRangeSelectHTML;
+                    heatmapContainer.appendChild(timeRangeControlDiv);
+                    persistentTimeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent');
+                    
+                    // Add event listener only if newly created
+                    persistentTimeRangeSelect.addEventListener('change', function() {
+                        loadHeatmapData(); // Reload with currentReportTypeGlobal (implicitly)
+                    });
+                }
+                // Set its value to what was used for the current fetch
+                persistentTimeRangeSelect.value = timeRangeValue;
+                    
+                console.log("Heatmap loaded successfully.");
+                updateKpiCards(reportType); // Update KPIs with the data relevant to this reportType and fetched timeRange
+            } catch (error) {
+                console.error('Error fetching or rendering heatmap data:', error);
+                if (heatmapContainer) {
+                    heatmapContainer.innerHTML = `
+                        <div class="error-container">
+                        <div class="error-title">Error Loading Heatmap Data</div>
+                        <p>${error.message || 'Please try again later.'}</p>
+                        </div>
+                    `;
+                }
+            }
+        }
+        
         // Helper function to calculate cell color based on global scale
         function calculateGlobalCellColor(value, min, mid, max) {
                 function rgbToHex(r, g, b) {
@@ -1127,6 +1303,7 @@
                 }
                 return rgbToHex(r, g, b);
             }
+        
         function getTextColorForBackground(hexColor) {
             function hexToRgb(hex) {
                 if (!hex || hex.length < 4) return null;
@@ -1145,16 +1322,24 @@
             }
 
         // Growth Table Functions
-        function loadGrowthTable(tableType, indexName) {
+        function loadGrowthTable(tableType, indexName, reportType = getCurrentReportType()) {
             const isAlpha = tableType === 'alpha';
             const tableId = isAlpha ? 'alphaTableBody' : 'numTableBody';
             const headerRowId = isAlpha ? 'alphaHeaderRow' : 'numHeaderRow';
             
             // Show loading indicator
-            document.getElementById(tableId).innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
+            document.getElementById(tableId).innerHTML = `
+                <tr><td colspan="20" class="text-center">
+                <div class="loading-spinner d-inline-block"></div> Loading...
+                </td></tr>`;
             
-            fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
-                .then(response => response.json())
+            fetch(`/api/industry_status/${encodeURIComponent(indexName)}?report_type=${reportType}`)
+                .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                return response.json();
+                })
                 .then(data => {
                     // Sort industries alphabetically for the alpha table
                     const industries = isAlpha 
@@ -1232,9 +1417,14 @@
                 })
                 .catch(error => {
                     console.error('Error fetching industry status:', error);
-                    document.getElementById(tableId).innerHTML = 
-                        '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
-                });
+                    document.getElementById(tableId).innerHTML = `
+                        <tr><td colspan="20" class="text-center">
+                        <div class="error-container">
+                            <div class="error-title">Error Loading Data</div>
+                            <p>Unable to load industry data: ${error.message}</p>
+                        </div>
+                        </td></tr>`;
+                    });
         }
 
         // Helper function for growth table sorting
@@ -1260,6 +1450,8 @@
         function loadNumericalGrowthTable(selectedValue) {
             console.log("Loading data for:", selectedValue);
             const cardBody = document.querySelector('.card-body');
+            const reportType = getCurrentReportType()
+
             if (!cardBody) return;
 
             // Clear previous content
@@ -1267,7 +1459,7 @@
 
             if (selectedValue === "All") {
                 // Load all indices
-                fetch('/api/all_indices')
+                fetch(`/api/all_indices?report_type=${reportType}`)
                     .then(response => response.json())
                     .then(indicesList => {
                         processAllIndices(cardBody, indicesList.filter(index => index !== 'Manufacturing PMI').sort());
@@ -1279,7 +1471,7 @@
             } else {
                 // Load single index
                 cardBody.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading index...</p></div>';
-                fetch(`/api/industry_status/${encodeURIComponent(selectedValue)}`)
+                fetch(`/api/industry_status/${encodeURIComponent(selectedValue)}?report_type=${reportType}`)
                     .then(response => response.json())
                     .then(data => {
                         renderSingleIndexView(cardBody, selectedValue, data);
@@ -1389,6 +1581,7 @@
                 }
                 
                 const indexName = indices[completedCount];
+                const reportType = getCurrentReportType()
                 
                 // Create a container for this index
                 const indexContainer = document.createElement('div');
@@ -1402,7 +1595,7 @@
                 container.appendChild(indexContainer);
                 
                 // Fetch data for this index
-                fetch(`/api/industry_status/${encodeURIComponent(indexName)}?debug=true`)
+                fetch(`/api/industry_status/${encodeURIComponent(indexName)}?report_type=${reportType}&debug=true`)
                     .then(response => response.json())
                     .then(data => {
                         // Render this index
@@ -1984,6 +2177,7 @@
                 }
                 
                 const indexName = indicesList[completed];
+                const reportType = getCurrentReportType()
                 progressBar.style.width = `${(completed / indicesList.length) * 100}%`;
                 progressBar.setAttribute('aria-valuenow', (completed / indicesList.length) * 100);
                 progressBar.textContent = `Loading ${indexName}... (${completed + 1}/${indicesList.length})`;
@@ -1994,7 +2188,7 @@
                 allIndicesContainer.appendChild(indexContainer);
                 
                 // Use the correct endpoint
-                fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
+                fetch(`/api/industry_status/${encodeURIComponent(indexName)}?report_type=${reportType}`)
                     .then(response => response.json())
                     .then(data => {
                         renderSingleIndexView(indexContainer, indexName, data);
@@ -2014,8 +2208,8 @@
         }
 
         // Trend Chart Functions
-        function fetchTrendData(indexName) {
-            return fetch(`/api/index_trends/${encodeURIComponent(indexName)}`)
+        function fetchTrendData(indexName, reportType = getCurrentReportType()) {
+            return fetch(`/api/index_trends/${encodeURIComponent(indexName)}?report_type=${reportType}`)
                 .then(response => response.json())
                 .catch(error => {
                     console.error('Error fetching trend data:', error);
@@ -2047,6 +2241,10 @@
             .then(results => renderMultiTrendChart(results))
             .catch(error => console.error('Error updating chart:', error));
         }
+
+        function getCurrentReportType() {
+            return document.querySelector('.report-type-btn.active')?.getAttribute('data-report-type') || 'Manufacturing';
+}
 
         function renderMultiTrendChart(indexDataArray) {
             const ctx = document.getElementById('trendChart').getContext('2d');
@@ -2176,7 +2374,233 @@
                 }
             });
         }
-        }); 
+        
+        // Report Type Selector Logic
+        const reportTypeBtns = document.querySelectorAll('.report-type-btn');
+        const currentReportBadge = document.getElementById('currentReportBadge');
+        let currentReportType = localStorage.getItem('preferredReportType') || 'Manufacturing';
+        
+        // Initialize from URL parameter if present
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('report_type')) {
+            currentReportType = urlParams.get('report_type');
+        }
+        
+        // Initialize report type
+        updateReportType(currentReportType);
+        
+        // Add event listeners to report type buttons
+        reportTypeBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+            const reportType = this.getAttribute('data-report-type');
+            updateReportType(reportType);
+            
+            // Reload data for all tabs
+            refreshAllData(reportType);
+            
+            // Update URL for bookmarking
+            updateUrlParameter('report_type', reportType);
+            
+            // Store preference
+            localStorage.setItem('preferredReportType', reportType);
+            });
+            
+            // Set initial active state based on current report type
+            if (btn.getAttribute('data-report-type') === currentReportType) {
+            btn.classList.add('active');
+            } else {
+            btn.classList.remove('active');
+            }
+        });
+        
+        function updateReportType(reportType) {
+            // Update button states
+            reportTypeBtns.forEach(btn => {
+            if (btn.getAttribute('data-report-type') === reportType) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+            });
+            
+            // Update indicator badge
+            currentReportBadge.textContent = reportType + ' Report';
+            currentReportBadge.className = 'report-type-indicator report-type-' + reportType.toLowerCase();
+            
+            // Add appropriate icon
+            const iconClass = reportType === 'Manufacturing' ? 'bi-gear-fill' : 'bi-people-fill';
+            currentReportBadge.innerHTML = `<i class="bi ${iconClass} me-1"></i>${reportType} Report`;
+            
+            // Update page title
+            document.title = `${reportType} Report Dashboard - ISM Analysis`;
+            
+            // Update current report type variable
+            currentReportType = reportType;
+        }
+        
+        function updateUrlParameter(key, value) {
+            const url = new URL(window.location.href);
+            url.searchParams.set(key, value);
+            window.history.replaceState({}, '', url);
+        }
+        
+        function refreshAllData(reportType) {
+            // Trigger data refresh for active tab
+            const activeTab = document.querySelector('.nav-link.tab-level.active');
+            console.log("activeTab is: ", activeTab);
+            if (activeTab) {
+            const tabId = activeTab.id;
+            
+            if (tabId === 'heatmap-tab') {
+                loadHeatmapData(reportType);
+            } else if (tabId === 'growth-alpha-tab') {
+                const indexSelect = document.getElementById('alphaIndexSelect');
+                if (indexSelect) {
+                loadGrowthTable('alpha', indexSelect.value, reportType);
+                }
+            } else if (tabId === 'growth-num-tab') {
+                const numIndexSelect = document.getElementById('numIndexSelect');
+                if (numIndexSelect) {
+                loadNumericalGrowthTable(numIndexSelect.value, reportType);
+                }
+            } else if (tabId === 'trends-tab') {
+                updateChart(reportType);
+            } else if (tabId === 'comparison-tab') {
+                loadComparisonView();
+            }
+            }
+            
+            // Update available indices for the selected report type
+            loadAvailableIndices(reportType);
+            
+            // Update KPI cards
+            updateKpiCards(reportType);
+        }
+        
+        function loadAvailableIndices(reportType) {
+            console.log("IN LOADAVAILABLEINDICES!!!!")
+            // Fetch indices specific to the report type
+            fetch(`/api/all_indices?report_type=${reportType}`)
+            .then(response => response.json())
+            .then(indices => {
+                // Update dropdown options in both views
+                updateIndexDropdowns(indices);
+            })
+            .catch(error => {
+                console.error("Error fetching indices:", error);
+            });
+        }
+        
+        function updateIndexDropdowns(indices) {
+            // Update Alpha tab dropdown
+            const alphaIndexSelect = document.getElementById('alphaIndexSelect');
+            if (alphaIndexSelect) {
+            const selectedValue = alphaIndexSelect.value;
+            
+            // Clear existing options
+            alphaIndexSelect.innerHTML = '';
+            
+            // Add new options
+            indices.forEach(index => {
+                if (index !== 'Manufacturing PMI' && index !== 'Services PMI') {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = index;
+                alphaIndexSelect.appendChild(option);
+                }
+            });
+            
+            // Try to restore previously selected value
+            if (indices.includes(selectedValue)) {
+                alphaIndexSelect.value = selectedValue;
+            } else {
+                // Default to first option
+                alphaIndexSelect.selectedIndex = 0;
+            }
+            }
+            
+            // Update Numerical tab dropdown
+            const numIndexSelect = document.getElementById('numIndexSelect');
+            if (numIndexSelect) {
+            const selectedValue = numIndexSelect.value;
+            
+            // Clear existing options
+            numIndexSelect.innerHTML = '';
+            
+            // Add "All" option
+            const allOption = document.createElement('option');
+            allOption.value = "All";
+            allOption.text = "All Indices";
+            numIndexSelect.appendChild(allOption);
+            
+            // Add new options
+            indices.forEach(index => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = index;
+                numIndexSelect.appendChild(option);
+            });
+            
+            // Try to restore previously selected value
+            if (selectedValue === "All" || indices.includes(selectedValue)) {
+                numIndexSelect.value = selectedValue;
+            } else {
+                // Default to "All"
+                numIndexSelect.value = "All";
+            }
+            }
+            
+            // Update trends checkboxes
+            const indexCheckboxes = document.getElementById('indexCheckboxes');
+            if (indexCheckboxes) {
+            // Save currently checked boxes
+            const checkedIndices = Array.from(
+                document.querySelectorAll('.index-checkbox:checked')
+            ).map(cb => cb.value);
+            
+            // Clear existing checkboxes
+            indexCheckboxes.innerHTML = '';
+            
+            // Always include main PMI
+            const pmiName = currentReportType === 'Manufacturing' ? 'Manufacturing PMI' : 'Services PMI';
+            const pmiDiv = document.createElement('div');
+            pmiDiv.className = 'form-check me-3 mb-2';
+            pmiDiv.innerHTML = `
+                <input class="form-check-input index-checkbox" type="checkbox" 
+                id="check_${pmiName.replace(' ', '_')}" 
+                value="${pmiName}" 
+                ${checkedIndices.includes(pmiName) || checkedIndices.length === 0 ? 'checked' : ''}>
+                <label class="form-check-label" for="check_${pmiName.replace(' ', '_')}">
+                ${pmiName}
+                </label>
+            `;
+            indexCheckboxes.appendChild(pmiDiv);
+            
+            // Add other indices
+            indices.forEach(index => {
+                if (index !== pmiName) {
+                const div = document.createElement('div');
+                div.className = 'form-check me-3 mb-2';
+                div.innerHTML = `
+                    <input class="form-check-input index-checkbox" type="checkbox" 
+                    id="check_${index.replace(' ', '_')}" 
+                    value="${index}"
+                    ${checkedIndices.includes(index) ? 'checked' : ''}>
+                    <label class="form-check-label" for="check_${index.replace(' ', '_')}">
+                    ${index}
+                    </label>
+                `;
+                indexCheckboxes.appendChild(div);
+                }
+            });
+            
+            // Re-attach event listeners
+            document.querySelectorAll('.index-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', () => updateChart(currentReportType));
+            });
+            }
+        }
+    });
     </script>
 </body>
 </html>
