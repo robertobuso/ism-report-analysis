@@ -315,6 +315,9 @@ class SimplePDFExtractionTool(BaseTool):
                         
                         # Add report_type to the data
                         json_data["report_type"] = report_type
+
+                        # Ensure the correct PMI index name is used
+                        extraction_data = self._ensure_correct_pmi_index(extraction_data, report_type)
                         
                         # Try to extract PMI values from summaries if they're not in indices
                         if json_data["index_summaries"] and not json_data["indices"]:
@@ -444,7 +447,70 @@ class SimplePDFExtractionTool(BaseTool):
                 "report_type": "Manufacturing"
             }
     
-    def _extract_data_with_llm(self, pdf_path, month_year, handler=None, report_type=None):
+    def _ensure_correct_pmi_index(self, extracted_data, report_type):
+        """
+        Ensure the correct PMI index name is used based on report type.
+        
+        Args:
+            extracted_data: The extracted data dictionary
+            report_type: Report type (Manufacturing or Services)
+            
+        Returns:
+            Updated extracted data with correct PMI index name
+        """
+        try:
+            # If no indices, nothing to fix
+            if 'indices' not in extracted_data or not extracted_data['indices']:
+                return extracted_data
+                
+            indices = extracted_data['indices']
+            
+            # For Services report type
+            if report_type == "Services":
+                # If Manufacturing PMI exists but Services PMI doesn't, rename it
+                if "Manufacturing PMI" in indices and "Services PMI" not in indices:
+                    indices["Services PMI"] = indices["Manufacturing PMI"]
+                    del indices["Manufacturing PMI"]
+                    logger.info("Renamed Manufacturing PMI to Services PMI for Services report")
+                    
+                # If Production exists but Business Activity doesn't, rename it
+                if "Production" in indices and "Business Activity" not in indices:
+                    indices["Business Activity"] = indices["Production"]
+                    del indices["Production"]
+                    logger.info("Renamed Production to Business Activity for Services report")
+                    
+                # If Customers' Inventories exists but Inventory Sentiment doesn't, rename it
+                if "Customers' Inventories" in indices and "Inventory Sentiment" not in indices:
+                    indices["Inventory Sentiment"] = indices["Customers' Inventories"]
+                    del indices["Customers' Inventories"]
+                    logger.info("Renamed Customers' Inventories to Inventory Sentiment for Services report")
+                    
+            # For Manufacturing report type
+            elif report_type == "Manufacturing":
+                # If Services PMI exists but Manufacturing PMI doesn't, rename it
+                if "Services PMI" in indices and "Manufacturing PMI" not in indices:
+                    indices["Manufacturing PMI"] = indices["Services PMI"]
+                    del indices["Services PMI"]
+                    logger.info("Renamed Services PMI to Manufacturing PMI for Manufacturing report")
+                    
+                # If Business Activity exists but Production doesn't, rename it
+                if "Business Activity" in indices and "Production" not in indices:
+                    indices["Production"] = indices["Business Activity"]
+                    del indices["Business Activity"]
+                    logger.info("Renamed Business Activity to Production for Manufacturing report")
+                    
+                # If Inventory Sentiment exists but Customers' Inventories doesn't, rename it
+                if "Inventory Sentiment" in indices and "Customers' Inventories" not in indices:
+                    indices["Customers' Inventories"] = indices["Inventory Sentiment"]
+                    del indices["Inventory Sentiment"]
+                    logger.info("Renamed Inventory Sentiment to Customers' Inventories for Manufacturing report")
+                    
+            return extracted_data
+        except Exception as e:
+            logger.error(f"Error in _ensure_correct_pmi_index: {str(e)}")
+            return extracted_data
+
+    def _extract_data_with_llm(self, pdf_path: str, month_year_context: str, handler: Any, report_type_str: str) -> Dict[str, Any]:
         """Extract data from PDF using LLM with the appropriate report handler."""
         try:
             # Create handler if not provided
@@ -765,6 +831,59 @@ class SimplePDFExtractionTool(BaseTool):
             return "Services"
         else:
             return "Manufacturing"  # Default to Manufacturing if unknown
+
+    def _standardize_extracted_data_for_report_type(extracted_data, report_type):
+        """
+        Standardize extracted data based on report type to ensure indices have correct names.
+        
+        Args:
+            extracted_data: The extracted data dictionary
+            report_type: Report type (Manufacturing or Services)
+        
+        Returns:
+            Standardized extracted data
+        """
+        if not extracted_data or not isinstance(extracted_data, dict):
+            return extracted_data
+            
+        # Ensure report_type is set
+        extracted_data['report_type'] = report_type
+        
+        # Define index name mappings by report type
+        manufacturing_indices = {
+            "PMI": "Manufacturing PMI",
+            "Services PMI": "Manufacturing PMI",
+            "Business Activity": "Production"
+        }
+        
+        services_indices = {
+            "PMI": "Services PMI",
+            "Manufacturing PMI": "Services PMI",
+            "Production": "Business Activity"
+        }
+        
+        # Get the appropriate mappings based on report type
+        mappings = services_indices if report_type == "Services" else manufacturing_indices
+        
+        # Update indices if they exist
+        if 'indices' in extracted_data and extracted_data['indices']:
+            for old_name, new_name in mappings.items():
+                if old_name in extracted_data['indices']:
+                    if new_name not in extracted_data['indices']:
+                        extracted_data['indices'][new_name] = extracted_data['indices'][old_name]
+                    if old_name != new_name:
+                        del extracted_data['indices'][old_name]
+        
+        # Update industry_data if it exists
+        if 'industry_data' in extracted_data and extracted_data['industry_data']:
+            for old_name, new_name in mappings.items():
+                if old_name in extracted_data['industry_data']:
+                    if new_name not in extracted_data['industry_data']:
+                        extracted_data['industry_data'][new_name] = extracted_data['industry_data'][old_name]
+                    if old_name != new_name:
+                        del extracted_data['industry_data'][old_name]
+        
+        return extracted_data
 
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")

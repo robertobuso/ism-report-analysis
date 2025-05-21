@@ -987,12 +987,18 @@ def parse_ism_report(pdf_path, report_type=None):
         
         logger.info(f"Extracted month and year: {month_year}")
         
+        # Ensure report_type is determined IF NOT PASSED
+        if not report_type:
+            logger.warning(f"parse_ism_report called without report_type for {pdf_path}. Detecting...")
+            report_type = ReportTypeFactory.detect_report_type(pdf_path) # Ensure ReportTypeFactory is imported
+            logger.info(f"parse_ism_report: Detected report_type as {report_type}")
+
         # Use LLM for extraction
         from tools import SimplePDFExtractionTool
         extraction_tool = SimplePDFExtractionTool()
 
         # Call LLM extraction
-        llm_result = extraction_tool._extract_data_with_llm(pdf_path, month_year)
+        llm_result = extraction_tool._run(pdf_path=pdf_path, report_type=report_type)
         
         # Create result with proper structure
         result = {
@@ -1006,17 +1012,20 @@ def parse_ism_report(pdf_path, report_type=None):
         # Use report_type if provided
         if report_type:
             result["report_type"] = report_type
+
+        if 'report_type' not in llm_result or not llm_result['report_type']:
+            llm_result['report_type'] = report_type
             
-        # Store data in database with report_type
-        from db_utils import store_report_data_in_db
-        try:
-            store_result = store_report_data_in_db(result, pdf_path, report_type or "Manufacturing")
-            if store_result:
-                logger.info(f"Successfully stored data from {pdf_path} in database")
-            else:
-                logger.warning(f"Failed to store data from {pdf_path} in database")
-        except Exception as e:
-            logger.error(f"Error storing data in database: {str(e)}")
+        # # Store data in database with report_type
+        # from db_utils import store_report_data_in_db
+        # try:
+        #     store_result = store_report_data_in_db(result, pdf_path, report_type or "Manufacturing")
+        #     if store_result:
+        #         logger.info(f"Successfully stored data from {pdf_path} in database")
+        #     else:
+        #         logger.warning(f"Failed to store data from {pdf_path} in database")
+        # except Exception as e:
+        #     logger.error(f"Error storing data in database: {str(e)}")
         
         return result
     except Exception as e:

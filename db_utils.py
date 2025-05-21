@@ -332,89 +332,94 @@ def get_all_report_dates(report_type=None):
         if conn:
             conn.close()
 
-def get_pmi_data_by_month(num_months=12, report_type=None):
+def get_pmi_data_by_month(months=None, report_type=None):
     """
-    Get PMI data for all indices by month, for the last N months.
+    Get PMI data for the last N months, with optional filtering by report_type.
     
     Args:
-        num_months: Number of most recent months to include
-        report_type: Type of report ('Manufacturing' or 'Services')
+        months: Number of months to retrieve (None for all)
+        report_type: Filter by report type (Manufacturing or Services)
         
     Returns:
-        List of dictionaries with report_date and PMI values by index
+        List of dictionaries with PMI data by month
     """
-    conn = None
     try:
+        # Initialize database if needed
+        initialize_database()
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Build the query based on whether report_type is provided
+        # Build query with proper JOIN and filtering
         query = """
-            SELECT report_date, month_year
-            FROM reports 
-            {}
-            ORDER BY report_date DESC 
-            LIMIT ?
+            SELECT r.report_date, r.month_year, r.report_type, 
+                   p.index_name, p.index_value, p.direction
+            FROM reports r
+            JOIN pmi_indices p ON r.report_date = p.report_date
         """
         
         params = []
+        where_clauses = []
+        
+        # Add report_type filter if provided
         if report_type:
-            query = query.format("WHERE report_type = ?")
-            params = [report_type, num_months]
-        else:
-            query = query.format("")
-            params = [num_months]
-            
+            where_clauses.append("r.report_type = ?")
+            params.append(report_type)
+        
+        # Add WHERE clause if needed
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+        
+        # Add ordering and limit
+        query += " ORDER BY r.report_date DESC"
+        
+        if months is not None:
+            query += " LIMIT ?"
+            params.append(months)
+        
         cursor.execute(query, params)
+        rows = cursor.fetchall()
         
-        report_dates = [{'report_date': row['report_date'], 'month_year': row['month_year']} for row in cursor.fetchall()]
+        # Process results
+        report_data = {}
         
-        if not report_dates:
-            logger.warning(f"No report dates found for {report_type if report_type else 'any type'}")
-            return []
-        
-        # Get PMI data for each report date
-        result = []
-        for date_info in report_dates:
-            report_date = date_info['report_date']
-            month_year = date_info['month_year']
+        for row in rows:
+            report_date = row['report_date']
+            month_year = row['month_year']
+            row_report_type = row['report_type']
+            index_name = row['index_name']
+            index_value = row['index_value']
+            direction = row['direction']
             
-            # Get all indices for this report date
-            cursor.execute("""
-                SELECT index_name, index_value, direction 
-                FROM pmi_indices 
-                WHERE report_date = ?
-            """, (report_date,))
-            
-            indices = {}
-            for row in cursor.fetchall():
-                indices[row['index_name']] = {
-                    'value': row['index_value'],
-                    'direction': row['direction']
-                }
-            
-            # Skip if no indices found
-            if not indices:
-                logger.warning(f"No PMI data found for report date {report_date}")
+            # Skip if not matching requested report type
+            if report_type and row_report_type != report_type:
                 continue
                 
-            # Add to result
-            result.append({
-                'report_date': report_date,
-                'month_year': month_year,
-                'indices': indices,
-                'report_type': report_type  # Include report_type in the response
-            })
+            # Create entry for this report date if not exists
+            if report_date not in report_data:
+                report_data[report_date] = {
+                    'report_date': report_date,
+                    'month_year': month_year,
+                    'report_type': row_report_type,
+                    'indices': {}
+                }
+            
+            # Add index data
+            report_data[report_date]['indices'][index_name] = {
+                'value': index_value,
+                'direction': direction
+            }
         
-        logger.info(f"Retrieved PMI data for {len(result)} report dates")
+        # Convert to list and sort by date (newest first)
+        result = list(report_data.values())
+        result.sort(key=lambda x: x['report_date'], reverse=True)
+        
+        conn.close()
         return result
     except Exception as e:
-        logger.error(f"Error getting PMI data by month: {str(e)}")
+        logger.error(f"Error in get_pmi_data_by_month: {str(e)}")
         logger.error(traceback.format_exc())
         return []
-    finally:
-        if conn:
-            conn.close()
 
 def get_index_time_series(index_name, num_months=24, report_type=None):
     """
