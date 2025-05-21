@@ -261,6 +261,8 @@ class SimplePDFExtractionTool(BaseTool):
             max_retries = 3
             retry_delay = 2  # seconds
             
+            extraction_data = None  # Initialize extraction_data to avoid reference errors
+            
             for retry_count in range(max_retries):
                 try:
                     # Use openai client
@@ -316,71 +318,76 @@ class SimplePDFExtractionTool(BaseTool):
                         # Add report_type to the data
                         json_data["report_type"] = report_type
 
-                        # Ensure the correct PMI index name is used
-                        extraction_data = self._ensure_correct_pmi_index(extraction_data, report_type)
+                        # Initialize extraction_data with json_data
+                        extraction_data = json_data
                         
+                        # FIXED: Only call _ensure_correct_pmi_index if extraction_data is properly initialized
+                        if extraction_data is not None:
+                            # Ensure the correct PMI index name is used
+                            extraction_data = self._ensure_correct_pmi_index(extraction_data, report_type)
+                            
                         # Try to extract PMI values from summaries if they're not in indices
-                        if json_data["index_summaries"] and not json_data["indices"]:
+                        if extraction_data["index_summaries"] and not extraction_data["indices"]:
                             try:
                                 from pdf_utils import extract_pmi_values_from_summaries
-                                pmi_data = extract_pmi_values_from_summaries(json_data["index_summaries"])
-                                json_data["indices"] = pmi_data
+                                pmi_data = extract_pmi_values_from_summaries(extraction_data["index_summaries"])
+                                extraction_data["indices"] = pmi_data
                                 logger.info(f"Extracted PMI values from summaries: {len(pmi_data)} indices")
                             except Exception as e:
                                 logger.warning(f"Failed to extract PMI values from summaries: {str(e)}")
                         
                         # If we still don't have any indices, try using the pdf_utils extractor
-                        if not json_data["indices"]:
+                        if not extraction_data["indices"]:
                             try:
                                 from pdf_utils import extract_manufacturing_at_a_glance
                                 table_text = extract_manufacturing_at_a_glance(extracted_text)
                                 if table_text:
                                     # Include the extracted table text
-                                    json_data["manufacturing_table"] = table_text
+                                    extraction_data["manufacturing_table"] = table_text
                                     logger.info(f"Extracted table text: {len(table_text)} chars")
                                     
                                     # Try to extract values from the table text
                                     from pdf_utils import extract_pmi_values_from_summaries
                                     pmi_data = extract_pmi_values_from_summaries({"Table": table_text})
                                     if pmi_data:
-                                        json_data["indices"] = pmi_data
+                                        extraction_data["indices"] = pmi_data
                                         logger.info(f"Extracted PMI values from table: {len(pmi_data)} indices")
                             except Exception as e:
                                 logger.warning(f"Failed to extract table: {str(e)}")
                         
                         # If we have extracted industry data but no index summaries, try to extract them
-                        if json_data["industry_data"] and not json_data["index_summaries"]:
+                        if extraction_data["industry_data"] and not extraction_data["index_summaries"]:
                             try:
                                 from pdf_utils import extract_index_summaries
                                 index_summaries = extract_index_summaries(extracted_text)
                                 if index_summaries:
-                                    json_data["index_summaries"] = index_summaries
+                                    extraction_data["index_summaries"] = index_summaries
                                     logger.info(f"Extracted index summaries: {len(index_summaries)} indices")
                             except Exception as e:
                                 logger.warning(f"Failed to extract index summaries: {str(e)}")
                         
                         # Standardize the extracted data structure before returning
-                        if 'indices' in json_data:
+                        if 'indices' in extraction_data:
                             # Ensure Manufacturing PMI is in indices
-                            if 'manufacturing_table' in json_data and isinstance(json_data['manufacturing_table'], dict):
+                            if 'manufacturing_table' in extraction_data and isinstance(extraction_data['manufacturing_table'], dict):
                                 for key in ['Manufacturing PMI', 'New Orders', 'Production', 'Employment']:
-                                    if key in json_data['manufacturing_table'] and key not in json_data['indices']:
-                                        json_data['indices'][key] = json_data['manufacturing_table'][key]
+                                    if key in extraction_data['manufacturing_table'] and key not in extraction_data['indices']:
+                                        extraction_data['indices'][key] = extraction_data['manufacturing_table'][key]
                                         logger.info(f"Moved {key} from manufacturing_table to indices")
-                        elif 'manufacturing_table' in json_data and isinstance(json_data['manufacturing_table'], dict):
+                        elif 'manufacturing_table' in extraction_data and isinstance(extraction_data['manufacturing_table'], dict):
                             # If no indices field exists but manufacturing_table does, copy it to indices
                             has_pmi_data = False
                             for key in ['Manufacturing PMI', 'New Orders', 'Production']:
-                                if key in json_data['manufacturing_table']:
+                                if key in extraction_data['manufacturing_table']:
                                     has_pmi_data = True
                                     break
                                     
                             if has_pmi_data:
-                                json_data['indices'] = json_data['manufacturing_table']
+                                extraction_data['indices'] = extraction_data['manufacturing_table']
                                 logger.info("Copied manufacturing_table to indices field")
 
                         # Success! Return the parsed JSON
-                        return json_data
+                        return extraction_data
                         
                     except json.JSONDecodeError as e:
                         logger.warning(f"Failed to parse JSON on retry {retry_count}: {str(e)}")
@@ -392,13 +399,14 @@ class SimplePDFExtractionTool(BaseTool):
                                 month_year = month_year_match.group(1)
                                 
                             # Create minimal valid structure for returning
-                            return {
+                            extraction_data = {
                                 "month_year": month_year, 
                                 "indices": {}, 
                                 "industry_data": {},
                                 "index_summaries": {},
                                 "report_type": report_type
                             }
+                            return extraction_data
                         continue
                 
                 except Exception as e:
@@ -426,13 +434,14 @@ class SimplePDFExtractionTool(BaseTool):
                 logger.error(f"Direct PDF parsing failed: {str(e)}")
                 
             # Final fallback with minimal data
-            return {
+            extraction_data = {
                 "month_year": month_year, 
                 "indices": {}, 
                 "industry_data": {},
                 "index_summaries": {},
                 "report_type": report_type
             }
+            return extraction_data
             
         except Exception as e:
             logger.error(f"Error in PDF extraction: {str(e)}")
@@ -459,12 +468,23 @@ class SimplePDFExtractionTool(BaseTool):
             Updated extracted data with correct PMI index name
         """
         try:
+            # Handle case where extracted_data is None or not a dictionary
+            if not extracted_data or not isinstance(extracted_data, dict):
+                logger.warning(f"Invalid extracted_data passed to _ensure_correct_pmi_index: {type(extracted_data)}")
+                return {"month_year": "Unknown", "indices": {}, "industry_data": {}, "report_type": report_type}
+                
             # If no indices, nothing to fix
             if 'indices' not in extracted_data or not extracted_data['indices']:
                 return extracted_data
                 
             indices = extracted_data['indices']
             
+            # Ensure indices is a dictionary
+            if not isinstance(indices, dict):
+                logger.warning(f"indices is not a dictionary: {type(indices)}")
+                extracted_data['indices'] = {}
+                return extracted_data
+                
             # For Services report type
             if report_type == "Services":
                 # If Manufacturing PMI exists but Services PMI doesn't, rename it
@@ -508,8 +528,10 @@ class SimplePDFExtractionTool(BaseTool):
             return extracted_data
         except Exception as e:
             logger.error(f"Error in _ensure_correct_pmi_index: {str(e)}")
+            logger.error(traceback.format_exc())
+            # Return the original data in case of error to avoid further issues
             return extracted_data
-
+    
     def _extract_data_with_llm(self, pdf_path: str, month_year_context: str, handler: Any, report_type_str: str) -> Dict[str, Any]:
         """Extract data from PDF using LLM with the appropriate report handler."""
         try:

@@ -55,6 +55,17 @@ def safely_parse_agent_output(output):
     try:
         logger.info(f"Attempting to parse agent output of type: {type(output)}")
         
+        # If output is None, return a default structure
+        if output is None:
+            logger.warning("Agent output is None, returning default structure")
+            return {
+                "month_year": "Unknown",
+                "report_type": "Manufacturing",
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {}
+            }
+        
         # If it's already a dict, validate it has actual data
         if isinstance(output, dict):
             # Validate the dictionary has non-empty industry data
@@ -170,8 +181,15 @@ def safely_parse_agent_output(output):
         logger.error(f"Error parsing agent output: {str(e)}")
         logger.error(f"Raw output type: {type(output)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        return None
-
+        # Return a default structure rather than None
+        return {
+            "month_year": "Unknown",
+            "report_type": "Manufacturing",
+            "manufacturing_table": "",
+            "index_summaries": {},
+            "industry_data": {}
+        }
+    
 def extract_from_crew_output(crew_output):
     """Extract dictionary data directly from a CrewOutput object."""
     try:
@@ -536,8 +554,19 @@ def process_single_pdf(pdf_path, visualization_options=None):
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
 
+        # Initialize extraction_data if it's None to avoid reference errors
+        if extraction_data is None:
+            extraction_data = {
+                "month_year": "Unknown", 
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {},
+                "report_type": report_type
+            }
+            logger.warning("extraction_data was None, initializing with default structure")
+
         # Add report_type to extraction_data
-        if extraction_data and isinstance(extraction_data, dict):
+        if isinstance(extraction_data, dict):
             extraction_data['report_type'] = report_type
 
         # Check if direct parsing found any industries
@@ -586,7 +615,8 @@ def process_single_pdf(pdf_path, visualization_options=None):
                     "month_year": "Unknown",
                     "manufacturing_table": "",
                     "index_summaries": {},
-                    "industry_data": {}
+                    "industry_data": {},
+                    "report_type": report_type
                 }
         elif direct_data:
             # Compare both methods and merge results to get the most comprehensive data
@@ -669,6 +699,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
                         logger.info(f"Replaced empty industry_data with direct parsing data ({direct_count} industries)")
 
             # If verification result has industry data but extraction doesn't, use the verification data
+            verification_result = None  # Initialize to avoid reference errors
             if 'verified_data' in locals() and verified_data and isinstance(verified_data, dict):
                 if 'corrected_industry_data' in verified_data:
                     if not extraction_data['industry_data']:
@@ -692,32 +723,34 @@ def process_single_pdf(pdf_path, visualization_options=None):
             logger.error(f"Error storing data in database: {str(e)}")
             # Continue processing to return the data even if database storage fails
 
+        # Prepare for JSON serialization - handle ellipsis and other non-serializable types
         try:
-            json_data = json.dumps(extraction_data.get('industry_data', {}))
+            import copy
+            sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
+            
+            # Function to recursively replace problematic values
+            def sanitize_for_json(obj):
+                if obj is ...:  # Handle ellipsis
+                    return None
+                elif isinstance(obj, dict):
+                    return {k: sanitize_for_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [sanitize_for_json(item) for item in obj]
+                elif isinstance(obj, (int, float, str, bool, type(None))):
+                    return obj
+                else:
+                    # Convert other types to string
+                    return str(obj)
+            
+            sanitized_data = sanitize_for_json(sanitized_data)
+            json_data = json.dumps(sanitized_data)
+            
         except TypeError as e:
-            if "ellipsis is not JSON serializable" in str(e):
-                # Just for this run, create a sanitized copy
-                import copy
-                sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
-                
-                # Function to recursively replace ellipsis
-                def replace_ellipsis(obj):
-                    if obj is ...:
-                        return None
-                    elif isinstance(obj, dict):
-                        return {k: replace_ellipsis(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [replace_ellipsis(item) for item in obj]
-                    else:
-                        return obj
-                
-                sanitized_data = replace_ellipsis(sanitized_data)
-                json_data = json.dumps(sanitized_data)
-                logger.warning("Handled ellipsis in JSON serialization as a one-time fix")
-            else:
-                raise  # Re-raise if it's a different TypeError
+            logger.warning(f"JSON serialization issue: {str(e)}")
+            # Create a minimal serializable structure
+            json_data = "{}"
 
-        # Then use json_data in your Task description
+        # Create the verification task
         verification_task = Task(
             description=f"""
             CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
@@ -771,6 +804,11 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Safely parse verification result
         verified_data = safely_parse_agent_output(verified_result)
+
+        # Initialize verified_data if None to avoid reference errors
+        if verified_data is None:
+            verified_data = {}
+            logger.warning("verified_data was None, initializing with empty dict")
 
         # Ensure we're working with the correct data
         if verified_data:
@@ -828,15 +866,32 @@ def process_single_pdf(pdf_path, visualization_options=None):
             extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
 
         # Use the verified data if it was successfully parsed
+        structured_data = None  # Initialize to avoid reference errors
         if verified_data and 'corrected_industry_data' in verified_data:
-            structured_data = structurer_tool._run({
-                'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
-                'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
-                'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
-                'industry_data': verified_data.get('corrected_industry_data', {})
-            })
+            try:
+                structured_data = structurer_tool._run({
+                    'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
+                    'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
+                    'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
+                    'industry_data': verified_data.get('corrected_industry_data', {})
+                })
+            except Exception as e:
+                logger.error(f"Error in structuring with verified data: {str(e)}")
+                # If structuring with verified data fails, try with original extraction_data
+                try:
+                    structured_data = structurer_tool._run(extraction_data)
+                except Exception as e2:
+                    logger.error(f"Error in structuring with extraction_data: {str(e2)}")
+                    # Provide fallback structured_data
+                    structured_data = {}
         else:
-            structured_data = structurer_tool._run(extraction_data)
+            try:
+                structured_data = structurer_tool._run(extraction_data)
+            except Exception as e:
+                logger.error(f"Error in structuring: {str(e)}")
+                # Provide fallback structured_data
+                structured_data = {}
+
         logger.info("Data structuring completed")
 
         # Check if structured_data is empty or None and fix if needed

@@ -990,42 +990,85 @@ def parse_ism_report(pdf_path, report_type=None):
         # Ensure report_type is determined IF NOT PASSED
         if not report_type:
             logger.warning(f"parse_ism_report called without report_type for {pdf_path}. Detecting...")
-            report_type = ReportTypeFactory.detect_report_type(pdf_path) # Ensure ReportTypeFactory is imported
+            from report_detection import EnhancedReportTypeDetector
+            report_type = EnhancedReportTypeDetector.detect_report_type(pdf_path) 
             logger.info(f"parse_ism_report: Detected report_type as {report_type}")
 
         # Use LLM for extraction
         from tools import SimplePDFExtractionTool
         extraction_tool = SimplePDFExtractionTool()
-
-        # Call LLM extraction
-        llm_result = extraction_tool._run(pdf_path=pdf_path, report_type=report_type)
         
-        # Create result with proper structure
+        # Initialize result data structure
         result = {
-            "month_year": llm_result.get('month_year', month_year),
-            "manufacturing_table": llm_result,
-            "index_summaries": {},  # Keep empty for backward compatibility
-            "industry_data": llm_result.get('industry_data', {}),
-            "pmi_data": llm_result.get('indices', {})
+            "month_year": month_year,
+            "report_type": report_type,
+            "manufacturing_table": "",
+            "index_summaries": {},  
+            "industry_data": {},
+            "indices": {}
         }
 
-        # Use report_type if provided
-        if report_type:
-            result["report_type"] = report_type
-
-        if 'report_type' not in llm_result or not llm_result['report_type']:
-            llm_result['report_type'] = report_type
+        # Call LLM extraction
+        try:
+            llm_result = extraction_tool._run({"pdf_path": pdf_path, "report_type": report_type})
             
-        # # Store data in database with report_type
-        # from db_utils import store_report_data_in_db
-        # try:
-        #     store_result = store_report_data_in_db(result, pdf_path, report_type or "Manufacturing")
-        #     if store_result:
-        #         logger.info(f"Successfully stored data from {pdf_path} in database")
-        #     else:
-        #         logger.warning(f"Failed to store data from {pdf_path} in database")
-        # except Exception as e:
-        #     logger.error(f"Error storing data in database: {str(e)}")
+            # If LLM extraction succeeded, update the result
+            if llm_result and isinstance(llm_result, dict):
+                # Update month_year if present in LLM result
+                if 'month_year' in llm_result and llm_result['month_year']:
+                    result["month_year"] = llm_result['month_year']
+                
+                # Update manufacturing_table
+                if 'manufacturing_table' in llm_result:
+                    result["manufacturing_table"] = llm_result['manufacturing_table']
+                
+                # Update index_summaries
+                if 'index_summaries' in llm_result and llm_result['index_summaries']:
+                    result["index_summaries"] = llm_result['index_summaries']
+                
+                # Update industry_data
+                if 'industry_data' in llm_result and llm_result['industry_data']:
+                    result["industry_data"] = llm_result['industry_data']
+                
+                # Update indices/pmi_data
+                if 'indices' in llm_result and llm_result['indices']:
+                    result["indices"] = llm_result['indices']
+                elif 'pmi_data' in llm_result and llm_result['pmi_data']:
+                    result["indices"] = llm_result['pmi_data']
+                
+                logger.info(f"LLM extraction completed successfully for {pdf_path}")
+            else:
+                logger.warning(f"LLM extraction returned no results for {pdf_path}")
+        except Exception as e:
+            logger.error(f"Error in LLM extraction: {str(e)}")
+        
+        # Even if LLM extraction fails, try to extract basic data using pattern-based methods
+        try:
+            # Extract index summaries using pattern-based method
+            if not result["index_summaries"]:
+                summaries = extract_index_summaries(text)
+                if summaries:
+                    result["index_summaries"] = summaries
+                    logger.info("Extracted index summaries using pattern-based method")
+            
+            # Extract industry data using pattern-based method
+            if not result["industry_data"] and result["index_summaries"]:
+                industry_data = extract_industry_mentions(text, result["index_summaries"])
+                if industry_data:
+                    result["industry_data"] = industry_data
+                    logger.info("Extracted industry data using pattern-based method")
+            
+            # Extract PMI values from summaries
+            if not result["indices"] and result["index_summaries"]:
+                pmi_data = extract_pmi_values_from_summaries(result["index_summaries"])
+                if pmi_data:
+                    result["indices"] = pmi_data
+                    logger.info("Extracted PMI values from summaries")
+        except Exception as e:
+            logger.error(f"Error in pattern-based extraction: {str(e)}")
+        
+        # Ensure report_type is set
+        result["report_type"] = report_type
         
         return result
     except Exception as e:

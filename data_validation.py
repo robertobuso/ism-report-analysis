@@ -264,8 +264,18 @@ class DataTransformationPipeline:
     def process(extracted_data: Dict[str, Any], report_type: str) -> Dict[str, Any]:
         """
         Process extracted data through the validation and transformation pipeline.
+        
+        Args:
+            extracted_data: The data extracted from the report
+            report_type: Type of report (Manufacturing or Services)
+            
+        Returns:
+            Validated and transformed data
         """
         try:
+            # Add import for JSON serialization in error reporting
+            import json
+            
             if not isinstance(extracted_data, dict): # Ensure input is a dict
                 logger.error(f"Extracted data is not a dictionary: {type(extracted_data)}. Cannot process.")
                 # Return a minimal valid structure for this report_type
@@ -314,6 +324,7 @@ class DataTransformationPipeline:
             
         except Exception as e:
             logger.error(f"Error in data transformation pipeline: {str(e)}")
+            logger.error(traceback.format_exc())
             
             # Fallback: return original data with minimal fixes
             try:
@@ -342,7 +353,7 @@ class DataTransformationPipeline:
                     "industry_data": {},
                     "index_summaries": {}
                 }
-    
+        
     @staticmethod
     def _standardize_industry_names(report: ISMReport) -> None:
         """
