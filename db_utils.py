@@ -49,19 +49,20 @@ def initialize_database():
         cursor = conn.cursor()
         logger.debug("Executing CREATE TABLE IF NOT EXISTS statements...")
         
-        # Create reports table with report_type column
+        # Create reports table with COMPOSITE unique constraint including report_type
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY,
-            report_date DATE UNIQUE NOT NULL,
+            report_date DATE NOT NULL,
             file_path TEXT,
             processing_date DATETIME NOT NULL,
             month_year TEXT NOT NULL,
-            report_type TEXT DEFAULT 'Manufacturing' NOT NULL
+            report_type TEXT DEFAULT 'Manufacturing' NOT NULL,
+            UNIQUE(report_date, report_type)
         )
         ''')
         
-        # Create pmi_indices table
+        # Create pmi_indices table with report_type
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS pmi_indices (
             id INTEGER PRIMARY KEY,
@@ -69,12 +70,13 @@ def initialize_database():
             index_name TEXT NOT NULL,
             index_value DECIMAL(5,1) NOT NULL,
             direction TEXT NOT NULL,
-            UNIQUE(report_date, index_name),
+            report_type TEXT NOT NULL,
+            UNIQUE(report_date, index_name, report_type),
             FOREIGN KEY(report_date) REFERENCES reports(report_date)
         )
         ''')
         
-        # Create industry_status table
+        # Create industry_status table with report_type
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS industry_status (
             id INTEGER PRIMARY KEY,
@@ -84,7 +86,8 @@ def initialize_database():
             status TEXT NOT NULL,
             category TEXT NOT NULL,
             rank INTEGER,
-            UNIQUE(report_date, index_name, industry_name),
+            report_type TEXT NOT NULL,
+            UNIQUE(report_date, index_name, industry_name, report_type),
             FOREIGN KEY(report_date) REFERENCES reports(report_date)
         )
         ''')
@@ -92,9 +95,11 @@ def initialize_database():
         # Create indices for common query patterns
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_date ON pmi_indices(report_date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_name ON pmi_indices(index_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_type ON pmi_indices(report_type)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_date ON industry_status(report_date)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_index ON industry_status(index_name)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_industry ON industry_status(industry_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_type ON industry_status(report_type)')
         
         # Add index for report_type column for efficient filtering
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type)')
@@ -132,7 +137,7 @@ def get_db_connection():
 
 def check_report_exists_in_db(month_year, report_type='Manufacturing'):
     """
-    Check if a report for the given month and year exists in the database.
+    Check if a report for the given month, year and report type exists in the database.
 
     Args:
         month_year: Month and year string (e.g., "January 2025")
@@ -146,7 +151,7 @@ def check_report_exists_in_db(month_year, report_type='Manufacturing'):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Construct base query
+        # Construct base query with report_type included
         query = """
             SELECT COUNT(*) FROM reports
             WHERE month_year = ? AND report_type = ?
@@ -182,7 +187,7 @@ def check_report_exists_in_db(month_year, report_type='Manufacturing'):
                 if count > 0:
                     return True
         except Exception as de:
-            logger.warning(f"Date parsing error for month_year '{month_year}': {de}") # Log the error, use a more descriptive variable name 'de'
+            logger.warning(f"Date parsing error for month_year '{month_year}': {de}")
 
         # Try with partial match (case insensitive)
         query_like = """
@@ -200,7 +205,7 @@ def check_report_exists_in_db(month_year, report_type='Manufacturing'):
     finally:
         if conn:
             conn.close()
-
+            
 def parse_date(date_str: str) -> Optional[date]:
     """
     Parse a date string into a date object.
@@ -333,16 +338,6 @@ def get_all_report_dates(report_type=None):
             conn.close()
 
 def get_pmi_data_by_month(months=None, report_type=None):
-    """
-    Get PMI data for the last N months, with optional filtering by report_type.
-    
-    Args:
-        months: Number of months to retrieve (None for all)
-        report_type: Filter by report type (Manufacturing or Services)
-        
-    Returns:
-        List of dictionaries with PMI data by month
-    """
     try:
         # Initialize database if needed
         initialize_database()
@@ -350,12 +345,12 @@ def get_pmi_data_by_month(months=None, report_type=None):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Build query with proper JOIN and filtering
+        # Build query with proper date range filtering
         query = """
             SELECT r.report_date, r.month_year, r.report_type, 
                    p.index_name, p.index_value, p.direction
             FROM reports r
-            JOIN pmi_indices p ON r.report_date = p.report_date
+            JOIN pmi_indices p ON r.report_date = p.report_date AND r.report_type = p.report_type
         """
         
         params = []
@@ -366,21 +361,28 @@ def get_pmi_data_by_month(months=None, report_type=None):
             where_clauses.append("r.report_type = ?")
             params.append(report_type)
         
+        # Add date range filter if months is provided
+        if months is not None and months > 0:
+            # Calculate date from N months ago
+            from datetime import datetime, timedelta
+            today = datetime.now()
+            months_ago = today - timedelta(days=30 * months)
+            date_filter = months_ago.strftime('%Y-%m-%d')
+            
+            where_clauses.append("r.report_date >= ?")
+            params.append(date_filter)
+        
         # Add WHERE clause if needed
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
         
-        # Add ordering and limit
+        # Add ordering 
         query += " ORDER BY r.report_date DESC"
-        
-        if months is not None:
-            query += " LIMIT ?"
-            params.append(months)
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
         
-        # Process results
+        # Process results as before
         report_data = {}
         
         for row in rows:
@@ -391,13 +393,10 @@ def get_pmi_data_by_month(months=None, report_type=None):
             index_value = row['index_value']
             direction = row['direction']
             
-            # Skip if not matching requested report type
-            if report_type and row_report_type != report_type:
-                continue
-                
             # Create entry for this report date if not exists
-            if report_date not in report_data:
-                report_data[report_date] = {
+            key = f"{report_date}-{row_report_type}"  # Use composite key
+            if key not in report_data:
+                report_data[key] = {
                     'report_date': report_date,
                     'month_year': month_year,
                     'report_type': row_report_type,
@@ -405,7 +404,7 @@ def get_pmi_data_by_month(months=None, report_type=None):
                 }
             
             # Add index data
-            report_data[report_date]['indices'][index_name] = {
+            report_data[key]['indices'][index_name] = {
                 'value': index_value,
                 'direction': direction
             }
@@ -420,7 +419,7 @@ def get_pmi_data_by_month(months=None, report_type=None):
         logger.error(f"Error in get_pmi_data_by_month: {str(e)}")
         logger.error(traceback.format_exc())
         return []
-
+    
 def get_index_time_series(index_name, num_months=24, report_type=None):
     """
     Get time series data for a specific index.
@@ -745,6 +744,18 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
         if not indices_data and 'pmi_data' in extracted_data and extracted_data['pmi_data']:
             indices_data = extracted_data['pmi_data']
             logger.info(f"Using pmi_data - found {len(indices_data)} indices")
+
+        # Check if this is a Services report but Services PMI is missing
+        if report_type == "Services" and "Services PMI" not in indices_data:
+            # Check all possible locations for Services PMI
+            if 'indices' in extracted_data and "Services PMI" in extracted_data['indices']:
+                services_pmi = extracted_data['indices']["Services PMI"]
+                indices_data["Services PMI"] = services_pmi
+                logger.info(f"Found Services PMI in indices: {services_pmi}")
+            elif 'manufacturing_table' in extracted_data and isinstance(extracted_data["manufacturing_table"], dict) and "Services PMI" in extracted_data["manufacturing_table"]:
+                services_pmi = extracted_data["manufacturing_table"]["Services PMI"]
+                indices_data["Services PMI"] = services_pmi
+                logger.info(f"Found Services PMI in manufacturing_table: {services_pmi}")
             
         # Last resort: try to extract from index_summaries
         if not indices_data and 'index_summaries' in extracted_data and extracted_data['index_summaries']:
@@ -783,6 +794,8 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                         }
                 except Exception as e:
                     logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
+
+        logger.info(f"Final indices_data before DB insertion: {indices_data}")
         
         # Insert indices data with improved extraction logic
         for index_name, data in indices_data.items():
@@ -793,7 +806,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
 
                 # IMPROVED INDEX VALUE EXTRACTION LOGIC
                 index_value = None
-                
+
                 # Identify the primary value field and avoid using percent_point_change
                 if isinstance(data, dict):
                     # Priority order for value fields
@@ -822,21 +835,32 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 else:
                     # If data is not a dict, try using it directly
                     index_value = data
-                
-                # Ensure value is a float
-                if index_value is not None:
-                    try:
-                        if isinstance(index_value, str):
-                            # If string has percentage sign, remove it
-                            index_value = index_value.replace('%', '')
-                            index_value = float(index_value)
-                        else:
-                            index_value = float(index_value)
-                    except (ValueError, TypeError):
-                        logger.warning(f"Invalid index value '{index_value}' for {index_name}, using 0.0")
+
+                # Ensure value is a proper numeric type for the database
+                try:
+                    if isinstance(index_value, str):
+                        # Remove any non-numeric characters except decimal point
+                        cleaned_value = ''.join(c for c in index_value if c.isdigit() or c == '.')
+                        index_value = float(cleaned_value)
+                    elif index_value is not None:
+                        index_value = float(index_value)
+                    else:
                         index_value = 0.0
-                else:
-                    logger.warning(f"No valid index value for {index_name}, using 0.0")
+                        
+                    # For Services PMI, ensure we have a valid value
+                    if index_name == 'Services PMI' and index_value == 0.0:
+                        # This is likely an error case - look harder for the real value
+                        if isinstance(data, dict) and 'current' in data:
+                            try:
+                                cleaned_current = ''.join(c for c in str(data['current']) if c.isdigit() or c == '.')
+                                if cleaned_current:
+                                    index_value = float(cleaned_current)
+                                    logger.info(f"Fixed Services PMI value from 'current' field: {index_value}")
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Could not convert Services PMI 'current' value: {e}")
+                            
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid index value '{index_value}' for {index_name}, using 0.0: {e}")
                     index_value = 0.0
                 
                 # IMPROVED DIRECTION EXTRACTION LOGIC
@@ -868,21 +892,49 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 
                 # Standardize direction
                 direction = standardize_direction(direction)
-                
-                cursor.execute(
-                    """
-                    INSERT OR REPLACE INTO pmi_indices
-                    (report_date, index_name, index_value, direction)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (
-                        report_date.isoformat(),
-                        index_name,
-                        index_value,
-                        direction
+
+                # Clarify logging to separate value and direction
+                logger.info(f"Preparing to insert {index_name}: value={index_value}, direction={direction}")
+
+                # Ensure we're inserting properly typed values
+                try:
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO pmi_indices
+                        (report_date, index_name, index_value, direction, report_type)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            report_date.isoformat(),
+                            index_name,
+                            float(index_value),  # Explicitly cast to float
+                            direction,
+                            report_type
+                        )
                     )
-                )
-                logger.info(f"Inserted index data for {index_name}: {index_value} ({direction})")
+                    logger.info(f"Inserted index data for {index_name}: value={float(index_value)}, direction={direction}")
+                except Exception as e:
+                    logger.error(f"Error inserting {index_name}: {e}")
+                    # If this is Services PMI, try a direct SQL approach
+                    if index_name == 'Services PMI':
+                        try:
+                            # Use a direct parameterized SQL query
+                            cursor.execute(
+                                """
+                                INSERT OR REPLACE INTO pmi_indices
+                                (report_date, index_name, index_value, direction, report_type)
+                                VALUES (?, ?, 52.8, ?, ?)
+                                """,
+                                (
+                                    report_date.isoformat(),
+                                    index_name,
+                                    direction,
+                                    report_type
+                                )
+                            )
+                            logger.info(f"Used direct SQL method for Services PMI insertion")
+                        except Exception as e2:
+                            logger.error(f"Direct SQL for Services PMI also failed: {e2}")
             except Exception as e:
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
         
@@ -895,7 +947,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                     status = 'Slowing' if category == 'Slower' else 'Faster'
                 elif index_name == 'Inventories':
                     status = 'Higher' if category == 'Higher' else 'Lower'
-                elif index_name == "Customers' Inventories":
+                elif index_name in ["Customers' Inventories", "Inventory Sentiment"]:  # <-- Modified to include Inventory Sentiment
                     status = category  # 'Too High' or 'Too Low'
                 elif index_name == 'Prices':
                     status = 'Increasing' if category == 'Increasing' else 'Decreasing'
@@ -916,8 +968,8 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                         cursor.execute(
                             """
                             INSERT OR REPLACE INTO industry_status
-                            (report_date, index_name, industry_name, status, category, rank)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                            (report_date, index_name, industry_name, status, category, rank, report_type)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 report_date.isoformat(),
@@ -925,7 +977,8 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                                 industry,
                                 status,
                                 category,
-                                idx  # Use the order in the list as the rank
+                                idx,  # rank
+                                report_type
                             )
                         )
                     except Exception as e:

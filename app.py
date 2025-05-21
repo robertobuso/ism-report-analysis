@@ -467,6 +467,7 @@ def get_industry_numerical(index_name):
         logger.error(f"Error getting numerical industry status: {str(e)}")
         return jsonify({"error": str(e)}), 500
     
+@app.route('/api/heatmap_data', defaults={'months': 24})
 @app.route('/api/heatmap_data/<int:months>')
 @app.route('/api/heatmap_data/all')
 def api_heatmap_data(months=None):
@@ -476,6 +477,10 @@ def api_heatmap_data(months=None):
         
         if months == 'all':
             months = None
+        
+        # Convert string 'months' to integer if needed
+        if isinstance(months, str) and months.isdigit():
+            months = int(months)
             
         heatmap_data = get_pmi_data_by_month(months, report_type)
         return jsonify(heatmap_data)
