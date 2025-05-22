@@ -3533,6 +3533,9 @@ class GoogleSheetsFormatterTool(BaseTool):
         """
         try:
             tab_name = 'Growth Alphabetical'
+        
+            # Get the current report type from the most recent request
+            report_type = getCurrentReportType()  # You need to implement this function or pass it from the caller
             
             # Check if tab exists
             tab_id = sheet_ids.get(tab_name)
@@ -3560,10 +3563,10 @@ class GoogleSheetsFormatterTool(BaseTool):
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
             # Get all indices
-            indices = get_all_indices()
+            indices = get_all_indices(report_type=report_type)
             
             # Get all report dates for columns
-            report_dates = get_all_report_dates()
+            report_dates = get_all_report_dates(report_type=report_type)
             # Sort by date - assuming report_date is in ISO format
             report_dates.sort(key=lambda x: x['report_date'], reverse=True)
             months = [date['month_year'] for date in report_dates]
@@ -3641,7 +3644,7 @@ class GoogleSheetsFormatterTool(BaseTool):
                 })
                 
                 # Get industry data for this index
-                industry_data = get_industry_status_over_time(index, len(months))
+                industry_data = get_industry_status_over_time(index, len(months), report_type=report_type)
                 
                 # Check if we have industry data
                 if not industry_data or 'industries' not in industry_data:
@@ -3844,6 +3847,9 @@ class GoogleSheetsFormatterTool(BaseTool):
         try:
             tab_name = 'Growth Numerical'
             
+            # Get the current report type
+            report_type = getCurrentReportType() 
+
             # Check if tab exists
             tab_id = sheet_ids.get(tab_name)
             if not tab_id:
@@ -3870,9 +3876,9 @@ class GoogleSheetsFormatterTool(BaseTool):
                 sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
             # Get all indices - FILTER OUT MANUFACTURING PMI
-            indices = [idx for idx in get_all_indices() if idx != 'Manufacturing PMI']
+            indices = [idx for idx in get_all_indices(report_type=report_type) if idx != 'Manufacturing PMI']
             
-            # Get report dates
+            # Get report dates filtered by report type
             from db_utils import get_db_connection
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -3880,8 +3886,10 @@ class GoogleSheetsFormatterTool(BaseTool):
             cursor.execute("""
                 SELECT report_date, month_year 
                 FROM reports 
+                WHERE report_type = ?
                 ORDER BY report_date DESC
-            """)
+            """, (report_type,))
+
             report_dates = [dict(row) for row in cursor.fetchall()]
             months = [date['month_year'] for date in report_dates]
             
@@ -4387,6 +4395,12 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error removing deprecated tabs: {str(e)}")
             logger.error(traceback.format_exc())
             return False
+
+    def getCurrentReportType(self):
+        """Get the current report type from the request context or data."""
+        # In a real implementation, this would get from Flask's request context
+        # For now, return a default
+        return "Manufacturing"
 
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")

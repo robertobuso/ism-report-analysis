@@ -435,23 +435,52 @@ def get_index_time_series(index_name, num_months=24, report_type=None):
     conn = None
     try:
         conn = get_db_connection()
+        cursor = conn.cursor() # Create cursor after successful connection
+
+        # Build the inner part of the CTE query first, including the report_type filter
+        inner_query_sql_parts = [
+            "SELECT",
+            "    r.report_date,",
+            "    r.month_year,",
+            "    r.report_type,",
+            "    p.index_value,",
+            "    p.direction",
+            "FROM pmi_indices p",
+            "JOIN reports r ON p.report_date = r.report_date AND p.report_type = r.report_type", # Ensure join includes report_type
+            "WHERE p.index_name = ?"
+        ]
+        params = [index_name]
+
+        if report_type:
+            inner_query_sql_parts.append("AND r.report_type = ?") # Filter by report_type here
+            params.append(report_type)
         
-        # Modify query to include report_type filtering
-        query = """
-        WITH IndexData AS (
+        # This ORDER BY and LIMIT get the most recent N reports of the SPECIFIED TYPE (if any)
+        inner_query_sql_parts.append("ORDER BY r.report_date DESC")
+        inner_query_sql_parts.append("LIMIT ?")
+        params.append(num_months)
+
+        inner_query_sql = "\n".join(inner_query_sql_parts)
+
+        # Now construct the full query with the CTE
+        # The LAG function will operate on the pre-filtered and limited set of rows
+        query = f"""
+        WITH FilteredRankedReports AS (
+            -- This subquery gets the N most recent reports for the given index_name and (optionally) report_type
+            {inner_query_sql}
+        ),
+        LaggedData AS (
+            -- Apply LAG only to this filtered set
             SELECT 
-                r.report_date,
-                r.month_year,
-                r.report_type,
-                p.index_value,
-                p.direction,
-                LAG(p.index_value) OVER (ORDER BY r.report_date) AS prev_value
-            FROM pmi_indices p
-            JOIN reports r ON p.report_date = r.report_date
-            WHERE p.index_name = ?
-            {}
-            ORDER BY r.report_date DESC
-            LIMIT ?
+                report_date,
+                month_year,
+                report_type,
+                index_value,
+                direction,
+                LAG(index_value) OVER (PARTITION BY report_type ORDER BY report_date) AS prev_value 
+                -- Partition by report_type if you still want to be absolutely sure LAG doesn't cross types,
+                -- though the inner query should handle this. Ordering by report_date is crucial.
+            FROM FilteredRankedReports
         )
         SELECT 
             report_date,
@@ -459,30 +488,32 @@ def get_index_time_series(index_name, num_months=24, report_type=None):
             report_type,
             index_value,
             direction,
-            ROUND(index_value - prev_value, 1) AS change
-        FROM IndexData
-        ORDER BY report_date DESC
+            CASE 
+                WHEN prev_value IS NOT NULL THEN ROUND(index_value - prev_value, 1)
+                ELSE NULL -- Or 0.0 if you prefer for the oldest record
+            END AS change
+        FROM LaggedData
+        ORDER BY report_date DESC;
         """
         
-        params = []
-        if report_type:
-            query = query.format("AND r.report_type = ?")
-            params = [index_name, report_type, num_months]
-        else:
-            query = query.format("")
-            params = [index_name, num_months]
+        # Debugging: Print the query and params
+        # logger.debug(f"Executing query for index_time_series: {query}")
+        # logger.debug(f"With params: {params}")
+
+        cursor.execute(query, tuple(params)) # Ensure params is a tuple
         
-        cursor = conn.cursor()
-        cursor.execute(query, params)
-        
-        return [dict(row) for row in cursor.fetchall()]
+        results = [dict(row) for row in cursor.fetchall()]
+        # logger.debug(f"Results for {index_name}, type {report_type}: {results}")
+        return results
+
     except Exception as e:
-        logger.error(f"Error getting time series for {index_name}: {str(e)}")
+        logger.error(f"Error getting time series for {index_name} (report_type: {report_type}): {str(e)}")
+        logger.error(traceback.format_exc(), exc_info=True) # Log full traceback
         return []
     finally:
         if conn:
             conn.close()
-
+            
 def get_industry_status_over_time(index_name, num_months=12, report_type=None):
     """
     Get industry status over time for a specific index.
@@ -501,7 +532,8 @@ def get_industry_status_over_time(index_name, num_months=12, report_type=None):
         cursor = conn.cursor()
         
         # Get the most recent report dates with optional report_type filter
-        query = """
+        # This part is correct for fetching relevant dates
+        query_dates_sql = """
             SELECT report_date, month_year 
             FROM reports 
             {}
@@ -509,64 +541,98 @@ def get_industry_status_over_time(index_name, num_months=12, report_type=None):
             LIMIT ?
         """
         
-        params = []
+        params_dates = []
         if report_type:
-            query = query.format("WHERE report_type = ?")
-            params = [report_type, num_months]
+            query_dates_sql = query_dates_sql.format("WHERE report_type = ?")
+            params_dates = [report_type, num_months]
         else:
-            query = query.format("")
-            params = [num_months]
+            query_dates_sql = query_dates_sql.format("")
+            params_dates = [num_months]
             
-        cursor.execute(query, params)
+        cursor.execute(query_dates_sql, tuple(params_dates)) # Use tuple
         
         date_records = [dict(row) for row in cursor.fetchall()]
         if not date_records:
+            logger.warning(f"No date records found for index: {index_name}, report_type: {report_type}, months: {num_months}")
             return {'dates': [], 'industries': {}, 'ranks': {}, 'report_type': report_type}
             
-        # Get all unique industries for this index
-        cursor.execute("""
+        # Get all unique industries for this index and report_type
+        # This query is correct
+        industries_query_sql = """
             SELECT DISTINCT i.industry_name 
             FROM industry_status i
-            JOIN reports r ON i.report_date = r.report_date
+            JOIN reports r ON i.report_date = r.report_date AND i.report_type = r.report_type /* Ensure join condition is robust */
             WHERE i.index_name = ?
-            {}
-            ORDER BY i.rank
-        """.format("AND r.report_type = ?" if report_type else ""), 
-        [index_name] + ([report_type] if report_type else []))
+        """
+        industries_params = [index_name]
 
+        if report_type:
+            industries_query_sql += " AND i.report_type = ?" # Filter by i.report_type directly
+            industries_params.append(report_type)
+        
+        # Consider if ORDER BY i.rank is still needed here or if it's just for the display ranks later
+        # industries_query_sql += " ORDER BY i.industry_name" # Alphabetical might be more consistent for the list
+        
+        cursor.execute(industries_query_sql, tuple(industries_params))
         industries = [row['industry_name'] for row in cursor.fetchall()]
         
-        # Also get the most recent ranks for these industries
-        most_recent_date = date_records[0]['report_date']
-        cursor.execute("""
+        if not industries:
+            logger.warning(f"No industries found for index: {index_name}, report_type: {report_type}")
+            # Return early if no relevant industries, to avoid processing empty list
+            return {
+                'dates': [record['month_year'] for record in date_records], # Still return dates
+                'industries': {}, 
+                'ranks': {}, 
+                'report_type': report_type
+            }
+
+        # Get the most recent ranks for these industries for the specific report_type
+        # The 'ranks' fetched here are for the single most recent report_date of the specified report_type
+        most_recent_date_for_type = date_records[0]['report_date'] # This date is already filtered by report_type
+        
+        ranks_query_sql = """
             SELECT industry_name, rank
             FROM industry_status
             WHERE report_date = ? AND index_name = ?
-        """, (most_recent_date, index_name))
+        """
+        ranks_params = [most_recent_date_for_type, index_name]
+
+        if report_type:
+            ranks_query_sql += " AND report_type = ?" # <<<< FIX 1
+            ranks_params.append(report_type)
         
+        cursor.execute(ranks_query_sql, tuple(ranks_params))
         ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}
         
-        # For each industry, get status for each date
+        # For each industry, get status for each date (for the specified report_type)
         industry_data = {}
-        for industry in industries:
+        for industry in industries: # 'industries' list is already filtered by report_type
             status_by_date = {}
             
-            for date_record in date_records:
+            for date_record in date_records: # 'date_records' are already filtered by report_type
                 report_date = date_record['report_date']
                 month_year = date_record['month_year']
                 
-                cursor.execute("""
+                # Fetch status details for this specific report_date, index, industry, AND report_type
+                status_detail_query_sql = """
                     SELECT status, category, rank
                     FROM industry_status
                     WHERE report_date = ? AND index_name = ? AND industry_name = ?
-                """, (report_date, index_name, industry))
+                """
+                status_detail_params = [report_date, index_name, industry]
+
+                if report_type:
+                    status_detail_query_sql += " AND report_type = ?" # <<<< FIX 2
+                    status_detail_params.append(report_type)
+                
+                cursor.execute(status_detail_query_sql, tuple(status_detail_params))
                 
                 row = cursor.fetchone()
                 if row:
                     status_by_date[month_year] = {
                         'status': row['status'],
                         'category': row['category'],
-                        'rank': row['rank']
+                        'rank': row['rank'] # This rank is specific to this month/index/industry/type
                     }
                 else:
                     status_by_date[month_year] = {
@@ -580,11 +646,13 @@ def get_industry_status_over_time(index_name, num_months=12, report_type=None):
         return {
             'dates': [record['month_year'] for record in date_records],
             'industries': industry_data,
-            'ranks': ranks,
-            'report_type': report_type  # Include report_type in the response
+            'ranks': ranks, # These are ranks for the most_recent_date_for_type
+            'report_type': report_type
         }
     except Exception as e:
-        logger.error(f"Error getting industry status for {index_name}: {str(e)}")
+        logger.error(f"Error getting industry status for {index_name}, report_type: {report_type}: {str(e)}")
+        logger.error(traceback.format_exc(), exc_info=True) # Log full traceback
+        # Return a consistent empty structure on error
         return {'dates': [], 'industries': {}, 'ranks': {}, 'report_type': report_type}
     finally:
         if conn:
@@ -846,6 +914,17 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                         index_value = float(index_value)
                     else:
                         index_value = 0.0
+
+                    if index_name == 'Manufacturing PMI' and index_value == 0.0:
+                        # This is likely an error case - look harder for the real value
+                        if isinstance(data, dict) and 'current' in data:
+                            try:
+                                cleaned_current = ''.join(c for c in str(data['current']) if c.isdigit() or c == '.')
+                                if cleaned_current:
+                                    index_value = float(cleaned_current)
+                                    logger.info(f"Fixed Manufacturing PMI value from 'current' field: {index_value}")
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Could not convert Manufacturing PMI 'current' value: {e}")
                         
                     # For Services PMI, ensure we have a valid value
                     if index_name == 'Services PMI' and index_value == 0.0:

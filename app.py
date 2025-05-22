@@ -327,6 +327,10 @@ def dashboard():
     try:
         # Get report_type from query parameter, default to Manufacturing
         report_type = request.args.get('report_type', 'Manufacturing')
+
+        # If report_type is not provided in the URL, redirect to include it
+        if 'report_type' not in request.args:
+            return redirect(url_for('dashboard', report_type=report_type))
         
         # Get PMI heatmap data from database for the specified report type
         heatmap_data = get_pmi_data_by_month(24, report_type)  # Get last 24 months of data
@@ -373,6 +377,8 @@ def get_industry_status(index_name):
         months = request.args.get('months', 12, type=int)
         report_type = request.args.get('report_type')
         debug = request.args.get('debug', False, type=bool)
+
+        logger.info(f"In industry_status, report_type is: {report_type}")
         
         if debug:
             logger.info(f"Fetching industry status for {index_name}, {months} months, report type: {report_type}")
@@ -423,11 +429,24 @@ def get_industry_status(index_name):
                 latest_date = latest_date_row['report_date']
                 
                 # Get ranks for each industry in this index
-                cursor.execute("""
+        
+                # Base query for ranks
+                rank_query_sql = """
                     SELECT industry_name, rank 
                     FROM industry_status 
                     WHERE index_name = ? AND report_date = ?
-                """, (index_name, latest_date))
+                """
+                # Base parameters for ranks
+                rank_params_list = [index_name, latest_date]
+                
+                # Conditionally add report_type filter if it was provided
+                # This ensures the ranks are fetched for the same report_type context
+                # as the latest_date, assuming industry_status has a report_type column.
+                if report_type: 
+                    rank_query_sql += " AND report_type = ?"
+                    rank_params_list.append(report_type)
+                    
+                cursor.execute(rank_query_sql, tuple(rank_params_list)) # Use tuple for db params
                 
                 # Add rank to response
                 ranks = {row['industry_name']: row['rank'] for row in cursor.fetchall()}

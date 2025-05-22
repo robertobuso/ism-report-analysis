@@ -1608,7 +1608,7 @@
                     // Force redraw by emptying the container first
                     const heatmapContainer = document.querySelector('.heatmap-container');
                     heatmapContainer.innerHTML = '';
-                    loadHeatmapData();
+                    loadHeatmapData(getCurrentReportType());
                 });
             }
             
@@ -1632,7 +1632,7 @@
                             // Update the current index display
                             document.getElementById('currentIndexName').textContent = indexSelect.options[indexSelect.selectedIndex].text;
                             // Load data for this index
-                            loadGrowthTable('alpha', selectedIndex);
+                            loadGrowthTable('alpha', selectedIndex, getCurrentReportType());
                         }
                     });
                 }
@@ -2217,10 +2217,9 @@
         }
         
         // Numerical Growth Table
-        function loadNumericalGrowthTable(selectedValue) {
+        function loadNumericalGrowthTable(selectedValue, reportType = getCurrentReportType()) {
             console.log("Loading data for:", selectedValue);
             const cardBody = document.querySelector('.card-body');
-            const reportType = getCurrentReportType()
 
             if (!cardBody) return;
 
@@ -2736,14 +2735,15 @@
             }
             
             const cardBody = document.querySelector('.card-body');
+            const reportType = getCurrentReportType(); // Get current report type
             
             // Show loading indicator
             if (cardBody) {
                 cardBody.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading indices...</p></div>';
             }
             
-            // Use the CORRECT endpoint URL - /api/all_indices instead of /api/indices
-            fetch('/api/all_indices')
+            // Add report_type parameter
+            fetch(`/api/all_indices?report_type=${reportType}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error ${response.status}`);
