@@ -152,7 +152,7 @@ class SimplePDFExtractionTool(BaseTool):
                         logger.info(f"Extracted month_year from text: {month_year}")
                 except Exception as e:
                     logger.warning(f"Failed to extract month_year from text: {str(e)}")
-            
+
             # Construct the prompt based on report type
             if report_type == "Manufacturing":
                 prompt_title = "Manufacturing"
@@ -166,21 +166,25 @@ class SimplePDFExtractionTool(BaseTool):
             I need you to analyze this ISM {prompt_title} Report PDF and extract both the "{table_name}" table data AND industry classification data.
 
             PART 1: {table_name} Table
-            Extract and return these data points:
+            CRITICAL INSTRUCTION: When extracting values from the "{table_name}" table, you MUST use the "Series Index" column values, NOT the "Percent Point Change" column values. The Series Index column contains the actual index values (like 52.1, 48.7, etc.), while the Percent Point Change column shows the change from the previous month.
+
+            Extract and return these data points using ONLY the Series Index column values:
             - Month and Year of the report (should be {month_year})
-            - {prompt_title} PMI value and status (Growing/Contracting) 
-            - New Orders value and status
-            - Production value and status (or Business Activity for Services)
-            - Employment value and status
-            - Supplier Deliveries value and status
-            - Inventories value and status
-            - Customers' Inventories value and status (or Inventory Sentiment for Services)
-            - Prices value and status
-            - Backlog of Orders value and status
-            - New Export Orders value and status
-            - Imports value and status
+            - {prompt_title} PMI Series Index value and status (Growing/Contracting) 
+            - New Orders Series Index value and status
+            - {'Business Activity' if report_type == 'Services' else 'Production'} Series Index value and status
+            - Employment Series Index value and status
+            - Supplier Deliveries Series Index value and status
+            - Inventories Series Index value and status
+            - {'Inventory Sentiment' if report_type == 'Services' else "Customers' Inventories"} Series Index value and status
+            - Prices Series Index value and status
+            - Backlog of Orders Series Index value and status
+            - New Export Orders Series Index value and status
+            - Imports Series Index value and status
             - Overall Economy status
             - {prompt_title} Sector status
+
+            IMPORTANT: For each index above, extract the number from the "Series Index" column, NOT from the "Percent Point Change" column. The Series Index is the actual value of the index (e.g., 52.1), while Percent Point Change is just the difference from last month (e.g., +2.1 or -1.3).
 
             PART 2: Industry Data Classification
             For each of the following indices, identify industries that are classified as growing/expanding or contracting/declining:
@@ -229,8 +233,10 @@ class SimplePDFExtractionTool(BaseTool):
             {{
                 "month_year": "Month Year",
                 "indices": {{
-                    "{prompt_title} PMI": {{"current": "48.4", "direction": "Contracting"}},
-                    "New Orders": {{"current": "50.4", "direction": "Growing"}},
+                    "{prompt_title} PMI": {{"current": "48.4", "direction": "Contracting", "series_index": "48.4"}},
+                    "New Orders": {{"current": "50.4", "direction": "Growing", "series_index": "50.4"}},
+                    "Supplier Deliveries": {{"current": "49.2", "direction": "Faster", "series_index": "49.2"}},
+                    "New Export Orders": {{"current": "47.8", "direction": "Declining", "series_index": "47.8"}},
                     ...and so on for all indices,
                     "OVERALL ECONOMY": {{"direction": "Growing"}},
                     "{prompt_title} Sector": {{"direction": "Contracting"}}
@@ -252,6 +258,8 @@ class SimplePDFExtractionTool(BaseTool):
                     ...and so on for all indices with their full text summaries
                 }}
             }}
+
+            REMINDER: Use ONLY the Series Index column values, NOT the Percent Point Change values!
 
             Here is the extracted text from the PDF:
             {extracted_text[:80000]}  # Limit text length to 80,000 chars to avoid token limits
@@ -326,6 +334,9 @@ class SimplePDFExtractionTool(BaseTool):
                             # Ensure the correct PMI index name is used
                             extraction_data = self._ensure_correct_pmi_index(extraction_data, report_type)
                             
+                            # Validate and fix PMI values if needed
+                            extraction_data = self._validate_and_fix_pmi_values(extraction_data, report_type)
+                            
                         # Try to extract PMI values from summaries if they're not in indices
                         if extraction_data["index_summaries"] and not extraction_data["indices"]:
                             try:
@@ -387,6 +398,7 @@ class SimplePDFExtractionTool(BaseTool):
                                 logger.info("Copied manufacturing_table to indices field")
 
                         # Success! Return the parsed JSON
+                        logger.info(f"extraction_data returned from def _run {extraction_data}")
                         return extraction_data
                         
                     except json.JSONDecodeError as e:
@@ -937,6 +949,73 @@ class SimplePDFExtractionTool(BaseTool):
                         del extracted_data['industry_data'][old_name]
         
         return extracted_data
+
+    def _validate_and_fix_pmi_values(self, extraction_data, report_type):
+        """
+        Validate that PMI values are actual index values, not percent changes.
+        
+        PMI index values are typically between 30-70, while percent changes are usually
+        small numbers between -10 and +10.
+        
+        Args:
+            extraction_data: The extracted data dictionary
+            report_type: Report type (Manufacturing or Services)
+            
+        Returns:
+            Validated extraction data
+        """
+        if not extraction_data or 'indices' not in extraction_data:
+            return extraction_data
+            
+        indices = extraction_data['indices']
+        
+        # Check specific indices that had issues
+        problem_indices = ['New Export Orders', 'Supplier Deliveries']
+        
+        for index_name in problem_indices:
+            if index_name in indices:
+                index_data = indices[index_name]
+                
+                # Get the current value
+                value = None
+                if isinstance(index_data, dict):
+                    value = index_data.get('current', index_data.get('value', index_data.get('series_index')))
+                
+                if value:
+                    try:
+                        # Convert to float if string
+                        if isinstance(value, str):
+                            # Remove any + or - prefix which indicates percent change
+                            if value.startswith(('+', '-')) and '.' in value:
+                                logger.warning(f"Detected percent change value '{value}' for {index_name}, this is likely incorrect")
+                                # Mark for re-extraction or set to None
+                                index_data['needs_correction'] = True
+                            
+                            # Clean the value
+                            cleaned_value = value.replace('+', '').replace('-', '')
+                            numeric_value = float(cleaned_value)
+                            
+                            # Check if value is suspiciously small (likely a percent change)
+                            if abs(numeric_value) < 15:  # PMI values are rarely below 30 or changes above 15
+                                logger.warning(f"Suspicious value {numeric_value} for {index_name} - might be percent change instead of index value")
+                                
+                                # If we have series_index field, use that
+                                if 'series_index' in index_data and index_data['series_index']:
+                                    try:
+                                        series_value = float(str(index_data['series_index']).replace('+', '').replace('-', ''))
+                                        if series_value > 20:  # More likely to be an actual index value
+                                            index_data['current'] = str(series_value)
+                                            index_data['value'] = str(series_value)
+                                            logger.info(f"Corrected {index_name} value from {value} to {series_value}")
+                                    except:
+                                        pass
+                                        
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Could not validate value for {index_name}: {str(e)}")
+        
+        logger.info(f"In _validate_and_fix_pmi_values indices are  {extraction_data['indices']}")
+
+        return extraction_data
 
 class SimpleDataStructurerTool(BaseTool):
     name: str = Field(default="structure_data")

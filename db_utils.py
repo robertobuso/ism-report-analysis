@@ -764,105 +764,120 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             )
         )
         
-        # Process indices data - MODIFIED to handle both report types
+        # Process pmi_indices data
+        # Get indices data directly from the extracted data if available
         indices_data = {}
-        
-        # First, try to get indices directly from the extracted data
-        if 'indices' in extracted_data and extracted_data['indices']:
-            indices_data = extracted_data['indices']
-            logger.info(f"Using indices directly - found {len(indices_data)} indices")
-        
-        # If not available, check for report-specific table data
-        elif not indices_data:
-            # Define possible table keys based on report type
-            possible_table_keys = []
-            
-            # Add report-specific keys
-            if report_type.lower() == 'manufacturing':
-                possible_table_keys.extend(['manufacturing_table', 'mfg_table', 'pmi_data'])
-            elif report_type.lower() == 'services':
-                possible_table_keys.extend(['services_table', 'service_table', 'services_data'])
-            
-            # Add generic keys that might be used
-            possible_table_keys.extend(['at_a_glance', 'table_data', 'index_data'])
-            
-            # Check each possible key
-            for key in possible_table_keys:
-                if key in extracted_data and isinstance(extracted_data[key], dict):
-                    # Check if this dict contains index data
-                    has_indices = False
-                    key_count = 0
-                    
-                    # List of common indices to check for
-                    index_indicators = ['PMI', 'New Orders', 'Production', 'Employment', 
-                                       'Business Activity', 'Supplier Deliveries']
-                    
-                    for index in index_indicators:
-                        if index in extracted_data[key]:
-                            has_indices = True
-                            key_count += 1
-                    
-                    # If we found multiple indices, use this data
-                    if has_indices and key_count >= 2:
-                        indices_data = extracted_data[key]
-                        logger.info(f"Using {key} - found {len(indices_data)} indices")
-                        break
-        
-        # If we still have no indices, try pmi_data
-        if not indices_data and 'pmi_data' in extracted_data and extracted_data['pmi_data']:
-            indices_data = extracted_data['pmi_data']
-            logger.info(f"Using pmi_data - found {len(indices_data)} indices")
 
-        # Check if this is a Services report but Services PMI is missing
-        if report_type == "Services" and "Services PMI" not in indices_data:
-            # Check all possible locations for Services PMI
-            if 'indices' in extracted_data and "Services PMI" in extracted_data['indices']:
-                services_pmi = extracted_data['indices']["Services PMI"]
-                indices_data["Services PMI"] = services_pmi
-                logger.info(f"Found Services PMI in indices: {services_pmi}")
-            elif 'manufacturing_table' in extracted_data and isinstance(extracted_data["manufacturing_table"], dict) and "Services PMI" in extracted_data["manufacturing_table"]:
-                services_pmi = extracted_data["manufacturing_table"]["Services PMI"]
-                indices_data["Services PMI"] = services_pmi
-                logger.info(f"Found Services PMI in manufacturing_table: {services_pmi}")
-            
-        # Last resort: try to extract from index_summaries
-        if not indices_data and 'index_summaries' in extracted_data and extracted_data['index_summaries']:
-            logger.info("Trying to extract indices from index_summaries")
+        logger.info(f"extracted_data in store_report_data_in_db: {extracted_data}.")
+        
+        # First, check if we have properly extracted indices data
+        indices_data_source = None 
+
+        # Condition 1: Check for 'indices'
+        condition1_met = False
+        if 'indices' in extracted_data and extracted_data['indices']:
+            indices_data_source = extracted_data['indices']
+            logger.info(f"Condition 1 met: Using 'indices' data from extraction - found {len(indices_data_source)} items.")
+            condition1_met = True
+
+        condition2_met = False
+        if 'manufacturing_table' in extracted_data and extracted_data['manufacturing_table']:
+            if not condition1_met:
+                indices_data_source = extracted_data['manufacturing_table']
+                condition2_met = True
+                logger.info(f"Condition 2 met (and Condition 1 not): Using 'manufacturing_table' data - found {len(indices_data_source)} items.")
+            elif condition1_met:
+                logger.info(f"Condition 2 met ('manufacturing_table' present), but 'indices' data already prioritized.")
+
+        if indices_data_source:
+            # Use the properly extracted indices data
+            indices_data = indices_data_source 
+            logger.info(f"Using indices data from extraction - found {len(indices_data)} indices")
+        
+        # Only fall back to extracting from summaries if we have NO indices data at all
+        elif 'index_summaries' in extracted_data and extracted_data['index_summaries']:
+            logger.warning("No indices data found, attempting to extract from summaries as fallback")
             index_summaries = extracted_data['index_summaries']
             
             for index_name, summary in index_summaries.items():
+                # Skip if this index already has data
+                if index_name in indices_data:
+                    continue
+                    
                 try:
-                    # Pattern for values like "PMI® registered 50.9 percent in January"
+                    # More restrictive pattern to avoid matching percent changes
+                    # Look for "index registered XX.X percent" or "PMI at XX.X percent"
+                    # but NOT "registered a X.X percent point change"
                     import re
-                    value_pattern = r'(?:registered|was|at)\s+(\d+\.\d+)'
-                    value_match = re.search(value_pattern, summary, re.IGNORECASE)
                     
-                    direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
-                    direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
+                    # Patterns that indicate actual index values (30-70 range typical)
+                    index_value_patterns = [
+                        r'(?:index|PMI)(?:\s+\w+)*\s+(?:registered|was|at)\s+(\d{2,}\.\d+)\s+percent',  # Requires 2+ digits before decimal
+                        r'(?:registered|reading\s+of|index\s+of)\s+(\d{2,}\.\d+)\s+percent(?:\s+in\s+\w+)?$',  # At end of sentence
+                        r'^.*?(?:registered|was)\s+(\d{2,}\.\d+)\s+percent,?\s+(?:a\s+reading|an?\s+(?:increase|decrease))',  # Followed by "a reading"
+                    ]
                     
-                    if value_match:
-                        value = float(value_match.group(1))
-                        direction = direction_match.group(1).capitalize() if direction_match else "Unknown"
-                        
-                        # Standardize direction terms
-                        if direction.lower() in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
-                            direction = 'Growing'
-                        elif direction.lower() in ['contracting', 'contraction', 'declining', 'decreasing']:
-                            direction = 'Contracting'
-                        elif direction.lower() == 'slower':
-                            direction = 'Slowing'
-                        elif direction.lower() == 'faster':
-                            direction = 'Faster'
-                        
-                        if not indices_data:
-                            indices_data = {}
-                        indices_data[index_name] = {
-                            'value': value,
-                            'direction': direction
-                        }
+                    # Patterns that indicate percent CHANGES (to explicitly avoid)
+                    change_patterns = [
+                        r'percent\s+point\s+(?:change|increase|decrease)',
+                        r'(?:increased|decreased|rose|fell)\s+\d+\.\d+\s+percent',
+                        r'(?:up|down)\s+\d+\.\d+\s+percent',
+                        r'[+-]\d+\.\d+\s+percent'
+                    ]
+                    
+                    # Check if summary contains percent change language
+                    contains_change = any(re.search(pattern, summary, re.IGNORECASE) for pattern in change_patterns)
+                    
+                    if not contains_change:
+                        # Try to extract actual index value
+                        for pattern in index_value_patterns:
+                            value_match = re.search(pattern, summary, re.IGNORECASE)
+                            if value_match:
+                                value = float(value_match.group(1))
+                                
+                                # Validate that this is a reasonable PMI value (typically 30-70)
+                                if 25 <= value <= 75:
+                                    # Extract direction
+                                    direction_pattern = r'(growing|growth|expanding|expansion|contracting|contraction|declining|increasing|decreasing|faster|slower)'
+                                    direction_match = re.search(direction_pattern, summary, re.IGNORECASE)
+                                    
+                                    direction = 'Unknown'
+                                    if direction_match:
+                                        direction_word = direction_match.group(1).lower()
+                                        if direction_word in ['growing', 'growth', 'expanding', 'expansion', 'increasing']:
+                                            direction = 'Growing'
+                                        elif direction_word in ['contracting', 'contraction', 'declining', 'decreasing']:
+                                            direction = 'Contracting'
+                                        elif direction_word == 'slower':
+                                            direction = 'Slowing'
+                                        elif direction_word == 'faster':
+                                            direction = 'Faster'
+                                    
+                                    indices_data[index_name] = {
+                                        'value': value,
+                                        'direction': direction
+                                    }
+                                    logger.info(f"Extracted {index_name} from summary: {value} ({direction})")
+                                    break
+                                else:
+                                    logger.warning(f"Rejected value {value} for {index_name} - outside typical PMI range")
+                            
                 except Exception as e:
                     logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
-
+        
+        # If we still don't have indices data, check if it's in other fields
+        if not indices_data:
+            # Check for indices in manufacturing_table or services_table
+            possible_table_keys = ['manufacturing_table', 'services_table', 'table_data', 'at_a_glance']
+            
+            for key in possible_table_keys:
+                if key in extracted_data and isinstance(extracted_data[key], dict):
+                    # Check if this contains index data
+                    if any(idx in extracted_data[key] for idx in ['PMI', 'New Orders', 'Production', 'Business Activity']):
+                        indices_data = extracted_data[key]
+                        logger.info(f"Using indices data from {key}")
+                        break
+        
         logger.info(f"Final indices_data before DB insertion: {indices_data}")
         
         # Insert indices data with improved extraction logic
@@ -876,16 +891,26 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
 
                 # Identify the primary value field and avoid using percent_point_change
                 if isinstance(data, dict):
-                    # Priority order for value fields
-                    priority_fields = ['current', 'value', 'series_index', 'index']
+                    # Priority order for value fields - ADD 'series_index' as highest priority
+                    priority_fields = ['series_index', 'current', 'value', 'index']
                     
                     # Fields to avoid
-                    avoid_fields = ['percent_point_change', 'change', 'delta']
+                    avoid_fields = ['percent_point_change', 'change', 'delta', 'percent_change', 'point_change']
                     
                     # First try priority fields
                     for field in priority_fields:
                         if field in data and data[field] is not None:
-                            index_value = data[field]
+                            # Additional validation for Services report specific indices
+                            field_value = data[field]
+                            
+                            # Check if this looks like a percent change (starts with + or -)
+                            if isinstance(field_value, str) and field_value.startswith(('+', '-')):
+                                # This is likely a percent change, skip it
+                                logger.warning(f"Skipping field '{field}' with value '{field_value}' for {index_name} as it appears to be a percent change")
+                                continue
+                                
+                            index_value = field_value
+                            logger.debug(f"Using value from field '{field}' for {index_name}: {index_value}")
                             break
                     
                     # If still not found, try any numeric field except those to avoid
@@ -1031,7 +1056,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
     finally:
         if conn:
             conn.close()
-            
+
 def standardize_direction(direction):
     """Standardize direction terms."""
     direction = direction.lower()
