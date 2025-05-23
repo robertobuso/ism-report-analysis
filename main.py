@@ -554,6 +554,8 @@ def process_single_pdf(pdf_path, visualization_options=None):
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
 
+        extraction_data = validate_and_preserve_indices(extraction_data, report_type)
+
         # Initialize extraction_data if it's None to avoid reference errors
         if extraction_data is None:
             extraction_data = {
@@ -713,6 +715,8 @@ def process_single_pdf(pdf_path, visualization_options=None):
             if 'report_type' not in extraction_data:
                 extraction_data['report_type'] = report_type
                 
+            logger.info(f"Indices being sent to database: {list(extraction_data.get('indices', {}).keys())}")
+            
             store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data['report_type'])
 
             if store_result:
@@ -993,6 +997,53 @@ def process_single_pdf(pdf_path, visualization_options=None):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
     
+def validate_and_preserve_indices(extraction_data, report_type):
+    """
+    Validate that all expected indices are present in the extraction data.
+    
+    Args:
+        extraction_data: The extracted data dictionary
+        report_type: The report type (Manufacturing or Services)
+    
+    Returns:
+        The extraction data with validation logging
+    """
+    if not extraction_data or 'indices' not in extraction_data:
+        logger.warning("No indices found in extraction data")
+        return extraction_data
+    
+    # Get expected indices based on report type
+    if report_type == "Services":
+        expected_indices = [
+            "Services PMI", "Business Activity", "New Orders", "Employment",
+            "Supplier Deliveries", "Inventories", "Inventory Sentiment", 
+            "Prices", "Backlog of Orders", "New Export Orders", "Imports"
+        ]
+    else:
+        expected_indices = [
+            "Manufacturing PMI", "New Orders", "Production", "Employment",
+            "Supplier Deliveries", "Inventories", "Customers' Inventories",
+            "Prices", "Backlog of Orders", "New Export Orders", "Imports"
+        ]
+    
+    # Check which indices are present
+    present_indices = list(extraction_data['indices'].keys())
+    missing_indices = [idx for idx in expected_indices if idx not in present_indices]
+    
+    if missing_indices:
+        logger.warning(f"Missing indices for {report_type} report: {missing_indices}")
+    
+    logger.info(f"Present indices for {report_type} report: {present_indices}")
+    
+    # Log the actual values for debugging
+    for idx, data in extraction_data['indices'].items():
+        if isinstance(data, dict):
+            value = data.get('current', data.get('value', 'N/A'))
+            direction = data.get('direction', 'N/A')
+            logger.info(f"  {idx}: {value} ({direction})")
+    
+    return extraction_data
+
 def count_industries(industry_data):
     """Count the total number of industries in the industry_data dict."""
     count = 0

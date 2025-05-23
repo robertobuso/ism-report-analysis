@@ -535,11 +535,15 @@ def get_indices_list():
             ]
         return jsonify(fallback_indices)
     
-def get_standard_industries(report_type_str: Optional[str]) -> List[str]: # Added type hint
+def get_standard_industries(report_type_str: Optional[str]) -> List[str]:
     """
     Get the standard list of industries based on report type, primarily from config.
     """
-    report_type = (report_type_str or "Manufacturing").capitalize() # Default and capitalize
+    # Ensure report_type is a string and capitalize it
+    if report_type_str is None:
+        report_type = "Manufacturing"
+    else:
+        report_type = str(report_type_str).strip().capitalize()
     
     canonical_list = config_loader.get_canonical_industries(report_type)
     if canonical_list:
@@ -567,7 +571,7 @@ def get_standard_industries(report_type_str: Optional[str]) -> List[str]: # Adde
             "Transportation & Warehousing", 
             "Utilities", 
             "Wholesale Trade",
-            "Other Services" # Common in Services reports
+            "Other Services"
         ]
     else:  # Manufacturing or default
         return [

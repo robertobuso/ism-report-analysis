@@ -50,6 +50,20 @@ ISM_INDICES = [
     "Imports"
 ]
 
+SERVICES_INDICES = config_loader.get_indices("Services") or [
+    "Services PMI",
+    "Business Activity", 
+    "New Orders", 
+    "Employment", 
+    "Supplier Deliveries",
+    "Inventories", 
+    "Inventory Sentiment", 
+    "Prices", 
+    "Backlog of Orders",
+    "New Export Orders", 
+    "Imports"
+]
+
 # Category mappings for each index
 INDEX_CATEGORIES = {
     "New Orders": ["Growing", "Declining"],

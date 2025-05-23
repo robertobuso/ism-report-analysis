@@ -868,9 +868,8 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
         # Insert indices data with improved extraction logic
         for index_name, data in indices_data.items():
             try:
-                if index_name.upper() in ["OVERALL ECONOMY", "MANUFACTURING SECTOR", "SERVICES SECTOR"]:
-                    logger.info(f"DB_STORE: Skipping non-PMI summary item '{index_name}' for pmi_indices table.")
-                    continue  # This will skip the rest of the current iteration of THIS loop and go to the next index_name
+                # REMOVED THE FILTERING LOGIC - Store all indices including special ones
+                logger.info(f"Processing index: {index_name}")
 
                 # IMPROVED INDEX VALUE EXTRACTION LOGIC
                 index_value = None
@@ -909,35 +908,12 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                     if isinstance(index_value, str):
                         # Remove any non-numeric characters except decimal point
                         cleaned_value = ''.join(c for c in index_value if c.isdigit() or c == '.')
-                        index_value = float(cleaned_value)
+                        index_value = float(cleaned_value) if cleaned_value else 0.0
                     elif index_value is not None:
                         index_value = float(index_value)
                     else:
                         index_value = 0.0
-
-                    if index_name == 'Manufacturing PMI' and index_value == 0.0:
-                        # This is likely an error case - look harder for the real value
-                        if isinstance(data, dict) and 'current' in data:
-                            try:
-                                cleaned_current = ''.join(c for c in str(data['current']) if c.isdigit() or c == '.')
-                                if cleaned_current:
-                                    index_value = float(cleaned_current)
-                                    logger.info(f"Fixed Manufacturing PMI value from 'current' field: {index_value}")
-                            except (ValueError, TypeError) as e:
-                                logger.warning(f"Could not convert Manufacturing PMI 'current' value: {e}")
                         
-                    # For Services PMI, ensure we have a valid value
-                    if index_name == 'Services PMI' and index_value == 0.0:
-                        # This is likely an error case - look harder for the real value
-                        if isinstance(data, dict) and 'current' in data:
-                            try:
-                                cleaned_current = ''.join(c for c in str(data['current']) if c.isdigit() or c == '.')
-                                if cleaned_current:
-                                    index_value = float(cleaned_current)
-                                    logger.info(f"Fixed Services PMI value from 'current' field: {index_value}")
-                            except (ValueError, TypeError) as e:
-                                logger.warning(f"Could not convert Services PMI 'current' value: {e}")
-                            
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Invalid index value '{index_value}' for {index_name}, using 0.0: {e}")
                     index_value = 0.0
@@ -972,50 +948,29 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 # Standardize direction
                 direction = standardize_direction(direction)
 
-                # Clarify logging to separate value and direction
-                logger.info(f"Preparing to insert {index_name}: value={index_value}, direction={direction}")
+                # Log what we're about to insert
+                logger.info(f"Inserting {index_name}: value={index_value}, direction={direction}, report_type={report_type}")
 
-                # Ensure we're inserting properly typed values
-                try:
-                    cursor.execute(
-                        """
-                        INSERT OR REPLACE INTO pmi_indices
-                        (report_date, index_name, index_value, direction, report_type)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (
-                            report_date.isoformat(),
-                            index_name,
-                            float(index_value),  # Explicitly cast to float
-                            direction,
-                            report_type
-                        )
+                # Insert into database
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO pmi_indices
+                    (report_date, index_name, index_value, direction, report_type)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        report_date.isoformat(),
+                        index_name,
+                        float(index_value),
+                        direction,
+                        report_type
                     )
-                    logger.info(f"Inserted index data for {index_name}: value={float(index_value)}, direction={direction}")
-                except Exception as e:
-                    logger.error(f"Error inserting {index_name}: {e}")
-                    # If this is Services PMI, try a direct SQL approach
-                    if index_name == 'Services PMI':
-                        try:
-                            # Use a direct parameterized SQL query
-                            cursor.execute(
-                                """
-                                INSERT OR REPLACE INTO pmi_indices
-                                (report_date, index_name, index_value, direction, report_type)
-                                VALUES (?, ?, 52.8, ?, ?)
-                                """,
-                                (
-                                    report_date.isoformat(),
-                                    index_name,
-                                    direction,
-                                    report_type
-                                )
-                            )
-                            logger.info(f"Used direct SQL method for Services PMI insertion")
-                        except Exception as e2:
-                            logger.error(f"Direct SQL for Services PMI also failed: {e2}")
+                )
+                logger.info(f"Successfully inserted index data for {index_name}")
+                
             except Exception as e:
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
+                logger.error(traceback.format_exc())
         
         # Process industry_status data (unchanged)
         industry_data = extracted_data.get('industry_data', {})

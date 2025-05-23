@@ -459,6 +459,7 @@ class SimplePDFExtractionTool(BaseTool):
     def _ensure_correct_pmi_index(self, extracted_data, report_type):
         """
         Ensure the correct PMI index name is used based on report type.
+        This version preserves all data instead of destructively renaming.
         
         Args:
             extracted_data: The extracted data dictionary
@@ -484,54 +485,84 @@ class SimplePDFExtractionTool(BaseTool):
                 logger.warning(f"indices is not a dictionary: {type(indices)}")
                 extracted_data['indices'] = {}
                 return extracted_data
-                
+            
+            # Create a new indices dict to avoid modifying during iteration
+            new_indices = indices.copy()
+            
             # For Services report type
             if report_type == "Services":
-                # If Manufacturing PMI exists but Services PMI doesn't, rename it
+                # Ensure we have Services PMI (rename Manufacturing PMI if needed)
                 if "Manufacturing PMI" in indices and "Services PMI" not in indices:
-                    indices["Services PMI"] = indices["Manufacturing PMI"]
-                    del indices["Manufacturing PMI"]
-                    logger.info("Renamed Manufacturing PMI to Services PMI for Services report")
-                    
-                # If Production exists but Business Activity doesn't, rename it
+                    new_indices["Services PMI"] = indices["Manufacturing PMI"]
+                    # Don't delete Manufacturing PMI yet - preserve it
+                    logger.info("Added Services PMI from Manufacturing PMI for Services report")
+                
+                # Ensure we have Business Activity (rename Production if needed)
                 if "Production" in indices and "Business Activity" not in indices:
-                    indices["Business Activity"] = indices["Production"]
-                    del indices["Production"]
-                    logger.info("Renamed Production to Business Activity for Services report")
-                    
-                # If Customers' Inventories exists but Inventory Sentiment doesn't, rename it
+                    new_indices["Business Activity"] = indices["Production"]
+                    logger.info("Added Business Activity from Production for Services report")
+                
+                # Ensure we have Inventory Sentiment (rename Customers' Inventories if needed)
                 if "Customers' Inventories" in indices and "Inventory Sentiment" not in indices:
-                    indices["Inventory Sentiment"] = indices["Customers' Inventories"]
-                    del indices["Customers' Inventories"]
-                    logger.info("Renamed Customers' Inventories to Inventory Sentiment for Services report")
+                    new_indices["Inventory Sentiment"] = indices["Customers' Inventories"]
+                    logger.info("Added Inventory Sentiment from Customers' Inventories for Services report")
+                
+                # Now remove Manufacturing-specific indices if they were copied
+                indices_to_remove = []
+                if "Services PMI" in new_indices and "Manufacturing PMI" in new_indices:
+                    indices_to_remove.append("Manufacturing PMI")
+                if "Business Activity" in new_indices and "Production" in new_indices:
+                    indices_to_remove.append("Production")
+                if "Inventory Sentiment" in new_indices and "Customers' Inventories" in new_indices:
+                    indices_to_remove.append("Customers' Inventories")
+                
+                for idx in indices_to_remove:
+                    del new_indices[idx]
+                    logger.info(f"Removed {idx} after copying to Services equivalent")
                     
             # For Manufacturing report type
             elif report_type == "Manufacturing":
-                # If Services PMI exists but Manufacturing PMI doesn't, rename it
+                # Ensure we have Manufacturing PMI (rename Services PMI if needed)
                 if "Services PMI" in indices and "Manufacturing PMI" not in indices:
-                    indices["Manufacturing PMI"] = indices["Services PMI"]
-                    del indices["Services PMI"]
-                    logger.info("Renamed Services PMI to Manufacturing PMI for Manufacturing report")
-                    
-                # If Business Activity exists but Production doesn't, rename it
+                    new_indices["Manufacturing PMI"] = indices["Services PMI"]
+                    logger.info("Added Manufacturing PMI from Services PMI for Manufacturing report")
+                
+                # Ensure we have Production (rename Business Activity if needed)
                 if "Business Activity" in indices and "Production" not in indices:
-                    indices["Production"] = indices["Business Activity"]
-                    del indices["Business Activity"]
-                    logger.info("Renamed Business Activity to Production for Manufacturing report")
-                    
-                # If Inventory Sentiment exists but Customers' Inventories doesn't, rename it
+                    new_indices["Production"] = indices["Business Activity"]
+                    logger.info("Added Production from Business Activity for Manufacturing report")
+                
+                # Ensure we have Customers' Inventories (rename Inventory Sentiment if needed)
                 if "Inventory Sentiment" in indices and "Customers' Inventories" not in indices:
-                    indices["Customers' Inventories"] = indices["Inventory Sentiment"]
-                    del indices["Inventory Sentiment"]
-                    logger.info("Renamed Inventory Sentiment to Customers' Inventories for Manufacturing report")
-                    
+                    new_indices["Customers' Inventories"] = indices["Inventory Sentiment"]
+                    logger.info("Added Customers' Inventories from Inventory Sentiment for Manufacturing report")
+                
+                # Now remove Services-specific indices if they were copied
+                indices_to_remove = []
+                if "Manufacturing PMI" in new_indices and "Services PMI" in new_indices:
+                    indices_to_remove.append("Services PMI")
+                if "Production" in new_indices and "Business Activity" in new_indices:
+                    indices_to_remove.append("Business Activity")
+                if "Customers' Inventories" in new_indices and "Inventory Sentiment" in new_indices:
+                    indices_to_remove.append("Inventory Sentiment")
+                
+                for idx in indices_to_remove:
+                    del new_indices[idx]
+                    logger.info(f"Removed {idx} after copying to Manufacturing equivalent")
+            
+            # Update the extracted data with new indices
+            extracted_data['indices'] = new_indices
+            
+            # Log final indices for debugging
+            logger.info(f"Final indices after _ensure_correct_pmi_index: {list(new_indices.keys())}")
+            
             return extracted_data
         except Exception as e:
             logger.error(f"Error in _ensure_correct_pmi_index: {str(e)}")
             logger.error(traceback.format_exc())
             # Return the original data in case of error to avoid further issues
             return extracted_data
-    
+
     def _extract_data_with_llm(self, pdf_path: str, month_year_context: str, handler: Any, report_type_str: str) -> Dict[str, Any]:
         """Extract data from PDF using LLM with the appropriate report handler."""
         try:
