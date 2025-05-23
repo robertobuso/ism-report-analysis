@@ -717,7 +717,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
     Args:
         extracted_data: Dictionary containing the extracted report data
         pdf_path: Path to the PDF file
-        report_type: Type of report (Manufacturing or Services), defaults to Manufacturing
+        report_type: Type of report (Manufacturing or Services)
         
     Returns:
         bool: True if successful, False otherwise
@@ -725,30 +725,30 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
     if not extracted_data:
         logger.error(f"No data to store for {pdf_path}")
         return False
-
+        
     conn = None
     try:
         # Ensure database is initialized
         initialize_database()
-
+        
         conn = get_db_connection()
         cursor = conn.cursor()
-
+        
         # Extract necessary data
         month_year = extracted_data.get('month_year', 'Unknown')
-
+        
         # Parse the date from month_year
         report_date = parse_date(month_year)
         if not report_date:
             logger.error(f"Could not parse date from '{month_year}' for {pdf_path}")
             return False
-
+            
         # Ensure report_type is valid
         if not report_type or not isinstance(report_type, str):
             logger.warning(f"Invalid report_type '{report_type}', using 'Manufacturing'")
             report_type = "Manufacturing"  # Default
         
-        # Insert into reports table
+        # Insert into reports table with report_type
         cursor.execute(
             """
             INSERT OR REPLACE INTO reports
@@ -763,7 +763,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 report_type
             )
         )
-
+        
         # Process indices data - MODIFIED to handle both report types
         indices_data = {}
         
@@ -972,7 +972,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 logger.error(f"Error inserting pmi_indices data for {index_name}: {str(e)}")
                 logger.error(traceback.format_exc())
         
-        # Process industry_status data (unchanged)
+        # Process industry_status data
         industry_data = extracted_data.get('industry_data', {})
         for index_name, categories in industry_data.items():
             for category, industries in categories.items():

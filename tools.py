@@ -4429,8 +4429,15 @@ class GoogleSheetsFormatterTool(BaseTool):
 
     def getCurrentReportType(self):
         """Get the current report type from the request context or data."""
-        # In a real implementation, this would get from Flask's request context
-        # For now, return a default
+        # Try to get from the instance's data if available
+        if hasattr(self, '_current_report_type'):
+            return self._current_report_type
+        
+        # Try to get from the extraction data if available
+        if hasattr(self, '_extraction_data') and self._extraction_data:
+            return self._extraction_data.get('report_type', 'Manufacturing')
+        
+        # Default to Manufacturing
         return "Manufacturing"
 
 class PDFOrchestratorTool(BaseTool):
