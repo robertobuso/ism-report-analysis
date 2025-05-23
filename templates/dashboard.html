@@ -3013,7 +3013,13 @@
         }
 
         function getCurrentReportType() {
-            return document.querySelector('.report-type-btn.active')?.getAttribute('data-report-type') || 'Manufacturing';
+            // Prioritize the active button's data attribute
+            const activeButton = document.querySelector('.report-type-btn.active');
+            if (activeButton) {
+                return activeButton.getAttribute('data-report-type');
+            }
+            // Fallback to the global variable if no button is active (should not happen with proper init)
+            return window.currentReportType || 'Manufacturing';
         }
 
         function getCorrectIndexValue(latestData, reportType, indexName) {

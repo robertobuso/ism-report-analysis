@@ -19,6 +19,7 @@ from flask import Flask, request, render_template, redirect, url_for, flash, ses
 from werkzeug.utils import secure_filename
 from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
+from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
 
 # Configure logging
@@ -163,113 +164,177 @@ def upload_view():
 def upload_file():
     # Check if Google auth is set up
     if not os.path.exists('token.pickle'):
-        return jsonify({"status": "error", "message": "Please set up Google Authentication first"})
-    
-    # Check if the post request has the file part
+        # Return a more specific error to the client if it's an AJAX request,
+        # or flash and redirect for traditional form submission.
+        # For now, sticking to flash and redirect.
+        flash('Please set up Google Authentication first.', 'danger')
+        return redirect(url_for('upload_view'))
+
     if 'file' not in request.files:
         flash('No file part in the request.', 'danger')
-        return redirect(url_for('upload_view')) # Redirect back on error
+        return redirect(url_for('upload_view'))
+    
     files = request.files.getlist('file')
     if not files or files[0].filename == '':
-         flash('No file selected.', 'warning')
-         return redirect(url_for('upload_view'))
+        flash('No file selected.', 'warning')
+        return redirect(url_for('upload_view'))
 
-    visualization_types = request.form.getlist('visualization_types')
+    # Visualization options are removed from UI, so use defaults or remove
     visualization_options = {
-        'basic': 'basic' in visualization_types,
-        'heatmap': 'heatmap' in visualization_types,
-        'timeseries': 'timeseries' in visualization_types,
-        'industry': 'industry' in visualization_types
+        'basic': True, 'heatmap': True, 'timeseries': True, 'industry': True
     }
 
-    # --- Process Files Directly ---
     results = {}
-    saved_files_paths = [] # Keep track for deletion
+    saved_files_paths = []
+    processed_successfully_count = 0
+    first_processed_report_type = None # To store the report type for redirect
 
-    for file in files:
+    for file_idx, file in enumerate(files):
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            # Use a unique name for each uploaded file to prevent overwrites if multiple users upload
+            # or if the same filename is uploaded again before cleanup.
+            unique_filename = f"{uuid.uuid4()}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            
             try:
                 file.save(filepath)
                 saved_files_paths.append(filepath)
+                logger.info(f"File {filename} saved to {filepath}")
+
+                # Determine report type for the redirect (use the first file's type)
+                if first_processed_report_type is None:
+                    try:
+                        detected_type = ReportTypeFactory.detect_report_type(filepath)
+                        first_processed_report_type = detected_type
+                        logger.info(f"Detected report type for {filename} as {first_processed_report_type}")
+                    except Exception as e:
+                        logger.error(f"Could not detect report type for {filename}: {e}")
+                        # Default if detection fails, or handle error appropriately
+                        first_processed_report_type = "Manufacturing" 
+
                 # Process single file immediately (if only one)
                 if len(files) == 1:
-                     logger.info(f"Processing single file: {filename}")
-                     process_result = process_single_pdf(filepath, visualization_options)
-                     results[filename] = "Success" if process_result else "Failed"
+                    logger.info(f"Processing single file: {filename} of type {first_processed_report_type}")
+                    process_result = process_single_pdf(filepath, visualization_options) # process_single_pdf now determines type internally
+                    if process_result:
+                        results[filename] = "Success"
+                        processed_successfully_count += 1
+                    else:
+                        results[filename] = "Failed"
                 else:
-                     # Mark for batch processing below
-                     results[filename] = "Pending Batch"
+                    # Mark for batch processing (actual processing happens later for batch)
+                    results[filename] = "Pending Batch" # This status will be updated after batch processing
 
             except Exception as e:
-                 logger.error(f"Failed to save or initially process {filename}: {e}")
-                 results[filename] = f"Error: Save/Initial processing failed"
-                 flash(f"Error processing file {filename}. Please check logs.", "danger")
+                logger.error(f"Failed to save or initially process {filename}: {e}")
+                results[filename] = f"Error: Save/Initial processing failed"
+                # Do not flash here, accumulate results and flash once
 
         elif file.filename: # If a file was selected but disallowed
-             flash(f"File type not allowed: {file.filename}", "warning")
+            results[file.filename] = "File type not allowed"
 
 
     # If multiple files were uploaded, process them as a batch
     if len(files) > 1:
-         logger.info(f"Processing batch of {len(saved_files_paths)} files.")
-         temp_dir = None
-         try:
-             temp_dir = tempfile.mkdtemp(prefix='ism_batch_sync_')
-             for path in saved_files_paths:
-                 fname = os.path.basename(path)
-                 temp_path = os.path.join(temp_dir, fname)
-                 with open(path, 'rb') as src, open(temp_path, 'wb') as dst:
-                      dst.write(src.read())
+        logger.info(f"Processing batch of {len(saved_files_paths)} files.")
+        # For batch, we'll make a temporary directory containing only successfully saved files
+        valid_files_for_batch_processing = [p for p in saved_files_paths if os.path.exists(p)]
 
-             batch_result_data = process_multiple_pdfs(temp_dir)
-             logger.info("Batch processing function returned.")
+        if valid_files_for_batch_processing:
+            temp_dir_for_batch = None
+            try:
+                # Create a temporary directory to copy files to for batch processing
+                temp_dir_for_batch = tempfile.mkdtemp(prefix='ism_batch_')
+                for original_path in valid_files_for_batch_processing:
+                    fname = os.path.basename(original_path).split('_', 1)[-1] # Get original filename
+                    temp_path = os.path.join(temp_dir_for_batch, fname)
+                    with open(original_path, 'rb') as src, open(temp_path, 'wb') as dst:
+                        dst.write(src.read())
+                
+                # Process the batch from the temporary directory
+                batch_result_data = process_multiple_pdfs(temp_dir_for_batch) # process_multiple_pdfs will handle types internally
+                logger.info(f"Batch processing function returned: {batch_result_data}")
 
-             if isinstance(batch_result_data, dict) and batch_result_data.get('success'):
-                  batch_file_results = batch_result_data.get('results', {})
-                  for fname, status in batch_file_results.items():
-                     results[fname] = "Success" if status else "Failed"
-                  for fname in results: # Mark remaining pending as success
-                     if results[fname] == "Pending Batch": results[fname] = "Success"
-                  flash("Batch processed successfully.", "success")
-             else:
-                  logger.warning("Batch processing failed or returned unexpected data.")
-                  for fname in results: results[fname] = "Failed in Batch"
-                  flash("Batch processing failed.", "danger")
+                if isinstance(batch_result_data, dict) and batch_result_data.get('success'):
+                    batch_file_results = batch_result_data.get('results', {})
+                    for fname, status_obj in batch_file_results.items(): # Assuming status_obj might be more complex
+                        # The key in batch_file_results should match the original filename
+                        original_fname_key = next((k for k in results if fname in k), fname) # find original key
+                        
+                        # Extract boolean success from status_obj if it's complex, or use directly
+                        # Let's assume process_multiple_pdfs returns a simple True/False for now per file.
+                        # If it's a dict like {'status': True, 'report_type': 'Manufacturing'}, adapt here.
+                        is_success = status_obj # Adjust if status_obj is more complex
 
-         except Exception as e:
-              logger.error(f"Error during synchronous batch processing: {e}")
-              for fname in results: results[fname] = "Error: Batch failed"
-              flash("An error occurred during batch processing.", "danger")
-         finally:
-             if temp_dir and os.path.exists(temp_dir):
-                  try:
-                      import shutil
-                      shutil.rmtree(temp_dir)
-                  except Exception as e:
-                      logger.error(f"Failed to cleanup temp directory {temp_dir}: {e}")
+                        if is_success:
+                            results[original_fname_key] = "Success"
+                            processed_successfully_count += 1
+                            # If first_processed_report_type wasn't set by a single file, try to get it from batch
+                            if first_processed_report_type is None and isinstance(status_obj, dict) and status_obj.get('report_type'):
+                                first_processed_report_type = status_obj['report_type']
+                        else:
+                            results[original_fname_key] = "Failed in Batch"
+                    
+                    # Update any remaining "Pending Batch" to "Success" if the overall batch was a success
+                    # This might need finer-grained status from process_multiple_pdfs
+                    # For now, let's assume individual statuses are accurate.
+
+                else:
+                    logger.warning("Batch processing failed or returned unexpected data.")
+                    for original_path in valid_files_for_batch_processing:
+                        fname = os.path.basename(original_path).split('_', 1)[-1]
+                        original_fname_key = next((k for k in results if fname in k), fname)
+                        results[original_fname_key] = "Failed in Batch"
+            
+            except Exception as e:
+                logger.error(f"Error during batch processing: {e}")
+                logger.error(traceback.format_exc())
+                for original_path in valid_files_for_batch_processing:
+                    fname = os.path.basename(original_path).split('_', 1)[-1]
+                    original_fname_key = next((k for k in results if fname in k), fname)
+                    results[original_fname_key] = "Error: Batch failed"
+            finally:
+                if temp_dir_for_batch and os.path.exists(temp_dir_for_batch):
+                    try:
+                        import shutil
+                        shutil.rmtree(temp_dir_for_batch)
+                        logger.info(f"Cleaned up temp batch directory {temp_dir_for_batch}")
+                    except Exception as e:
+                        logger.error(f"Failed to cleanup temp batch directory {temp_dir_for_batch}: {e}")
+        else:
+            logger.info("No valid files to process in batch.")
 
 
-    # Clean up uploaded files
+    # Clean up uploaded files from the app's UPLOAD_FOLDER
     for path in saved_files_paths:
         try:
             os.remove(path)
+            logger.info(f"Removed uploaded file: {path}")
         except OSError as e:
             logger.warning(f"Could not delete uploaded file {path}: {e}")
 
-    # Check results and flash messages (optional)
-    success_count = sum(1 for status in results.values() if status == "Success")
-    fail_count = len(results) - success_count
-    if fail_count > 0:
-         flash(f"Processing complete. {success_count} succeeded, {fail_count} failed.", "warning")
-    elif success_count > 0:
-         flash("All files processed successfully!", "success")
-    # If results is empty (e.g., no valid files), maybe add another message
-
-    # --- Redirect to dashboard AFTER processing is complete ---
-    return redirect(url_for('dashboard')) # Or index() if that renders dashboard
-
+    # Flash messages for overall status
+    total_files = len(results)
+    if total_files > 0 :
+        if processed_successfully_count == total_files:
+            flash("All files processed successfully!", "success")
+        elif processed_successfully_count > 0:
+            flash(f"Processing complete. {processed_successfully_count} succeeded, {total_files - processed_successfully_count} failed.", "warning")
+        else:
+            flash("File processing failed for all files.", "danger")
+    else:
+        flash("No valid files were processed.", "info")
+        
+    # Redirect to dashboard
+    # If a report type was determined, use it for the redirect. Otherwise, redirect without it.
+    if first_processed_report_type:
+        logger.info(f"Redirecting to dashboard with report_type: {first_processed_report_type}")
+        return redirect(url_for('dashboard', report_type=first_processed_report_type))
+    else:
+        logger.info("Redirecting to dashboard without specific report_type.")
+        return redirect(url_for('dashboard'))
+    
 @app.route('/setup-google')
 def setup_google():
     try:

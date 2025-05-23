@@ -5,6 +5,7 @@ import logging
 from datetime import date, datetime
 from dateutil import parser
 from typing import Optional, Dict, List, Any, Tuple
+from config_loader import config_loader
 import traceback
 
 # Configure logging
@@ -658,46 +659,52 @@ def get_industry_status_over_time(index_name, num_months=12, report_type=None):
         if conn:
             conn.close()
 
-def get_all_indices(report_type=None):
+def get_all_indices(report_type: Optional[str] = None) -> List[str]:
     """
-    Get a list of all indices in the database.
+    Get a curated list of selectable index names for the UI,
+    based on the 'indices' list from the report-specific configuration file
+    loaded by config_loader. Ensures the main PMI for the report type is included.
     
     Args:
-        report_type: Type of report ('Manufacturing' or 'Services')
+        report_type: Type of report ('Manufacturing' or 'Services'). 
+                     If None, defaults to Manufacturing indices.
         
     Returns:
-        List of index names
+        List of selectable index names.
     """
-    conn = None
+    effective_report_type = report_type if report_type else "Manufacturing"
+    indices_from_config: List[str] = []
+
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if report_type:
-            # Get indices specific to the report type
-            query = """
-                SELECT DISTINCT i.index_name 
-                FROM pmi_indices i
-                JOIN reports r ON i.report_date = r.report_date
-                WHERE r.report_type = ?
-                ORDER BY i.index_name
-            """
-            cursor.execute(query, (report_type,))
-        else:
-            # Get all indices
-            cursor.execute("""
-                SELECT DISTINCT index_name 
-                FROM pmi_indices 
-                ORDER BY index_name
-            """)
-        
-        return [row['index_name'] for row in cursor.fetchall()]
+        indices_from_config = config_loader.get_indices(effective_report_type)
     except Exception as e:
-        logger.error(f"Error getting all indices: {str(e)}")
+        logger.error(f"Error calling config_loader.get_indices for {effective_report_type}: {e}. Returning empty list.")
+        return [] # Or a hardcoded fallback if absolutely necessary
+
+    if not indices_from_config:
+        logger.warning(f"Config_loader returned no indices for report_type '{effective_report_type}'. Returning empty list.")
+        # Consider a more robust fallback if config files might be missing/empty often
+        # For example, you could use the _fallback_mfg_indices / _fallback_svc_indices from my previous config.py suggestion here.
+        # However, the ideal is that config_loader provides the correct list.
+        # For now, let's return empty to highlight a config issue.
         return []
-    finally:
-        if conn:
-            conn.close()
+
+    # Ensure the main PMI for the report type is in the list
+    main_pmi_to_ensure = ""
+    if effective_report_type.lower() == 'manufacturing':
+        main_pmi_to_ensure = "Manufacturing PMI"
+    elif effective_report_type.lower() == 'services':
+        main_pmi_to_ensure = "Services PMI"
+
+    if main_pmi_to_ensure and main_pmi_to_ensure not in indices_from_config:
+        # Add it to the beginning of the list for consistency
+        logger.debug(f"Adding '{main_pmi_to_ensure}' to indices for {effective_report_type} as it was missing.")
+        final_indices = [main_pmi_to_ensure] + [idx for idx in indices_from_config if idx != main_pmi_to_ensure]
+    else:
+        final_indices = list(indices_from_config) # Create a copy
+
+    logger.debug(f"Returning indices for report_type '{effective_report_type}': {final_indices}")
+    return final_indices
 
 def extract_pmi_data(data: dict) -> dict or None:
         value = data.get("current", data.get("value"))
