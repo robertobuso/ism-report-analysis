@@ -952,7 +952,7 @@ def extract_pmi_values_from_summaries(index_summaries):
     
     return pmi_data
 
-def parse_ism_report(pdf_path):
+def parse_ism_report(pdf_path, report_type=None):
     """Parse an ISM manufacturing report and extract key data using LLM."""
     try:
         # Extract text from PDF only for basic metadata
@@ -987,32 +987,88 @@ def parse_ism_report(pdf_path):
         
         logger.info(f"Extracted month and year: {month_year}")
         
+        # Ensure report_type is determined IF NOT PASSED
+        if not report_type:
+            logger.warning(f"parse_ism_report called without report_type for {pdf_path}. Detecting...")
+            from report_detection import EnhancedReportTypeDetector
+            report_type = EnhancedReportTypeDetector.detect_report_type(pdf_path) 
+            logger.info(f"parse_ism_report: Detected report_type as {report_type}")
+
         # Use LLM for extraction
         from tools import SimplePDFExtractionTool
         extraction_tool = SimplePDFExtractionTool()
+        
+        # Initialize result data structure
+        result = {
+            "month_year": month_year,
+            "report_type": report_type,
+            "manufacturing_table": "",
+            "index_summaries": {},  
+            "industry_data": {},
+            "indices": {}
+        }
 
         # Call LLM extraction
-        llm_result = extraction_tool._extract_manufacturing_data_with_llm(pdf_path, month_year)
-        
-        # Create result with proper structure
-        result = {
-            "month_year": llm_result.get('month_year', month_year),
-            "manufacturing_table": llm_result,
-            "index_summaries": {},  # Keep empty for backward compatibility
-            "industry_data": llm_result.get('industry_data', {}),
-            "pmi_data": llm_result.get('indices', {})
-        }
-            
-        # Store data in database as-is
-        from db_utils import store_report_data_in_db
         try:
-            store_result = store_report_data_in_db(result, pdf_path)
-            if store_result:
-                logger.info(f"Successfully stored data from {pdf_path} in database")
+            llm_result = extraction_tool._run({"pdf_path": pdf_path, "report_type": report_type})
+            
+            # If LLM extraction succeeded, update the result
+            if llm_result and isinstance(llm_result, dict):
+                # Update month_year if present in LLM result
+                if 'month_year' in llm_result and llm_result['month_year']:
+                    result["month_year"] = llm_result['month_year']
+                
+                # Update manufacturing_table
+                if 'manufacturing_table' in llm_result:
+                    result["manufacturing_table"] = llm_result['manufacturing_table']
+                
+                # Update index_summaries
+                if 'index_summaries' in llm_result and llm_result['index_summaries']:
+                    result["index_summaries"] = llm_result['index_summaries']
+                
+                # Update industry_data
+                if 'industry_data' in llm_result and llm_result['industry_data']:
+                    result["industry_data"] = llm_result['industry_data']
+                
+                # Update indices/pmi_data
+                if 'indices' in llm_result and llm_result['indices']:
+                    result["indices"] = llm_result['indices']
+                elif 'pmi_data' in llm_result and llm_result['pmi_data']:
+                    result["indices"] = llm_result['pmi_data']
+                
+                logger.info(f"LLM extraction completed successfully for {pdf_path}")
             else:
-                logger.warning(f"Failed to store data from {pdf_path} in database")
+                logger.warning(f"LLM extraction returned no results for {pdf_path}")
         except Exception as e:
-            logger.error(f"Error storing data in database: {str(e)}")
+            logger.error(f"Error in LLM extraction: {str(e)}")
+        
+        # Even if LLM extraction fails, try to extract basic data using pattern-based methods
+        try:
+            # Extract index summaries using pattern-based method
+            if not result["index_summaries"]:
+                summaries = extract_index_summaries(text)
+                if summaries:
+                    result["index_summaries"] = summaries
+                    logger.info("Extracted index summaries using pattern-based method")
+            
+            # Extract industry data using pattern-based method
+            if not result["industry_data"] and result["index_summaries"]:
+                industry_data = extract_industry_mentions(text, result["index_summaries"])
+                if industry_data:
+                    result["industry_data"] = industry_data
+                    logger.info("Extracted industry data using pattern-based method")
+            
+            # Extract PMI values from summaries
+            if not result["indices"] and result["index_summaries"]:
+                pmi_data = extract_pmi_values_from_summaries(result["index_summaries"])
+                if pmi_data:
+                    result["indices"] = pmi_data
+                    logger.info("Extracted PMI values from summaries")
+        except Exception as e:
+            logger.error(f"Error in pattern-based extraction: {str(e)}")
+        
+        # Ensure report_type is set
+        result["report_type"] = report_type
         
         return result
     except Exception as e:
@@ -1020,13 +1076,14 @@ def parse_ism_report(pdf_path):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return None
     
-def store_report_data_in_db(extracted_data, pdf_path):
+def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing"):
     """
     Store the extracted report data in the SQLite database.
     
     Args:
         extracted_data: Dictionary containing the extracted report data
         pdf_path: Path to the PDF file
+        report_type: Type of report (Manufacturing or Services)
         
     Returns:
         bool: True if successful, False otherwise
@@ -1052,18 +1109,19 @@ def store_report_data_in_db(extracted_data, pdf_path):
             logger.error(f"Could not parse date from '{month_year}' for {pdf_path}")
             return False
             
-        # Insert into reports table
+        # Insert into reports table with report_type
         cursor.execute(
             """
             INSERT OR REPLACE INTO reports
-            (report_date, file_path, processing_date, month_year)
-            VALUES (?, ?, ?, ?)
+            (report_date, file_path, processing_date, month_year, report_type)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 report_date.isoformat(),
                 pdf_path,
                 datetime.now().isoformat(),
-                month_year
+                month_year,
+                report_type
             )
         )
         
