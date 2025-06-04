@@ -668,7 +668,7 @@
             <div class="tab-pane fade show active" id="heatmap" role="tabpanel">
                 <div class="content-card">
                     <div class="content-card-header">
-                        <h5>Manufacturing PMI Heatmap Summary</h5>
+                        <h5 id="heatmapTitle">Manufacturing PMI Heatmap Summary</h5>
                         <button id="exportHeatmapBtn" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-download"></i> Export Data
                         </button>
@@ -818,6 +818,10 @@
                     <input class="form-check-input" type="checkbox" id="showDifferencesToggle" checked>
                     <label class="form-check-label" for="showDifferencesToggle">Highlight Differences</label>
                     </div>
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showMovingAverageToggle">
+                        <label class="form-check-label" for="showMovingAverageToggle">Show 3-Month SMA</label>
+                    </div>
                     <select id="comparisonIndexSelect" class="form-select form-select-sm me-2" style="width: auto;">
                     <!-- Options will be populated dynamically -->
                     </select>
@@ -930,142 +934,54 @@
         // Chart reference for trends
         let trendChart = null;
 
-        function loadComparisonView() {
-            // Get the selected index and time range
-            const indexName = document.getElementById('comparisonIndexSelect')?.value || 'PMI';
-            const timeRange = document.getElementById('comparisonTimeRange')?.value || '12';
-            const showDifferences = document.getElementById('showDifferencesToggle')?.checked || true;
-            
-            // Get references to the chart containers
+        let mfgComparisonChartInstance = null;
+        let svcComparisonChartInstance = null;
+        let diffComparisonChartInstance = null;
+        let corrComparisonChartInstance = null;
+
+        // Helper function to calculate Simple Moving Average
+        function calculateSMA(data, windowSize) {
+            if (!data || data.length < windowSize) return [];
+            let sma = [];
+            for (let i = 0; i <= data.length - windowSize; i++) {
+                let sum = 0;
+                for (let j = 0; j < windowSize; j++) {
+                    sum += data[i + j] || 0; // Handle potential nulls if not filtered earlier
+                }
+                sma.push(sum / windowSize);
+            }
+            // Pad the beginning of the SMA array with nulls to align with original data labels
+            return Array(windowSize - 1).fill(null).concat(sma);
+        }
+
+
+        function renderComparisonCharts(manufacturingData, servicesData, indexName) {
+            // Destroy existing charts
+            if (mfgComparisonChartInstance) mfgComparisonChartInstance.destroy();
+            if (svcComparisonChartInstance) svcComparisonChartInstance.destroy();
+            if (diffComparisonChartInstance) diffComparisonChartInstance.destroy();
+            if (corrComparisonChartInstance) corrComparisonChartInstance.destroy();
+
             const mfgChartContainer = document.getElementById('manufacturingComparisonChartContainer');
             const svcChartContainer = document.getElementById('servicesComparisonChartContainer');
             const diffChartContainer = document.getElementById('differenceChartContainer');
             const corrChartContainer = document.getElementById('correlationChartContainer');
-            
-            // Show loading state - using the containers instead of non-existent elements
-            if (mfgChartContainer) {
-                mfgChartContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
-            }
-            if (svcChartContainer) {
-                svcChartContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
-            }
-            if (diffChartContainer) {
-                diffChartContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
-            }
-            if (corrChartContainer) {
-                corrChartContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
-            }
-            
-            // Fetch data for both report types
-            Promise.all([
-                fetch(`/api/index_trends/${encodeURIComponent(indexName)}?months=${timeRange}&report_type=Manufacturing`).then(r => r.json()),
-                fetch(`/api/index_trends/${encodeURIComponent(indexName)}?months=${timeRange}&report_type=Services`).then(r => r.json())
-            ])
-            .then(([manufacturingData, servicesData]) => {
-                // Clear the containers and add canvas elements back if needed
-                if (mfgChartContainer) {
-                    mfgChartContainer.innerHTML = '<canvas id="manufacturingComparisonCanvas"></canvas>';
-                }
-                if (svcChartContainer) {
-                    svcChartContainer.innerHTML = '<canvas id="servicesComparisonCanvas"></canvas>';
-                }
-                if (diffChartContainer) {
-                    diffChartContainer.innerHTML = '<canvas id="differenceCanvas"></canvas>';
-                }
-                if (corrChartContainer) {
-                    corrChartContainer.innerHTML = '<canvas id="correlationCanvas"></canvas>';
-                }
-                
-                // Render the comparison charts
-                renderComparisonCharts(manufacturingData, servicesData, indexName, showDifferences);
-                
-                // Update metrics
-                updateComparisonMetrics('manufacturingMetrics', manufacturingData, 'Manufacturing');
-                updateComparisonMetrics('servicesMetrics', servicesData, 'Services');
-                
-                // Analyze differences and correlations
-                analyzeDifferences(manufacturingData, servicesData, indexName);
-            })
-            .catch(error => {
-                console.error('Error loading comparison data:', error);
-                
-                // Show error state in containers
-                const errorHtml = `
-                    <div class="error-container">
-                        <div class="error-title">Error Loading Comparison Data</div>
-                        <p>Unable to load data for comparison: ${error.message}</p>
-                    </div>
-                `;
-                
-                if (mfgChartContainer) mfgChartContainer.innerHTML = errorHtml;
-                if (svcChartContainer) svcChartContainer.innerHTML = errorHtml;
-                if (diffChartContainer) diffChartContainer.innerHTML = errorHtml;
-                if (corrChartContainer) corrChartContainer.innerHTML = errorHtml;
-            });
-            
-            // Populate the comparison index dropdown if empty
-            const comparisonSelect = document.getElementById('comparisonIndexSelect');
-            if (comparisonSelect && !comparisonSelect.options.length) {
-                // Get common indices between Manufacturing and Services
-                Promise.all([
-                    fetch('/api/all_indices?report_type=Manufacturing').then(r => r.json()),
-                    fetch('/api/all_indices?report_type=Services').then(r => r.json())
-                ])
-                .then(([manufacturingIndices, servicesIndices]) => {
-                    // Find common indices
-                    const commonIndices = manufacturingIndices.filter(index => 
-                        servicesIndices.includes(index) && 
-                        index !== 'Manufacturing PMI' && 
-                        index !== 'Services PMI'
-                    );
-                    
-                    // Add common indices to dropdown
-                    commonIndices.forEach(index => {
-                        const option = document.createElement('option');
-                        option.value = index;
-                        option.text = index;
-                        comparisonSelect.appendChild(option);
-                    });
-                    
-                    // Add the PMI indices as a special option
-                    const pmiOption = document.createElement('option');
-                    pmiOption.value = 'PMI';
-                    pmiOption.text = 'PMI (Manufacturing vs Services)';
-                    comparisonSelect.insertBefore(pmiOption, comparisonSelect.firstChild);
-                    
-                    // Default to PMI comparison
-                    comparisonSelect.value = 'PMI';
-                    
-                    // Refresh the view with the selected index
-                    loadComparisonView();
-                })
-                .catch(error => {
-                    console.error('Error loading index options:', error);
-                });
-            }
-        }
 
-        function renderComparisonCharts(manufacturingData, servicesData, indexName, showDifferences) {
-            // --- Destroy existing charts before creating new ones ---
-            if (window.mfgComparisonChartInstance) window.mfgComparisonChartInstance.destroy();
-            if (window.svcComparisonChartInstance) window.svcComparisonChartInstance.destroy();
-            if (window.diffComparisonChartInstance) window.diffComparisonChartInstance.destroy();
-            if (window.corrComparisonChartInstance) window.corrComparisonChartInstance.destroy();
+            // Ensure canvas elements are present or re-create them
+            if (mfgChartContainer && !mfgChartContainer.querySelector('canvas')) mfgChartContainer.innerHTML = '<canvas id="manufacturingComparisonCanvas"></canvas>';
+            if (svcChartContainer && !svcChartContainer.querySelector('canvas')) svcChartContainer.innerHTML = '<canvas id="servicesComparisonCanvas"></canvas>';
+            if (diffChartContainer && !diffChartContainer.querySelector('canvas')) diffChartContainer.innerHTML = '<canvas id="differenceCanvas"></canvas>';
+            if (corrChartContainer && !corrChartContainer.querySelector('canvas')) corrChartContainer.innerHTML = '<canvas id="correlationCanvas"></canvas>';
 
-            // --- Get Canvas Elements and Contexts (Targeting <canvas> IDs) ---
             const mfgCanvas = document.getElementById('manufacturingComparisonCanvas');
             const svcCanvas = document.getElementById('servicesComparisonCanvas');
             const diffCanvas = document.getElementById('differenceCanvas');
             const corrCanvas = document.getElementById('correlationCanvas');
 
-            // Check if all canvas elements exist
             if (!mfgCanvas || !svcCanvas || !diffCanvas || !corrCanvas) {
-                console.error("One or more comparison chart canvas elements are missing from the DOM.");
-                // Optionally display an error message in the comparison tab
-                const comparisonTabContent = document.getElementById('comparison');
-                if (comparisonTabContent) {
-                    showError(comparisonTabContent, "Chart Error", "Could not initialize comparison charts. Required elements missing.");
-                }
+                console.error("Comparison chart canvas elements are still missing.");
+                const compTabContent = document.getElementById('comparison');
+                if (compTabContent) compTabContent.innerHTML = '<div class="alert alert-danger" role="alert">Error: Could not initialize comparison charts. Required canvas elements missing.</div>';
                 return;
             }
 
@@ -1074,120 +990,203 @@
             const diffCtx = diffCanvas.getContext('2d');
             const corrCtx = corrCanvas.getContext('2d');
 
-            // --- Prepare Data for Charts ---
-            const mfgLabels = manufacturingData.map(item => item.month_year);
+            // Prepare data, ensuring numeric values and handling nulls
             const mfgValues = manufacturingData.map(item => item.index_value !== null && item.index_value !== undefined ? parseFloat(item.index_value) : null);
-            
-            const svcLabels = servicesData.map(item => item.month_year);
             const svcValues = servicesData.map(item => item.index_value !== null && item.index_value !== undefined ? parseFloat(item.index_value) : null);
+            
+            const mfgLabels = manufacturingData.map(item => item.month_year);
+            const svcLabels = servicesData.map(item => item.month_year);
 
-            // --- 1. Manufacturing Line Chart ---
-            window.mfgComparisonChartInstance = new Chart(mfgCtx, {
-                type: 'line',
-                data: {
-                    labels: mfgLabels,
-                    datasets: [{
-                        label: `Manufacturing ${indexName === 'PMI' ? 'PMI' : indexName}`,
-                        data: mfgValues,
-                        borderColor: '#1976d2', // Blue for Manufacturing
-                        backgroundColor: 'rgba(25, 118, 210, 0.1)',
-                        tension: 0.1,
-                        fill: true,
-                        spanGaps: true // Connect lines even if there are null data points
-                    }]
-                },
-                options: getComparisonChartOptions() // Ensure this function is defined and returns valid Chart.js options
-            });
-        
-            // --- 2. Services Line Chart ---
-            window.svcComparisonChartInstance = new Chart(svcCtx, {
-                type: 'line',
-                data: {
-                    labels: svcLabels,
-                    datasets: [{
-                        label: `Services ${indexName === 'PMI' ? 'PMI' : indexName}`,
-                        data: svcValues,
-                        borderColor: '#2e7d32', // Green for Services
-                        backgroundColor: 'rgba(46, 125, 50, 0.1)',
-                        tension: 0.1,
-                        fill: true,
-                        spanGaps: true
-                    }]
-                },
-                options: getComparisonChartOptions()
-            });
-        
-            // --- 3. Difference Bar Chart ---
-            // Align data for difference and correlation: Find common dates and ensure both values are numbers
-            const commonData = [];
-            mfgLabels.forEach((mfgDate, i) => {
-                const svcDateIndex = svcLabels.indexOf(mfgDate);
-                if (svcDateIndex !== -1) {
-                    const mfgVal = mfgValues[i];
-                    const svcVal = svcValues[svcDateIndex];
-                    if (mfgVal !== null && svcVal !== null && !isNaN(mfgVal) && !isNaN(svcVal)) {
-                        commonData.push({
-                            date: mfgDate,
-                            mfgValue: mfgVal,
-                            svcValue: svcVal,
-                            difference: mfgVal - svcVal
-                        });
-                    }
-                }
-            });
+            // Create a unique, sorted list of all dates present in either dataset
+            const allDatesSet = new Set([...mfgLabels, ...svcLabels]);
+            const combinedLabels = Array.from(allDatesSet).sort((a, b) => new Date(a) - new Date(b)); // Assuming YYYY-MM format or full date
 
-            const differenceChartLabels = commonData.map(item => item.date);
-            const differences = commonData.map(item => item.difference);
-        
-            window.diffComparisonChartInstance = new Chart(diffCtx, {
-                type: 'bar',
-                data: {
-                    labels: differenceChartLabels,
-                    datasets: [{
-                        label: `Manufacturing - Services Difference`,
-                        data: differences,
-                        backgroundColor: differences.map(diff => 
-                            diff > 0 ? 'rgba(25, 118, 210, 0.6)' : (diff < 0 ? 'rgba(46, 125, 50, 0.6)' : 'rgba(128,128,128,0.6)')
-                        ),
-                        borderColor: differences.map(diff => 
-                            diff > 0 ? '#1976d2' : (diff < 0 ? '#2e7d32' : '#808080')
-                        ),
-                        borderWidth: 1
-                    }]
-                },
-                options: { /* Your specific options for difference chart, e.g., title, tooltips, scales */
+            // Map data to these combined labels, inserting null where a sector doesn't have data for a month
+            const mfgDataMap = new Map(manufacturingData.map(item => [item.month_year, parseFloat(item.index_value)]));
+            const svcDataMap = new Map(servicesData.map(item => [item.month_year, parseFloat(item.index_value)]));
+
+            const alignedMfgValues = combinedLabels.map(label => mfgDataMap.get(label) ?? null);
+            const alignedSvcValues = combinedLabels.map(label => svcDataMap.get(label) ?? null);
+
+            // Common Chart.js options
+            function getBaseChartOptions(titleText, yAxisLabel = 'Index Value') {
+                return {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        title: { display: true, text: `Difference: Mfg - Svc (${indexName === 'PMI' ? 'PMI' : indexName})`, font: { weight: 'bold' } },
+                        title: { display: true, text: titleText, font: { weight: 'bold', size: 14 }, padding: { top: 10, bottom: 10 } },
+                        legend: { display: true, position: 'top', labels: { usePointStyle: true, boxWidth: 10, padding: 15 } },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    const diff = context.raw;
-                                    return `Difference: ${diff !== null ? diff.toFixed(1) : 'N/A'} points`;
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toFixed(1);
+                                    }
+                                    return label;
                                 }
                             }
                         }
                     },
                     scales: {
-                        y: { beginAtZero: false, title: { display: true, text: 'Difference Points' }, grid: { color: 'rgba(0,0,0,0.05)'} },
-                        x: { grid: { display: false } }
-                    }
+                        y: { beginAtZero: false, suggestedMin: 35, suggestedMax: 70, grid: { color: 'rgba(0,0,0,0.05)' }, title: { display: true, text: yAxisLabel } },
+                        x: { grid: { display: false }, title: { display: true, text: 'Month' } }
+                    },
+                    spanGaps: true // Connect lines over null data points
+                };
+            }
+            
+            const showDifferences = document.getElementById('showDifferencesToggle')?.checked || false;
+            const showMovingAverage = document.getElementById('showMovingAverageToggle')?.checked || false;
+            const smaWindow = 3;
+
+            // 1. Manufacturing Line Chart
+            // Prepare SMA data specifically for Manufacturing
+            let calculatedMfgSma = [];
+            if (showMovingAverage) {
+                const numericMfgValuesForSma = alignedMfgValues.filter(v => typeof v === 'number' && !isNaN(v));
+                // console.log("Numeric MFG Values for SMA:", numericMfgValuesForSma); // DEBUG
+                if (numericMfgValuesForSma.length >= smaWindow) {
+                    calculatedMfgSma = calculateSMA(numericMfgValuesForSma, smaWindow);
+                } else {
+                    calculatedMfgSma = Array(combinedLabels.length).fill(null); // Fill to match labels length
+                }
+                // console.log("Calculated MFG SMA data:", calculatedMfgSma); // DEBUG
+            }
+
+            const mfgDatasets = [{
+                label: `Manufacturing ${indexName === 'PMI' ? 'PMI' : indexName}`,
+                data: alignedMfgValues,
+                borderColor: '#1976d2', 
+                backgroundColor: 'rgba(25, 118, 210, 0.1)', 
+                tension: 0.1,
+                // If 'showDifferences' is true, fill to origin. This shades the area under this line.
+                fill: showDifferences ? 'origin' : false, 
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                spanGaps: true // Draw line over nulls in alignedMfgValues if any
+            }];
+
+            if (showMovingAverage && calculatedMfgSma.some(v => v !== null)) {
+                mfgDatasets.push({
+                    label: `Mfg ${smaWindow}-Month SMA`,
+                    data: calculatedMfgSma, // Already padded by calculateSMA or filled with nulls
+                    borderColor: 'rgba(25, 118, 210, 0.6)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    spanGaps: false // SMA line breaks if its own data has nulls
+                });
+            }
+
+            mfgComparisonChartInstance = new Chart(mfgCtx, {
+                type: 'line',
+                data: { labels: combinedLabels, datasets: mfgDatasets },
+                options: getBaseChartOptions(`Manufacturing Index: ${indexName === 'PMI' ? 'PMI' : indexName}`)
+            });
+
+            // 2. Services Line Chart
+            // Prepare SMA data specifically for Services (this logic was already improved in my last full JS example)
+            let calculatedSvcSma = [];
+            if (showMovingAverage) {
+                const numericSvcValuesForSma = alignedSvcValues.filter(v => typeof v === 'number' && !isNaN(v));
+                // console.log("Numeric SVC Values for SMA:", numericSvcValuesForSma); // DEBUG
+                if (numericSvcValuesForSma.length >= smaWindow) {
+                    calculatedSvcSma = calculateSMA(numericSvcValuesForSma, smaWindow);
+                } else {
+                    calculatedSvcSma = Array(combinedLabels.length).fill(null); // Fill to match labels length
+                }
+                // console.log("Calculated SVC SMA data:", calculatedSvcSma); // DEBUG
+            }
+
+            const svcDatasets = [{
+                label: `Services ${indexName === 'PMI' ? 'PMI' : indexName}`,
+                data: alignedSvcValues,
+                borderColor: '#2e7d32', 
+                backgroundColor: 'rgba(46, 125, 50, 0.1)',
+                tension: 0.1,
+                // If 'showDifferences' is true, fill to origin.
+                fill: showDifferences ? 'origin' : false,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                spanGaps: true // Draw line over nulls in alignedSvcValues if any
+            }];
+
+            if (showMovingAverage && calculatedSvcSma.some(v => v !== null)) {
+                svcDatasets.push({
+                    label: `Svc ${smaWindow}-Month SMA`,
+                    data: calculatedSvcSma, // Already padded
+                    borderColor: 'rgba(46, 125, 50, 0.6)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    spanGaps: false
+                });
+            }
+
+            svcComparisonChartInstance = new Chart(svcCtx, {
+                type: 'line',
+                data: { labels: combinedLabels, datasets: svcDatasets },
+                options: getBaseChartOptions(`Services Index: ${indexName === 'PMI' ? 'PMI' : indexName}`)
+            });
+
+            // --- Data for Difference and Correlation (only where both sectors have data) ---
+            const commonDataPoints = [];
+            combinedLabels.forEach((label, i) => {
+                const mfgVal = alignedMfgValues[i];
+                const svcVal = alignedSvcValues[i];
+                // Ensure both values are valid numbers for this common label
+                if (mfgVal !== null && svcVal !== null && !isNaN(mfgVal) && !isNaN(svcVal)) {
+                    commonDataPoints.push({
+                        date: label,
+                        mfgValue: mfgVal,
+                        svcValue: svcVal,
+                        difference: mfgVal - svcVal
+                    });
                 }
             });
-        
-            // --- 4. Correlation Scatter Plot ---
-            const scatterPairs = commonData.map(item => ({
+
+            const differenceChartLabels = commonDataPoints.map(item => item.date);
+            const differences = commonDataPoints.map(item => item.difference);
+
+            // 3. Difference Bar Chart
+            diffComparisonChartInstance = new Chart(diffCtx, {
+                type: 'bar',
+                data: {
+                    labels: differenceChartLabels,
+                    datasets: [{
+                        label: `Difference (Mfg - Svc)`,
+                        data: differences,
+                        backgroundColor: differences.map(diff =>
+                            diff > 0 ? 'rgba(25, 118, 210, 0.7)' : (diff < 0 ? 'rgba(46, 125, 50, 0.7)' : 'rgba(128,128,128,0.6)')
+                        ),
+                        borderColor: differences.map(diff =>
+                            diff > 0 ? '#1976d2' : (diff < 0 ? '#2e7d32' : '#808080')
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: getBaseChartOptions(`Difference: Mfg - Svc (${indexName === 'PMI' ? 'PMI' : indexName})`, 'Difference (Points)')
+            });
+
+            // 4. Correlation Scatter Plot
+            const scatterPairs = commonDataPoints.map(item => ({
                 x: item.mfgValue,
                 y: item.svcValue,
                 date: item.date // For tooltip
             }));
-        
-            window.corrComparisonChartInstance = new Chart(corrCtx, {
+
+            corrComparisonChartInstance = new Chart(corrCtx, {
                 type: 'scatter',
                 data: {
                     datasets: [{
-                        label: `Mfg vs Svc Correlation (${indexName === 'PMI' ? 'PMI' : indexName})`,
+                        label: `Correlation Scatter`,
                         data: scatterPairs,
                         backgroundColor: 'rgba(255, 152, 0, 0.7)', // Orange
                         borderColor: '#ff9800',
@@ -1196,11 +1195,11 @@
                         pointHoverRadius: 7
                     }]
                 },
-                options: { /* Your specific options for scatter plot */
-                    responsive: true,
-                    maintainAspectRatio: false,
+                options: {
+                    responsive: true, maintainAspectRatio: false,
                     plugins: {
-                        title: { display: true, text: `Correlation: Mfg vs Svc (${indexName === 'PMI' ? 'PMI' : indexName})`, font: { weight: 'bold' } },
+                        title: { display: true, text: `Correlation: Mfg vs Svc (${indexName === 'PMI' ? 'PMI' : indexName})`, font: { weight: 'bold', size: 14 } },
+                        legend: { display: false }, // Scatter usually doesn't need a legend for one series
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -1216,288 +1215,366 @@
                     }
                 }
             });
-        
-            // Draw regression line (if you have this function and sufficient data)
-            // This function might be provided by the backend if you moved calculations there.
-            // If it's still client-side, ensure `drawRegressionLine` is defined.
-            if (typeof drawRegressionLine === "function" && scatterPairs.length >= 2) { // Need at least 2 points for a line
-                drawRegressionLine(window.corrComparisonChartInstance, scatterPairs);
+
+            // Optional: Draw regression line if you have the function and enough data
+            if (typeof drawRegressionLine === "function" && scatterPairs.length >= 2) {
+                drawRegressionLine(corrComparisonChartInstance, scatterPairs);
             }
         }
 
-        function getComparisonChartOptions() {
-            return {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                tooltip: {
-                    mode: 'index',
-                    intersect: false
-                },
-                legend: {
-                    display: false
-                }
-                },
-                scales: {
-                y: {
-                    beginAtZero: false,
-                    suggestedMin: 45,
-                    suggestedMax: 60,
-                    grid: { color: 'rgba(0, 0, 0, 0.05)' },
-                    title: { display: true, text: 'Index Value' }
-                },
-                x: {
-                    grid: { display: false }
-                }
-                }
-            };
-        }
 
-        function updateComparisonMetrics(containerId, data, reportType) {
+        function updateComparisonMetrics(containerId, data, reportTypePrefix) {
             const container = document.getElementById(containerId);
-            
-            // Calculate metrics
-            const values = data.map(item => parseFloat(item.index_value));
-            const latest = values[0] || 0;
-            const previous = values[1] || 0;
+            if (!container) return;
+
+            const values = data.map(item => parseFloat(item.index_value)).filter(v => !isNaN(v)); // Filter out NaNs
+            if (values.length === 0) {
+                container.innerHTML = `<div class="col-12"><p class="text-muted text-center">No data available for metrics.</p></div>`;
+                return;
+            }
+
+            const latest = values.length > 0 ? values[0] : 0; // Assuming data is sorted newest to oldest
+            const previous = values.length > 1 ? values[1] : latest; // Use latest if no previous to avoid NaN change
             const change = latest - previous;
             const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
             const max = Math.max(...values);
             const min = Math.min(...values);
+
+            const status = latest >= 50 ? 'Expansion' : (latest > 0 ? 'Contraction' : 'N/A'); // Handle zero/null latest
+            const statusClass = latest >= 50 ? 'text-success' : (latest > 0 ? 'text-danger' : 'text-muted');
+            const changeDirClass = change > 0 ? 'text-success' : (change < 0 ? 'text-danger' : 'text-secondary');
+            const changeText = change > 0 ? `+${change.toFixed(1)} <i class="bi bi-arrow-up-short"></i>` : (change < 0 ? `${change.toFixed(1)} <i class="bi bi-arrow-down-short"></i>` : `0.0 (No Change)`);
             
-            // Determine expansion/contraction status
-            const status = latest >= 50 ? 'Expansion' : 'Contraction';
-            const statusClass = latest >= 50 ? 'text-success' : 'text-danger';
-            
-            // Update metrics HTML
             container.innerHTML = `
                 <div class="col-6 col-md-3 mb-3">
-                <div class="card h-100">
-                    <div class="card-body p-3">
-                    <h6 class="card-subtitle text-muted mb-1">Latest</h6>
-                    <h4 class="mb-0">${latest.toFixed(1)}</h4>
-                    <span class="${statusClass} small">${status}</span>
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Latest</h6>
+                            <h4 class="mb-0 kpi-value">${latest > 0 ? latest.toFixed(1) : '--'}</h4>
+                            <span class="${statusClass} small fw-bold">${status}</span>
+                        </div>
                     </div>
-                </div>
                 </div>
                 <div class="col-6 col-md-3 mb-3">
-                <div class="card h-100">
-                    <div class="card-body p-3">
-                    <h6 class="card-subtitle text-muted mb-1">Change</h6>
-                    <h4 class="mb-0">${change > 0 ? '+' : ''}${change.toFixed(1)}</h4>
-                    <span class="${change >= 0 ? 'text-success' : 'text-danger'} small">
-                        ${change >= 0 ? 'Increasing' : 'Decreasing'}
-                    </span>
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Change</h6>
+                            <h4 class="mb-0 kpi-value ${changeDirClass}">${changeText}</h4>
+                            <span class="text-muted small">from prev. month</span>
+                        </div>
                     </div>
-                </div>
                 </div>
                 <div class="col-6 col-md-3 mb-3">
-                <div class="card h-100">
-                    <div class="card-body p-3">
-                    <h6 class="card-subtitle text-muted mb-1">Average</h6>
-                    <h4 class="mb-0">${avg.toFixed(1)}</h4>
-                    <span class="text-muted small">Last ${data.length} months</span>
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Average</h6>
+                            <h4 class="mb-0 kpi-value">${avg > 0 ? avg.toFixed(1) : '--'}</h4>
+                            <span class="text-muted small">Last ${data.length} months</span>
+                        </div>
                     </div>
-                </div>
                 </div>
                 <div class="col-6 col-md-3 mb-3">
-                <div class="card h-100">
-                    <div class="card-body p-3">
-                    <h6 class="card-subtitle text-muted mb-1">Range</h6>
-                    <h4 class="mb-0">${min.toFixed(1)} - ${max.toFixed(1)}</h4>
-                    <span class="text-muted small">Min-Max</span>
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Range</h6>
+                            <h4 class="mb-0 kpi-value">${min > 0 ? min.toFixed(1) : '--'} – ${max > 0 ? max.toFixed(1) : '--'}</h4>
+                            <span class="text-muted small">Min – Max</span>
+                        </div>
                     </div>
-                </div>
                 </div>
             `;
         }
 
         function analyzeDifferences(manufacturingData, servicesData, indexName) {
             const insightsContainer = document.getElementById('comparisonInsights');
-            
-            // Extract values and dates
-            const mfgDates = manufacturingData.map(item => item.month_year);
-            const mfgValues = manufacturingData.map(item => parseFloat(item.index_value));
-            const svcDates = servicesData.map(item => item.month_year);
-            const svcValues = servicesData.map(item => parseFloat(item.index_value));
-            
-            // Find common dates for comparison
-            const commonDates = mfgDates.filter(date => svcDates.includes(date));
-            
-            if (commonDates.length < 2) {
-                insightsContainer.innerHTML = `<p>Insufficient data for meaningful comparison. Need at least 2 common data points.</p>`;
+            if (!insightsContainer) return;
+
+            const mfgValues = manufacturingData.map(item => parseFloat(item.index_value)).filter(v => !isNaN(v));
+            const svcValues = servicesData.map(item => parseFloat(item.index_value)).filter(v => !isNaN(v));
+
+            // Align data for direct comparison (assuming same length and order for simplicity here)
+            // A more robust alignment would match dates, similar to renderComparisonCharts
+            const commonLength = Math.min(mfgValues.length, svcValues.length);
+            if (commonLength < 2) {
+                insightsContainer.innerHTML = `<p class="text-muted">Insufficient common data points (need at least 2) for meaningful comparison insights.</p>`;
                 return;
             }
-            
-            // Calculate stats
-            const differences = commonDates.map(date => {
-                const mfgIndex = mfgDates.indexOf(date);
-                const svcIndex = svcDates.indexOf(date);
-                return mfgValues[mfgIndex] - svcValues[svcIndex];
-            });
-            
+
+            const alignedMfg = manufacturingData.slice(0, commonLength).map(item => parseFloat(item.index_value));
+            const alignedSvc = servicesData.slice(0, commonLength).map(item => parseFloat(item.index_value));
+            const commonDates = manufacturingData.slice(0, commonLength).map(item => item.month_year);
+
+
+            const differences = alignedMfg.map((mfg, i) => mfg - alignedSvc[i]);
             const avgDiff = differences.reduce((sum, diff) => sum + diff, 0) / differences.length;
-            const latestDiff = differences[0];
-            const prevDiff = differences[1];
-            const diffChange = latestDiff - prevDiff;
-            
-            // Calculate correlation
-            const correlationData = commonDates.map(date => {
-                const mfgIndex = mfgDates.indexOf(date);
-                const svcIndex = svcDates.indexOf(date);
-                return { mfg: mfgValues[mfgIndex], svc: svcValues[svcIndex] };
-            });
-            
-            const correlation = calculateCorrelation(
-                correlationData.map(item => item.mfg),
-                correlationData.map(item => item.svc)
-            );
-            
-            // Calculate trends
-            const mfgTrend = calculateTrend(mfgValues.slice(0, commonDates.length));
-            const svcTrend = calculateTrend(svcValues.slice(0, commonDates.length));
-            
-            // Generate insights text
-            let insights = `<p><strong>Key Insights:</strong></p><ul>`;
-            
-            // Overall comparison
-            insights += `<li>On average, the Manufacturing ${indexName} is ${Math.abs(avgDiff).toFixed(1)} points ${avgDiff > 0 ? 'higher than' : 'lower than'} Services ${indexName}.</li>`;
-            
-            // Latest period
-            insights += `<li>In the most recent period (${commonDates[0]}), Manufacturing was ${Math.abs(latestDiff).toFixed(1)} points ${latestDiff > 0 ? 'higher than' : 'lower than'} Services.</li>`;
-            
-            // Trend comparison
-            insights += `<li>Manufacturing is ${mfgTrend > 0 ? 'trending upward' : 'trending downward'} at ${Math.abs(mfgTrend).toFixed(2)} points per period, while Services is ${svcTrend > 0 ? 'trending upward' : 'trending downward'} at ${Math.abs(svcTrend).toFixed(2)} points per period.</li>`;
-            
-            // Gap analysis
-            insights += `<li>The gap between Manufacturing and Services is ${Math.abs(diffChange).toFixed(1)} points ${diffChange > 0 ? 'wider' : 'narrower'} than the previous period.</li>`;
-            
-            // Correlation
-            insights += `<li>The correlation between Manufacturing and Services ${indexName} is ${correlation.toFixed(2)} (${interpretCorrelation(correlation)}).</li>`;
-            
-            // Leading/lagging analysis if we have enough data points
-            if (commonDates.length >= 6) {
-                const leadLagResult = analyzeLeadLag(mfgValues.slice(0, 6), svcValues.slice(0, 6));
-                insights += `<li>${leadLagResult}</li>`;
+            const latestDiff = differences.length > 0 ? differences[0] : NaN; // Newest data is at index 0
+            const prevDiff = differences.length > 1 ? differences[1] : NaN;
+            const diffChange = !isNaN(latestDiff) && !isNaN(prevDiff) ? latestDiff - prevDiff : NaN;
+
+            const correlation = calculateCorrelation(alignedMfg, alignedSvc);
+            const mfgTrend = calculateTrend(alignedMfg);
+            const svcTrend = calculateTrend(alignedSvc);
+
+            let insightsHTML = `<ul class="list-unstyled">`;
+            insightsHTML += `<li class="mb-2"><i class="bi bi-rulers me-2 text-primary"></i>Average Difference (Mfg - Svc): <strong class="${avgDiff > 0 ? 'text-info' : (avgDiff < 0 ? 'text-success' : 'text-secondary')}">${avgDiff.toFixed(1)} points</strong>.</li>`;
+            if (!isNaN(latestDiff)) {
+                insightsHTML += `<li class="mb-2"><i class="bi bi-calendar-event me-2 text-primary"></i>Latest Difference (${commonDates[0]}): <strong class="${latestDiff > 0 ? 'text-info' : (latestDiff < 0 ? 'text-success' : 'text-secondary')}">${latestDiff.toFixed(1)} points</strong>.</li>`;
             }
-            
-            insights += `</ul>`;
-            
-            // Update the insights container
-            insightsContainer.innerHTML = insights;
+            if (!isNaN(diffChange)) {
+                insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Change in Difference: <strong class="${diffChange > 0 ? 'text-danger' : (diffChange < 0 ? 'text-success' : 'text-secondary')}">${diffChange.toFixed(1)} points</strong> (gap ${diffChange > 0 ? 'widened for Mfg' : (diffChange < 0 ? 'narrowed or favored Svc' : 'stable')}).</li>`;
+            }
+            insightsHTML += `<li class="mb-2"><i class="bi bi-link-45deg me-2 text-primary"></i>Correlation: <strong>${correlation.toFixed(2)}</strong> (${interpretCorrelation(correlation)}).</li>`;
+            insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up me-2 text-info"></i>Mfg Trend: <strong>${mfgTrend.toFixed(2)} points/period</strong>.</li>`;
+            insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up me-2 text-success"></i>Svc Trend: <strong>${svcTrend.toFixed(2)} points/period</strong>.</li>`;
+
+            if (commonLength >= Math.max(3, (2 * 2 + 1)) ) { // Ensure enough data for lead/lag (maxLag of 2)
+                const leadLagResult = analyzeLeadLag(alignedMfg, alignedSvc, 2); // Max lag of 2
+                insightsHTML += `<li class="mt-2"><i class="bi bi-hourglass-split me-2 text-primary"></i>Lead/Lag: ${leadLagResult}</li>`;
+            } else {
+                insightsHTML += `<li class="mt-2"><i class="bi bi-hourglass-split me-2 text-muted"></i>Not enough data for robust lead/lag analysis.</li>`;
+            }
+
+            insightsHTML += `</ul>`;
+            insightsContainer.innerHTML = insightsHTML;
         }
 
-        function calculateCorrelation(x, y) {
-            const n = x.length;
-            const sumX = x.reduce((a, b) => a + b, 0);
-            const sumY = y.reduce((a, b) => a + b, 0);
-            const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-            const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-            const sumY2 = y.reduce((sum, yi) => sum + yi * yi, 0);
-            
+
+        function calculateCorrelation(xArray, yArray) {
+            if (xArray.length !== yArray.length || xArray.length === 0) return NaN;
+            const n = xArray.length;
+            const sumX = xArray.reduce((s, v) => s + v, 0);
+            const sumY = yArray.reduce((s, v) => s + v, 0);
+            const sumXY = xArray.reduce((s, v, i) => s + v * yArray[i], 0);
+            const sumX2 = xArray.reduce((s, v) => s + v * v, 0);
+            const sumY2 = yArray.reduce((s, v) => s + v * v, 0);
             const numerator = n * sumXY - sumX * sumY;
             const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-            
             return denominator === 0 ? 0 : numerator / denominator;
         }
 
         function calculateTrend(values) {
-            // Simple linear regression to get trend slope
+            if (values.length < 2) return NaN;
             const n = values.length;
-            const x = Array.from({length: n}, (_, i) => i);
-            const sumX = x.reduce((a, b) => a + b, 0);
-            const sumY = values.reduce((a, b) => a + b, 0);
-            const sumXY = x.reduce((sum, xi, i) => sum + xi * values[i], 0);
-            const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-            
+            const x = Array.from({ length: n }, (_, i) => i); // Time periods 0, 1, 2...
+            const sumX = x.reduce((s, v) => s + v, 0);
+            const sumY = values.reduce((s, v) => s + v, 0);
+            const sumXY = x.reduce((s, v, i) => s + v * values[i], 0);
+            const sumX2 = x.reduce((s, v) => s + v * v, 0);
             const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-            return slope;
+            return isNaN(slope) ? 0 : slope; // Return 0 if slope is NaN (e.g. all x values are same)
         }
 
         function interpretCorrelation(corr) {
-            const abs = Math.abs(corr);
-            if (abs >= 0.8) return 'very strong';
-            if (abs >= 0.6) return 'strong';
-            if (abs >= 0.4) return 'moderate';
-            if (abs >= 0.2) return 'weak';
-            return 'very weak or no correlation';
+            if (isNaN(corr)) return "N/A (insufficient data)";
+            const absCorr = Math.abs(corr);
+            if (absCorr >= 0.8) return `very strong ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            if (absCorr >= 0.6) return `strong ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            if (absCorr >= 0.4) return `moderate ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            if (absCorr >= 0.2) return `weak ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            return 'very weak or no linear correlation';
         }
 
-        function analyzeLeadLag(mfgValues, svcValues) {
-            // Cross-correlation analysis to determine lead/lag relationship
-            const maxLag = 2;  // Maximum lag to check (months)
-            let bestCorr = -2;  // Initialize with impossible value (-2)
+        function analyzeLeadLag(series1, series2, maxLag) {
+            if (series1.length < maxLag * 2 + 1 || series2.length < maxLag * 2 + 1) {
+                return "Insufficient data for lead/lag analysis.";
+            }
+            let bestCorr = -2; // Impossible correlation value
             let bestLag = 0;
-            
+            let leadSeries = "";
+
             for (let lag = -maxLag; lag <= maxLag; lag++) {
-                const pairs = [];
-                
-                for (let i = 0; i < mfgValues.length; i++) {
-                const j = i + lag;
-                if (j >= 0 && j < svcValues.length) {
-                    pairs.push({mfg: mfgValues[i], svc: svcValues[j]});
+                let s1, s2;
+                if (lag === 0) {
+                    s1 = series1;
+                    s2 = series2;
+                } else if (lag > 0) { // series1 leads series2 by 'lag' periods
+                    s1 = series1.slice(0, series1.length - lag);
+                    s2 = series2.slice(lag);
+                } else { // series2 leads series1 by 'abs(lag)' periods
+                    s1 = series1.slice(Math.abs(lag));
+                    s2 = series2.slice(0, series2.length - Math.abs(lag));
                 }
-                }
                 
-                if (pairs.length >= 3) {  // Need at least 3 pairs for meaningful correlation
-                const corr = calculateCorrelation(
-                    pairs.map(p => p.mfg),
-                    pairs.map(p => p.svc)
-                );
-                
-                if (Math.abs(corr) > Math.abs(bestCorr)) {
+                // Ensure arrays are of same length for correlation
+                const commonLen = Math.min(s1.length, s2.length);
+                if (commonLen < 3) continue; // Need at least 3 points for a meaningful correlation
+
+                s1 = s1.slice(0, commonLen);
+                s2 = s2.slice(0, commonLen);
+
+                const corr = calculateCorrelation(s1, s2);
+                if (!isNaN(corr) && Math.abs(corr) > Math.abs(bestCorr)) {
                     bestCorr = corr;
                     bestLag = lag;
                 }
-                }
             }
-            
-            // Interpret the results
+
+            if (Math.abs(bestCorr) < 0.3) { // Threshold for "significant" correlation for lead/lag
+                return `No clear lead/lag relationship detected (max correlation ${bestCorr.toFixed(2)}).`;
+            }
             if (bestLag > 0) {
-                return `Manufacturing appears to lead Services by ${bestLag} month${bestLag > 1 ? 's' : ''} (correlation: ${bestCorr.toFixed(2)}).`;
+                return `Manufacturing appears to lead Services by ${bestLag} month(s) (correlation: ${bestCorr.toFixed(2)}).`;
             } else if (bestLag < 0) {
-                return `Services appears to lead Manufacturing by ${Math.abs(bestLag)} month${Math.abs(bestLag) > 1 ? 's' : ''} (correlation: ${bestCorr.toFixed(2)}).`;
+                return `Services appears to lead Manufacturing by ${Math.abs(bestLag)} month(s) (correlation: ${bestCorr.toFixed(2)}).`;
             } else {
-                return `Manufacturing and Services show no clear lead/lag relationship (correlation: ${bestCorr.toFixed(2)}).`;
+                return `Manufacturing and Services move mostly in tandem (correlation: ${bestCorr.toFixed(2)} at 0 lag).`;
             }
         }
 
-        function drawRegressionLine(chart, data) {
-            // Calculate linear regression for scatter plot
-            const x = data.map(p => p.x);
-            const y = data.map(p => p.y);
-            
-            const sumX = x.reduce((a, b) => a + b, 0);
-            const sumY = y.reduce((a, b) => a + b, 0);
-            const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-            const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-            const n = x.length;
-            
+        // Function to draw regression line (optional, if needed for scatter plot)
+        function drawRegressionLine(chartInstance, scatterData) {
+            if (scatterData.length < 2) return;
+            const xValues = scatterData.map(p => p.x);
+            const yValues = scatterData.map(p => p.y);
+
+            // Calculate linear regression parameters (slope 'm' and intercept 'b')
+            const n = xValues.length;
+            const sumX = xValues.reduce((a, b) => a + b, 0);
+            const sumY = yValues.reduce((a, b) => a + b, 0);
+            const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
+            const sumX2 = xValues.reduce((sum, x) => sum + x * x, 0);
+
             const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
             const intercept = (sumY - slope * sumX) / n;
-            
-            // Get min and max x values to draw line
-            const minX = Math.min(...x);
-            const maxX = Math.max(...x);
-            
-            // Add regression line as a new dataset
-            chart.data.datasets.push({
-                label: 'Regression Line',
-                data: [
-                {x: minX, y: slope * minX + intercept},
-                {x: maxX, y: slope * maxX + intercept}
-                ],
-                type: 'line',
-                borderColor: 'rgba(128, 0, 128, 0.7)',
-                borderWidth: 2,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                fill: false
-            });
-            
-            chart.update();
+
+            if (isNaN(slope) || isNaN(intercept)) return; // Avoid drawing if calculation fails
+
+            // Find min and max X values to determine line endpoints
+            const minX = Math.min(...xValues);
+            const maxX = Math.max(...xValues);
+            const regressionLineData = [
+                { x: minX, y: slope * minX + intercept },
+                { x: maxX, y: slope * maxX + intercept }
+            ];
+
+            // Add regression line as a new dataset or update existing one
+            const regressionDatasetIndex = chartInstance.data.datasets.findIndex(ds => ds.label === 'Regression Line');
+            if (regressionDatasetIndex > -1) {
+                chartInstance.data.datasets[regressionDatasetIndex].data = regressionLineData;
+            } else {
+                chartInstance.data.datasets.push({
+                    label: 'Regression Line',
+                    data: regressionLineData,
+                    type: 'line',
+                    borderColor: 'rgba(128, 0, 128, 0.7)', // Purple
+                    borderWidth: 2,
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0 // Straight line
+                });
             }
-        
+            chartInstance.update();
+        }
+
+
+        function loadComparisonView() {
+            const indexSelect = document.getElementById('comparisonIndexSelect');
+            const timeRangeSelect = document.getElementById('comparisonTimeRange');
+            const insightsContainer = document.getElementById('comparisonInsights');
+
+            if (!indexSelect || !timeRangeSelect || !insightsContainer) {
+                console.error("Comparison view essential elements are missing.");
+                const compTabContent = document.getElementById('comparison');
+                if (compTabContent) compTabContent.innerHTML = "<div class='alert alert-danger'>Error initializing comparison view components.</div>";
+                return;
+            }
+
+            const indexName = indexSelect.value || 'PMI';
+            const timeRange = timeRangeSelect.value || '12';
+
+            const mfgChartContainer = document.getElementById('manufacturingComparisonChartContainer');
+            const svcChartContainer = document.getElementById('servicesComparisonChartContainer');
+            const diffChartContainer = document.getElementById('differenceChartContainer');
+            const corrChartContainer = document.getElementById('correlationChartContainer');
+            const metricsMfg = document.getElementById('manufacturingMetrics');
+            const metricsSvc = document.getElementById('servicesMetrics');
+
+            const loadingHTML = (height = '300px') => `<div class="loading-overlay d-flex align-items-center justify-content-center" style="height:${height};"><div class="loading-spinner"></div></div>`;
+            
+            if (mfgChartContainer) mfgChartContainer.innerHTML = loadingHTML();
+            if (svcChartContainer) svcChartContainer.innerHTML = loadingHTML();
+            if (diffChartContainer) diffChartContainer.innerHTML = loadingHTML();
+            if (corrChartContainer) corrChartContainer.innerHTML = loadingHTML();
+            if (metricsMfg) metricsMfg.innerHTML = loadingHTML('120px');
+            if (metricsSvc) metricsSvc.innerHTML = loadingHTML('120px');
+            if (insightsContainer) insightsContainer.innerHTML = loadingHTML('100px');
+
+            // Populate dropdown if not already done
+            if (indexSelect.options.length <= 1) { // Allows for a default "PMI" option
+                Promise.all([
+                    fetch('/api/all_indices?report_type=Manufacturing').then(r => r.json()),
+                    fetch('/api/all_indices?report_type=Services').then(r => r.json())
+                ]).then(([mfgIndicesAll, svcIndicesAll]) => {
+                    const commonIndices = mfgIndicesAll.filter(idx => 
+                        svcIndicesAll.includes(idx) && 
+                        idx !== 'Manufacturing PMI' && // Already covered by "PMI" option
+                        idx !== 'Services PMI'
+                    ).sort();
+
+                    // Clear existing options except for a potential default "PMI"
+                    let pmiOptionExists = false;
+                    Array.from(indexSelect.options).forEach(opt => {
+                        if (opt.value === 'PMI') pmiOptionExists = true;
+                        else indexSelect.remove(opt.index);
+                    });
+                    if (!pmiOptionExists) {
+                        const pmiOpt = document.createElement('option');
+                        pmiOpt.value = 'PMI';
+                        pmiOpt.text = 'PMI (Overall)';
+                        indexSelect.insertBefore(pmiOpt, indexSelect.firstChild);
+                    }
+
+                    commonIndices.forEach(idx => {
+                        const option = document.createElement('option');
+                        option.value = idx;
+                        option.text = idx;
+                        indexSelect.appendChild(option);
+                    });
+                    indexSelect.value = indexName; // Set to current/default after populating
+                    fetchComparisonData(indexName, timeRange); // Now fetch data
+                }).catch(error => {
+                    console.error('Error populating comparison index select:', error);
+                    fetchComparisonData(indexName, timeRange); // Try fetching with default anyway
+                });
+            } else {
+                fetchComparisonData(indexName, timeRange);
+            }
+        }
+
+        function fetchComparisonData(indexNameToFetch, timeRange) {
+            const mfgIndex = indexNameToFetch === 'PMI' ? 'Manufacturing PMI' : indexNameToFetch;
+            const svcIndex = indexNameToFetch === 'PMI' ? 'Services PMI' : indexNameToFetch;
+            const showDifferencesToggle = document.getElementById('showDifferencesToggle'); // get toggle state
+
+            Promise.all([
+                fetch(`/api/index_trends/${encodeURIComponent(mfgIndex)}?months=${timeRange}&report_type=Manufacturing`).then(handleFetchResponse),
+                fetch(`/api/index_trends/${encodeURIComponent(svcIndex)}?months=${timeRange}&report_type=Services`).then(handleFetchResponse)
+            ])
+            .then(([manufacturingData, servicesData]) => {
+                renderComparisonCharts(manufacturingData, servicesData, indexNameToFetch);
+                updateComparisonMetrics('manufacturingMetrics', manufacturingData, 'Manufacturing');
+                updateComparisonMetrics('servicesMetrics', servicesData, 'Services');
+                analyzeDifferences(manufacturingData, servicesData, indexNameToFetch);
+            })
+            .catch(error => {
+                console.error('Error loading comparison data:', error);
+                const errorMsg = `Failed to load comparison data for ${indexNameToFetch}: ${error.message || error}.`;
+                document.getElementById('manufacturingComparisonChartContainer').innerHTML = `<div class="alert alert-danger p-2 m-2">${errorMsg}</div>`;
+                // Clear other containers or show specific error messages
+                ['servicesComparisonChartContainer', 'differenceChartContainer', 'correlationChartContainer', 'manufacturingMetrics', 'servicesMetrics', 'comparisonInsights'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = `<div class="alert alert-warning p-1 m-1 small">Data unavailable due to previous error.</div>`;
+                });
+            });
+        }
+
+        function handleFetchResponse(response) {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error(`API Error ${response.status}: ${text || response.statusText}`) });
+            }
+            return response.json();
+        }
+       
         // Main initialization function
         document.addEventListener('DOMContentLoaded', function() {
             // Update KPI cards
@@ -1519,6 +1596,17 @@
             // Initialize the heatmap if it's the active tab
             if (document.getElementById('heatmap-tab').classList.contains('active')) {
                 loadHeatmapData();
+            }
+
+            // Initialize heatmap title based on current report type
+            const currentType = getCurrentReportType();
+            const heatmapTitle = document.getElementById('heatmapTitle');
+            if (heatmapTitle) {
+                if (currentType === 'Services') {
+                    heatmapTitle.textContent = 'Services PMI Heatmap Summary';
+                } else {
+                    heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                }
             }
 
             // Set up index selection changes for both tabs
@@ -1883,6 +1971,16 @@
                 return;
             }
             heatmapContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
+
+            const heatmapTitle = document.getElementById('heatmapTitle');
+                if (heatmapTitle) {
+                    if (reportType === 'Services') {
+                        heatmapTitle.textContent = 'Services PMI Heatmap Summary';
+                    } else {
+                        heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                    }
+                }
+
             
             // Get time range selection from the persistent select
             const timeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent'); // Use the ID of the persistent select
@@ -3241,6 +3339,15 @@
             
             // Update page title
             document.title = `${reportType} Report Dashboard - ISM Analysis`;
+
+            const heatmapTitle = document.getElementById('heatmapTitle');
+                if (heatmapTitle) {
+                    if (reportType === 'Services') {
+                        heatmapTitle.textContent = 'Services PMI Heatmap Summary';
+                    } else {
+                        heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                    }
+                }
             
             // Update current report type variable
             currentReportType = reportType;
@@ -3436,6 +3543,52 @@
         document.getElementById('showDifferencesToggle')?.addEventListener('change', function() {
             loadComparisonView();
         });
+        
+        // Comparison Tab specific initializations
+        const comparisonTab = document.getElementById('comparison-tab');
+        if (comparisonTab) {
+            comparisonTab.addEventListener('shown.bs.tab', function() {
+                loadComparisonView(); // This function handles its own data fetching
+            });
+        }
+        
+        const compareViewBtn = document.getElementById('compareViewBtn');
+        if (compareViewBtn) {
+            compareViewBtn.addEventListener('click', function() {
+                const comparisonTabTrigger = document.getElementById('comparison-tab');
+                if (comparisonTabTrigger) {
+                    const tab = new bootstrap.Tab(comparisonTabTrigger);
+                    tab.show();
+                }
+            });
+        }
+
+        const comparisonIndexSelect = document.getElementById('comparisonIndexSelect');
+        if (comparisonIndexSelect) {
+            comparisonIndexSelect.addEventListener('change', loadComparisonView);
+        }
+
+        const comparisonTimeRange = document.getElementById('comparisonTimeRange');
+        if (comparisonTimeRange) {
+            comparisonTimeRange.addEventListener('change', loadComparisonView);
+        }
+        
+        // Listener for "Highlight Differences" toggle
+        const showDifferencesToggle = document.getElementById('showDifferencesToggle');
+        if (showDifferencesToggle) {
+            showDifferencesToggle.addEventListener('change', loadComparisonView); // Reload charts to apply fill
+        }
+
+        // Listener for "Show Moving Average" toggle
+        const showMovingAverageToggle = document.getElementById('showMovingAverageToggle');
+        if (showMovingAverageToggle) {
+            showMovingAverageToggle.addEventListener('change', loadComparisonView); // Reload charts
+        }
+
+        // Initial load if comparison tab is active by default (unlikely, but good practice)
+        if (document.getElementById('comparison')?.classList.contains('active')) {
+            loadComparisonView();
+        }
     });
     </script>
 </body>
