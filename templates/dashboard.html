@@ -128,7 +128,7 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 4px 20px var(--card-shadow);
-            padding: 1.75rem;
+            padding: 1.25rem; /* Reduced from 1.75rem */
             height: 100%;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
@@ -149,16 +149,21 @@
             align-items: center;
         }
         
-        .kpi-title i {
-            margin-left: 0.5rem;
-            font-size: 0.85rem;
-            color: var(--primary-color);
+        .kpi-title {
+            color: var(--light-text);
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem; /* Reduced from 0.75rem */
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            display: flex;
+            align-items: center;
         }
 
         .kpi-value {
-            font-size: 2.5rem;
+            font-size: 2rem; /* Reduced from 2.5rem */
             font-weight: 700;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem; /* Reduced from 0.5rem */
             color: #0f172a;
             letter-spacing: -0.03em;
             font-feature-settings: "tnum";
@@ -166,8 +171,13 @@
         }
 
         .kpi-direction {
-            font-size: 1rem;
+            font-size: 0.9rem; /* Reduced from 1rem */
             font-weight: 600;
+        }
+
+        /* Reduce margin on KPI cards row */
+        .row.mb-4 {
+            margin-bottom: 2rem !important; /* Reduced from default */
         }
         
         .text-growing {
@@ -183,7 +193,7 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 4px 20px var(--card-shadow);
-            margin-bottom: 2rem;
+            margin-bottom: 1rem; /* Reduced from 2rem */
             overflow: hidden;
         }
         
@@ -214,7 +224,7 @@
         }
         
         .tab-content {
-            padding: 2rem;
+            padding: 0.75rem;
         }
         
         /* Content card styling */
@@ -222,16 +232,17 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 4px 20px var(--card-shadow);
-            margin-bottom: 2rem;
+            margin-bottom: 1rem; /* Reduced from 2rem */
             overflow: hidden;
         }
         
         .content-card-header {
-            padding: 1.5rem 2rem;
+            padding: 1rem 1.5rem; /* Reduced from 1.5rem 2rem */
             border-bottom: 1px solid rgba(0, 0, 0, 0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            min-height: auto;
         }
         
         .content-card-header h5 {
@@ -242,29 +253,33 @@
         }
         
         .content-card-body {
-            padding: 2rem;
+            padding: 1rem; /* Reduced from 2rem */
         }
         
-        /* Enhanced table styling */
         .data-table {
-            width: 100%;
+            width: auto !important; /* Override the existing width: 100% */
             border-collapse: separate;
             border-spacing: 0;
+            table-layout: auto;
         }
-        
+
         .data-table th {
             background-color: #f8f9fa;
             color: #495057;
             font-weight: 600;
             text-align: left;
-            padding: 1rem 1.25rem;
+            padding: 0.75rem 1rem; /* REDUCED from 1rem 1.25rem */
             border-bottom: 2px solid #e9ecef;
+            width: fit-content; /* ADDED */
+            white-space: nowrap; /* ADDED */
         }
-        
+
         .data-table td {
-            padding: 1rem 1.25rem;
+            padding: 0.75rem 1rem; /* REDUCED from 1rem 1.25rem */
             border-bottom: 1px solid #e9ecef;
             vertical-align: middle;
+            width: fit-content; /* ADDED */
+            white-space: nowrap; /* ADDED */
         }
         
         .data-table tr:hover {
@@ -274,21 +289,60 @@
         .data-table tr:last-child td {
             border-bottom: none;
         }
+
+        .month-table-container table {
+            table-layout: auto;
+        }
+
+        .month-table-container th,
+        .month-table-container td {
+            padding: 0.5rem 0.75rem;
+            white-space: nowrap;
+            width: fit-content;
+        }
+
+        .month-table-container td:first-child {
+            max-width: 180px;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+
+        .month-table-container td:nth-child(2) {
+            width: 60px;
+            min-width: 60px;
+            max-width: 60px;
+            text-align: center;
+        }
+
+        /* Override Bootstrap's default table behavior */
+        .table-responsive .table,
+        .content-card-body .table {
+            width: auto !important;
+            min-width: auto !important;
+        }
+
+        /* Ensure the table container doesn't force full width */
+        .content-card-body .table-responsive {
+            overflow-x: auto;
+        }
         
         /* Status colors - keep the same */
         .bg-growing, .bg-success { /* Included .bg-success for KPI badges */
             background-color: var(--color-growing) !important;
             color: white !important; /* White text should be fine */
         }
+
         .bg-contracting, .bg-danger { /* Included .bg-danger for KPI badges */
             background-color: var(--color-contracting) !important;
             color: white !important;
         }
+
         .bg-neutral {
             /* Consider updating neutral? Maybe a gray? */
             background-color: #ffc107 !important; /* Bootstrap warning yellow */
             color: #333 !important; /* Dark text for yellow */
         }
+
          /* Default gray for "no change" */
          .bg-secondary {
             background-color: #6c757d !important;
@@ -326,22 +380,28 @@
         }
         
         /* Heatmap enhancements */
-        .heatmap-container {
+       .heatmap-container {
             overflow-x: auto;
-            margin-top: 1.5rem;
+            margin-top: 0.5rem; /* Reduced from 1.5rem */
             border-radius: 8px;
             border: 1px solid #e9ecef;
+            width: fit-content;
+            max-width: 100%;
         }
 
         .heatmap-container table {
-            min-width: 100%;
+            min-width: auto !important; /* Override the existing min-width: 100% */
+            width: auto !important; /* Don't force full width */
             border-collapse: collapse;
+            table-layout: auto;
         }
 
         .heatmap-container th, .heatmap-container td {
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 0.75rem; /* REDUCED from 0.75rem 1rem */
             text-align: center;
             border: 1px solid #e9ecef;
+            white-space: nowrap; /* ADDED */
+            width: fit-content; /* ADDED */
         }
 
         .heatmap-container th {
@@ -359,22 +419,14 @@
             background-color: #f8f9fa;
             z-index: 5;
             font-weight: 500;
-        }
-        
-        /* Footer */
-        .footer {
-            background-color: white;
-            border-top: 1px solid rgba(0, 0, 0, 0.05);
-            padding: 1.5rem 0;
-            text-align: center;
-            color: var(--light-text);
-            margin-top: 2rem;
+            max-width: 200px; /* ADDED */
+            white-space: normal; /* ADDED */
         }
         
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .content-container {
-                padding: 1rem;
+                padding: 1rem; /* Keep mobile padding reasonable */
             }
             
             .kpi-card {
@@ -395,8 +447,118 @@
             }
             
             .content-card-header, .content-card-body {
-                padding: 1.25rem;
+                padding: 0.75rem; /* Even more compact on mobile */
             }
+        }
+
+         /* Reusable Component Library */
+        .ism-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+            transition: transform 0.2s ease;
+        }
+        
+        .ism-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.08);
+        }
+        
+        .ism-card-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .ism-card-body {
+            padding: 1.5rem;
+        }
+        
+        /* Loading States */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            border-radius: inherit;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Error States */
+        .error-container {
+            padding: 1rem;
+            background-color: #fff3f3;
+            border-left: 4px solid #ea4335;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+        }
+        
+        .error-title {
+            color: #d32f2f;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Data Visualization Containers */
+        .viz-container {
+            position: relative;
+            min-height: 300px;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 576px) {
+            .ism-card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            }
+            
+            .ism-card-header .btn-group {
+            margin-top: 0.75rem;
+            align-self: flex-end;
+            }
+        }
+        
+        /* Report Type Indicators */
+        .report-type-indicator {
+            font-size: 0.875rem;
+            font-weight: 600;
+            padding: 0.35rem 0.75rem;
+            border-radius: 2rem;
+            margin-left: 1rem;
+            display: inline-flex;
+            align-items: center;
+        }
+        
+        .report-type-manufacturing {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .report-type-services {
+            background-color: #e8f5e9;
+            color: #2e7d32;
         }
     </style>
 </head>
@@ -434,11 +596,33 @@
         <div class="content-container">
             <!-- Dashboard Header -->
             <div class="dashboard-header">
-                <h1>ISM Manufacturing Report Dashboard</h1>
-                <a href="{{ url_for('upload_view') }}" class="btn btn-primary">
+                <div>
+                    <h1>ISM Report Dashboard</h1>
+                    <div id="reportTypeSelector" class="mt-2 mb-3">
+                    <div class="btn-group" role="group" aria-label="Report Type">
+                        <button type="button" class="btn btn-outline-primary report-type-btn active" data-report-type="Manufacturing">
+                        <i class="bi bi-gear-fill me-1"></i>Manufacturing
+                        </button>
+                        <button type="button" class="btn btn-outline-primary report-type-btn" data-report-type="Services">
+                        <i class="bi bi-people-fill me-1"></i>Services
+                        </button>
+                    </div>
+                    
+                    <span id="currentReportBadge" class="report-type-indicator report-type-manufacturing ms-3">
+                        <i class="bi bi-gear-fill me-1"></i>Manufacturing Report
+                    </span>
+                    </div>
+                </div>
+                
+                <div>
+                    <a href="{{ url_for('upload_view') }}" class="btn btn-primary">
                     <i class="bi bi-upload me-2"></i>Upload New Report
-                </a>
-            </div>
+                    </a>
+                    <button id="compareViewBtn" class="btn btn-outline-secondary ms-2">
+                    <i class="bi bi-arrow-left-right me-1"></i>Compare Reports
+                    </button>
+                </div>
+                </div>
             
             <!-- KPI Cards Row -->
             <div class="row mb-4">
@@ -501,23 +685,28 @@
                 <!-- Navigation Tabs -->
                 <ul class="nav nav-tabs" id="dashboardTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
+                        <button class="nav-link tab-level active" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#heatmap">
                             <i class="bi bi-grid-3x3 me-2"></i>Heatmap Summary
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
+                        <button class="nav-link tab-level" id="growth-alpha-tab" data-bs-toggle="tab" data-bs-target="#growth-alpha">
                             <i class="bi bi-sort-alpha-down me-2"></i>Alphabetical View
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
+                        <button class="nav-link tab-level" id="growth-num-tab" data-bs-toggle="tab" data-bs-target="#growth-num">
                             <i class="bi bi-sort-numeric-down me-2"></i>Numerical View
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
+                        <button class="nav-link tab-level" id="trends-tab" data-bs-toggle="tab" data-bs-target="#trends">
                             <i class="bi bi-graph-up-arrow me-2"></i>Index Trends
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="comparison-tab" data-bs-toggle="tab" data-bs-target="#comparison">
+                            <i class="bi bi-arrow-left-right me-2"></i>Comparison View
                         </button>
                     </li>
                 </ul>
@@ -528,7 +717,7 @@
             <div class="tab-pane fade show active" id="heatmap" role="tabpanel">
                 <div class="content-card">
                     <div class="content-card-header">
-                        <h5>Manufacturing PMI Heatmap Summary</h5>
+                        <h5 id="heatmapTitle">Manufacturing PMI Heatmap Summary</h5>
                         <button id="exportHeatmapBtn" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-download"></i> Export Data
                         </button>
@@ -625,7 +814,7 @@
             <div class="tab-pane fade" id="trends" role="tabpanel">
                 <div class="content-card">
                     <div class="content-card-header">
-                        <h5>Manufacturing PMI Trends</h5>
+                        <h5 id="trendsTitle">Manufacturing PMI Trends</h5>
                         <button id="exportTrendsBtn" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-download"></i> Export Data
                         </button>
@@ -668,6 +857,102 @@
                     </div>
                 </div>
             </div>
+            <!-- Comparison Tab -->
+            <div class="tab-pane fade" id="comparison" role="tabpanel">
+            <div class="content-card">
+                <div class="content-card-header">
+                <h5>Manufacturing vs Services Comparison</h5>
+                <div class="d-flex align-items-center">
+                    <div class="form-check form-switch me-3">
+                    <input class="form-check-input" type="checkbox" id="showDifferencesToggle" checked>
+                    <label class="form-check-label" for="showDifferencesToggle">Highlight Differences</label>
+                    </div>
+                    <div class="form-check form-switch me-3">
+                        <input class="form-check-input" type="checkbox" id="showMovingAverageToggle">
+                        <label class="form-check-label" for="showMovingAverageToggle">Show 3-Month SMA</label>
+                    </div>
+                    <select id="comparisonIndexSelect" class="form-select form-select-sm me-2" style="width: auto;">
+                    <!-- Options will be populated dynamically -->
+                    </select>
+                    <button id="exportComparisonBtn" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-download"></i> Export
+                    </button>
+                </div>
+                </div>
+                <div class="content-card-body p-0">
+                <div class="comparison-header bg-light p-3 d-flex justify-content-between">
+                    <div class="comparison-legend d-flex align-items-center">
+                    <span class="badge bg-primary me-2">Manufacturing</span>
+                    <span class="badge bg-success me-2">Services</span>
+                    <span class="badge bg-warning me-2">Difference</span>
+                    </div>
+                    <div class="time-range-selector">
+                    <select id="comparisonTimeRange" class="form-select form-select-sm">
+                        <option value="6">6 Months</option>
+                        <option value="12" selected>12 Months</option>
+                        <option value="24">24 Months</option>
+                    </select>
+                    </div>
+                </div>
+                
+                <div class="row mx-0">
+                   <!-- Left side: Manufacturing -->
+                    <div class="col-md-6 p-3 border-end">
+                    <h6 class="text-primary mb-3"><i class="bi bi-gear-fill me-2"></i>Manufacturing</h6>
+                    <div id="manufacturingComparisonChartContainer" class="viz-container" style="height: 300px;">
+                        <canvas id="manufacturingComparisonCanvas"></canvas> <!-- ADDED CANVAS -->
+                    </div>
+                    
+                    <div class="mt-4">
+                        <h6 class="mb-3">Key Metrics:</h6>
+                        <div id="manufacturingMetrics" class="row">
+                        <!-- Metrics will be populated dynamically -->
+                        </div>
+                    </div>
+                    </div>
+                    
+                    <!-- Right side: Services -->
+                    <div class="col-md-6 p-3">
+                    <h6 class="text-success mb-3"><i class="bi bi-people-fill me-2"></i>Services</h6>
+                    <div id="servicesComparisonChartContainer" class="viz-container" style="height: 300px;">
+                        <canvas id="servicesComparisonCanvas"></canvas> <!-- ADDED CANVAS -->
+                    </div>
+                    
+                    <div class="mt-4">
+                        <h6 class="mb-3">Key Metrics:</h6>
+                        <div id="servicesMetrics" class="row">
+                        <!-- Metrics will be populated dynamically -->
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                
+                <!-- Difference Analysis -->
+                <div id="differenceAnalysis" class="p-3 border-top">
+                <h6 class="mb-3">Difference Analysis</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                    <div id="differenceChartContainer" class="viz-container" style="height: 300px;">
+                        <canvas id="differenceCanvas"></canvas> <!-- ADDED CANVAS -->
+                    </div>
+                    </div>
+                    <div class="col-md-6">
+                    <div id="correlationChartContainer" class="viz-container" style="height: 300px;">
+                        <canvas id="correlationCanvas"></canvas> <!-- ADDED CANVAS -->
+                    </div>
+                    </div>
+                </div>
+                    
+                    <div class="mt-4">
+                    <h6>Key Insights:</h6>
+                    <div id="comparisonInsights" class="alert alert-light border">
+                        <div class="loading-spinner d-inline-block me-2"></div> Analyzing data...
+                    </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+            </div>
         </div>
     </div>
     
@@ -697,7 +982,648 @@
         
         // Chart reference for trends
         let trendChart = null;
-        
+
+        let mfgComparisonChartInstance = null;
+        let svcComparisonChartInstance = null;
+        let diffComparisonChartInstance = null;
+        let corrComparisonChartInstance = null;
+
+        // Helper function to calculate Simple Moving Average
+        function calculateSMA(data, windowSize) {
+            if (!data || data.length < windowSize) return [];
+            let sma = [];
+            for (let i = 0; i <= data.length - windowSize; i++) {
+                let sum = 0;
+                for (let j = 0; j < windowSize; j++) {
+                    sum += data[i + j] || 0; // Handle potential nulls if not filtered earlier
+                }
+                sma.push(sum / windowSize);
+            }
+            // Pad the beginning of the SMA array with nulls to align with original data labels
+            return Array(windowSize - 1).fill(null).concat(sma);
+        }
+
+
+        function renderComparisonCharts(manufacturingData, servicesData, indexName) {
+            // Destroy existing charts
+            if (mfgComparisonChartInstance) mfgComparisonChartInstance.destroy();
+            if (svcComparisonChartInstance) svcComparisonChartInstance.destroy();
+            if (diffComparisonChartInstance) diffComparisonChartInstance.destroy();
+            if (corrComparisonChartInstance) corrComparisonChartInstance.destroy();
+
+            const mfgChartContainer = document.getElementById('manufacturingComparisonChartContainer');
+            const svcChartContainer = document.getElementById('servicesComparisonChartContainer');
+            const diffChartContainer = document.getElementById('differenceChartContainer');
+            const corrChartContainer = document.getElementById('correlationChartContainer');
+
+            // Ensure canvas elements are present or re-create them
+            if (mfgChartContainer && !mfgChartContainer.querySelector('canvas')) mfgChartContainer.innerHTML = '<canvas id="manufacturingComparisonCanvas"></canvas>';
+            if (svcChartContainer && !svcChartContainer.querySelector('canvas')) svcChartContainer.innerHTML = '<canvas id="servicesComparisonCanvas"></canvas>';
+            if (diffChartContainer && !diffChartContainer.querySelector('canvas')) diffChartContainer.innerHTML = '<canvas id="differenceCanvas"></canvas>';
+            if (corrChartContainer && !corrChartContainer.querySelector('canvas')) corrChartContainer.innerHTML = '<canvas id="correlationCanvas"></canvas>';
+
+            const mfgCanvas = document.getElementById('manufacturingComparisonCanvas');
+            const svcCanvas = document.getElementById('servicesComparisonCanvas');
+            const diffCanvas = document.getElementById('differenceCanvas');
+            const corrCanvas = document.getElementById('correlationCanvas');
+
+            if (!mfgCanvas || !svcCanvas || !diffCanvas || !corrCanvas) {
+                console.error("Comparison chart canvas elements are still missing.");
+                const compTabContent = document.getElementById('comparison');
+                if (compTabContent) compTabContent.innerHTML = '<div class="alert alert-danger" role="alert">Error: Could not initialize comparison charts. Required canvas elements missing.</div>';
+                return;
+            }
+
+            const mfgCtx = mfgCanvas.getContext('2d');
+            const svcCtx = svcCanvas.getContext('2d');
+            const diffCtx = diffCanvas.getContext('2d');
+            const corrCtx = corrCanvas.getContext('2d');
+
+            // Prepare data, ensuring numeric values and handling nulls
+            const mfgValues = manufacturingData.map(item => item.index_value !== null && item.index_value !== undefined ? parseFloat(item.index_value) : null);
+            const svcValues = servicesData.map(item => item.index_value !== null && item.index_value !== undefined ? parseFloat(item.index_value) : null);
+            
+            const mfgLabels = manufacturingData.map(item => item.month_year);
+            const svcLabels = servicesData.map(item => item.month_year);
+
+            // Create a unique, sorted list of all dates present in either dataset
+            const allDatesSet = new Set([...mfgLabels, ...svcLabels]);
+            const combinedLabels = Array.from(allDatesSet).sort((a, b) => new Date(a) - new Date(b)); // Assuming YYYY-MM format or full date
+
+            // Map data to these combined labels, inserting null where a sector doesn't have data for a month
+            const mfgDataMap = new Map(manufacturingData.map(item => [item.month_year, parseFloat(item.index_value)]));
+            const svcDataMap = new Map(servicesData.map(item => [item.month_year, parseFloat(item.index_value)]));
+
+            const alignedMfgValues = combinedLabels.map(label => mfgDataMap.get(label) ?? null);
+            const alignedSvcValues = combinedLabels.map(label => svcDataMap.get(label) ?? null);
+
+            // Common Chart.js options
+            function getBaseChartOptions(titleText, yAxisLabel = 'Index Value') {
+                return {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: { display: true, text: titleText, font: { weight: 'bold', size: 14 }, padding: { top: 10, bottom: 10 } },
+                        legend: { display: true, position: 'top', labels: { usePointStyle: true, boxWidth: 10, padding: 15 } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toFixed(1);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: false, suggestedMin: 35, suggestedMax: 70, grid: { color: 'rgba(0,0,0,0.05)' }, title: { display: true, text: yAxisLabel } },
+                        x: { grid: { display: false }, title: { display: true, text: 'Month' } }
+                    },
+                    spanGaps: true // Connect lines over null data points
+                };
+            }
+            
+            const showDifferences = document.getElementById('showDifferencesToggle')?.checked || false;
+            const showMovingAverage = document.getElementById('showMovingAverageToggle')?.checked || false;
+            const smaWindow = 3;
+
+            // 1. Manufacturing Line Chart
+            // Prepare SMA data specifically for Manufacturing
+            let calculatedMfgSma = [];
+            if (showMovingAverage) {
+                const numericMfgValuesForSma = alignedMfgValues.filter(v => typeof v === 'number' && !isNaN(v));
+                // console.log("Numeric MFG Values for SMA:", numericMfgValuesForSma); // DEBUG
+                if (numericMfgValuesForSma.length >= smaWindow) {
+                    calculatedMfgSma = calculateSMA(numericMfgValuesForSma, smaWindow);
+                } else {
+                    calculatedMfgSma = Array(combinedLabels.length).fill(null); // Fill to match labels length
+                }
+                // console.log("Calculated MFG SMA data:", calculatedMfgSma); // DEBUG
+            }
+
+            const mfgDatasets = [{
+                label: `Manufacturing ${indexName === 'PMI' ? 'PMI' : indexName}`,
+                data: alignedMfgValues,
+                borderColor: '#1976d2', 
+                backgroundColor: 'rgba(25, 118, 210, 0.1)', 
+                tension: 0.1,
+                // If 'showDifferences' is true, fill to origin. This shades the area under this line.
+                fill: showDifferences ? 'origin' : false, 
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                spanGaps: true // Draw line over nulls in alignedMfgValues if any
+            }];
+
+            if (showMovingAverage && calculatedMfgSma.some(v => v !== null)) {
+                mfgDatasets.push({
+                    label: `Mfg ${smaWindow}-Month SMA`,
+                    data: calculatedMfgSma, // Already padded by calculateSMA or filled with nulls
+                    borderColor: 'rgba(25, 118, 210, 0.6)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    spanGaps: false // SMA line breaks if its own data has nulls
+                });
+            }
+
+            mfgComparisonChartInstance = new Chart(mfgCtx, {
+                type: 'line',
+                data: { labels: combinedLabels, datasets: mfgDatasets },
+                options: getBaseChartOptions(`Manufacturing Index: ${indexName === 'PMI' ? 'PMI' : indexName}`)
+            });
+
+            // 2. Services Line Chart
+            // Prepare SMA data specifically for Services (this logic was already improved in my last full JS example)
+            let calculatedSvcSma = [];
+            if (showMovingAverage) {
+                const numericSvcValuesForSma = alignedSvcValues.filter(v => typeof v === 'number' && !isNaN(v));
+                // console.log("Numeric SVC Values for SMA:", numericSvcValuesForSma); // DEBUG
+                if (numericSvcValuesForSma.length >= smaWindow) {
+                    calculatedSvcSma = calculateSMA(numericSvcValuesForSma, smaWindow);
+                } else {
+                    calculatedSvcSma = Array(combinedLabels.length).fill(null); // Fill to match labels length
+                }
+                // console.log("Calculated SVC SMA data:", calculatedSvcSma); // DEBUG
+            }
+
+            const svcDatasets = [{
+                label: `Services ${indexName === 'PMI' ? 'PMI' : indexName}`,
+                data: alignedSvcValues,
+                borderColor: '#2e7d32', 
+                backgroundColor: 'rgba(46, 125, 50, 0.1)',
+                tension: 0.1,
+                // If 'showDifferences' is true, fill to origin.
+                fill: showDifferences ? 'origin' : false,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                spanGaps: true // Draw line over nulls in alignedSvcValues if any
+            }];
+
+            if (showMovingAverage && calculatedSvcSma.some(v => v !== null)) {
+                svcDatasets.push({
+                    label: `Svc ${smaWindow}-Month SMA`,
+                    data: calculatedSvcSma, // Already padded
+                    borderColor: 'rgba(46, 125, 50, 0.6)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    spanGaps: false
+                });
+            }
+
+            svcComparisonChartInstance = new Chart(svcCtx, {
+                type: 'line',
+                data: { labels: combinedLabels, datasets: svcDatasets },
+                options: getBaseChartOptions(`Services Index: ${indexName === 'PMI' ? 'PMI' : indexName}`)
+            });
+
+            // --- Data for Difference and Correlation (only where both sectors have data) ---
+            const commonDataPoints = [];
+            combinedLabels.forEach((label, i) => {
+                const mfgVal = alignedMfgValues[i];
+                const svcVal = alignedSvcValues[i];
+                // Ensure both values are valid numbers for this common label
+                if (mfgVal !== null && svcVal !== null && !isNaN(mfgVal) && !isNaN(svcVal)) {
+                    commonDataPoints.push({
+                        date: label,
+                        mfgValue: mfgVal,
+                        svcValue: svcVal,
+                        difference: mfgVal - svcVal
+                    });
+                }
+            });
+
+            const differenceChartLabels = commonDataPoints.map(item => item.date);
+            const differences = commonDataPoints.map(item => item.difference);
+
+            // 3. Difference Bar Chart
+            diffComparisonChartInstance = new Chart(diffCtx, {
+                type: 'bar',
+                data: {
+                    labels: differenceChartLabels,
+                    datasets: [{
+                        label: `Difference (Mfg - Svc)`,
+                        data: differences,
+                        backgroundColor: differences.map(diff =>
+                            diff > 0 ? 'rgba(25, 118, 210, 0.7)' : (diff < 0 ? 'rgba(46, 125, 50, 0.7)' : 'rgba(128,128,128,0.6)')
+                        ),
+                        borderColor: differences.map(diff =>
+                            diff > 0 ? '#1976d2' : (diff < 0 ? '#2e7d32' : '#808080')
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: getBaseChartOptions(`Difference: Mfg - Svc (${indexName === 'PMI' ? 'PMI' : indexName})`, 'Difference (Points)')
+            });
+
+            // 4. Correlation Scatter Plot
+            const scatterPairs = commonDataPoints.map(item => ({
+                x: item.mfgValue,
+                y: item.svcValue,
+                date: item.date // For tooltip
+            }));
+
+            corrComparisonChartInstance = new Chart(corrCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: `Correlation Scatter`,
+                        data: scatterPairs,
+                        backgroundColor: 'rgba(255, 152, 0, 0.7)', // Orange
+                        borderColor: '#ff9800',
+                        borderWidth: 1,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: `Correlation: Mfg vs Svc (${indexName === 'PMI' ? 'PMI' : indexName})`, font: { weight: 'bold', size: 14 } },
+                        legend: { display: false }, // Scatter usually doesn't need a legend for one series
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const point = context.raw;
+                                    return `${point.date}: Mfg ${point.x.toFixed(1)}, Svc ${point.y.toFixed(1)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: `Manufacturing ${indexName === 'PMI' ? 'PMI' : indexName}` }, grid: { color: 'rgba(0,0,0,0.05)'} },
+                        y: { title: { display: true, text: `Services ${indexName === 'PMI' ? 'PMI' : indexName}` }, grid: { color: 'rgba(0,0,0,0.05)'} }
+                    }
+                }
+            });
+
+            // Optional: Draw regression line if you have the function and enough data
+            if (typeof drawRegressionLine === "function" && scatterPairs.length >= 2) {
+                drawRegressionLine(corrComparisonChartInstance, scatterPairs);
+            }
+        }
+
+
+        function updateComparisonMetrics(containerId, data, reportTypePrefix) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const values = data.map(item => parseFloat(item.index_value)).filter(v => !isNaN(v)); // Filter out NaNs
+            if (values.length === 0) {
+                container.innerHTML = `<div class="col-12"><p class="text-muted text-center">No data available for metrics.</p></div>`;
+                return;
+            }
+
+            const latest = values.length > 0 ? values[0] : 0; // Assuming data is sorted newest to oldest
+            const previous = values.length > 1 ? values[1] : latest; // Use latest if no previous to avoid NaN change
+            const change = latest - previous;
+            const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+            const max = Math.max(...values);
+            const min = Math.min(...values);
+
+            const status = latest >= 50 ? 'Expansion' : (latest > 0 ? 'Contraction' : 'N/A'); // Handle zero/null latest
+            const statusClass = latest >= 50 ? 'text-success' : (latest > 0 ? 'text-danger' : 'text-muted');
+            const changeDirClass = change > 0 ? 'text-success' : (change < 0 ? 'text-danger' : 'text-secondary');
+            const changeText = change > 0 ? `+${change.toFixed(1)} <i class="bi bi-arrow-up-short"></i>` : (change < 0 ? `${change.toFixed(1)} <i class="bi bi-arrow-down-short"></i>` : `0.0 (No Change)`);
+            
+            container.innerHTML = `
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Latest</h6>
+                            <h4 class="mb-0 kpi-value">${latest > 0 ? latest.toFixed(1) : '--'}</h4>
+                            <span class="${statusClass} small fw-bold">${status}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Change</h6>
+                            <h4 class="mb-0 kpi-value ${changeDirClass}">${changeText}</h4>
+                            <span class="text-muted small">from prev. month</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Average</h6>
+                            <h4 class="mb-0 kpi-value">${avg > 0 ? avg.toFixed(1) : '--'}</h4>
+                            <span class="text-muted small">Last ${data.length} months</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body p-2 p-lg-3 text-center">
+                            <h6 class="card-subtitle text-muted mb-1 small text-uppercase">Range</h6>
+                            <h4 class="mb-0 kpi-value">${min > 0 ? min.toFixed(1) : '--'} – ${max > 0 ? max.toFixed(1) : '--'}</h4>
+                            <span class="text-muted small">Min – Max</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function analyzeDifferences(manufacturingData, servicesData, indexName) {
+            const insightsContainer = document.getElementById('comparisonInsights');
+            if (!insightsContainer) return;
+
+            const mfgValues = manufacturingData.map(item => parseFloat(item.index_value)).filter(v => !isNaN(v));
+            const svcValues = servicesData.map(item => parseFloat(item.index_value)).filter(v => !isNaN(v));
+
+            // Align data for direct comparison (assuming same length and order for simplicity here)
+            // A more robust alignment would match dates, similar to renderComparisonCharts
+            const commonLength = Math.min(mfgValues.length, svcValues.length);
+            if (commonLength < 2) {
+                insightsContainer.innerHTML = `<p class="text-muted">Insufficient common data points (need at least 2) for meaningful comparison insights.</p>`;
+                return;
+            }
+
+            const alignedMfg = manufacturingData.slice(0, commonLength).map(item => parseFloat(item.index_value));
+            const alignedSvc = servicesData.slice(0, commonLength).map(item => parseFloat(item.index_value));
+            const commonDates = manufacturingData.slice(0, commonLength).map(item => item.month_year);
+
+
+            const differences = alignedMfg.map((mfg, i) => mfg - alignedSvc[i]);
+            const avgDiff = differences.reduce((sum, diff) => sum + diff, 0) / differences.length;
+            const latestDiff = differences.length > 0 ? differences[0] : NaN; // Newest data is at index 0
+            const prevDiff = differences.length > 1 ? differences[1] : NaN;
+            const diffChange = !isNaN(latestDiff) && !isNaN(prevDiff) ? latestDiff - prevDiff : NaN;
+
+            const correlation = calculateCorrelation(alignedMfg, alignedSvc);
+            const mfgTrend = calculateTrend(alignedMfg);
+            const svcTrend = calculateTrend(alignedSvc);
+
+            let insightsHTML = `<ul class="list-unstyled">`;
+            insightsHTML += `<li class="mb-2"><i class="bi bi-rulers me-2 text-primary"></i>Average Difference (Mfg - Svc): <strong class="${avgDiff > 0 ? 'text-info' : (avgDiff < 0 ? 'text-success' : 'text-secondary')}">${avgDiff.toFixed(1)} points</strong>.</li>`;
+            if (!isNaN(latestDiff)) {
+                insightsHTML += `<li class="mb-2"><i class="bi bi-calendar-event me-2 text-primary"></i>Latest Difference (${commonDates[0]}): <strong class="${latestDiff > 0 ? 'text-info' : (latestDiff < 0 ? 'text-success' : 'text-secondary')}">${latestDiff.toFixed(1)} points</strong>.</li>`;
+            }
+            if (!isNaN(diffChange)) {
+                insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Change in Difference: <strong class="${diffChange > 0 ? 'text-danger' : (diffChange < 0 ? 'text-success' : 'text-secondary')}">${diffChange.toFixed(1)} points</strong> (gap ${diffChange > 0 ? 'widened for Mfg' : (diffChange < 0 ? 'narrowed or favored Svc' : 'stable')}).</li>`;
+            }
+            insightsHTML += `<li class="mb-2"><i class="bi bi-link-45deg me-2 text-primary"></i>Correlation: <strong>${correlation.toFixed(2)}</strong> (${interpretCorrelation(correlation)}).</li>`;
+            insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up me-2 text-info"></i>Mfg Trend: <strong>${mfgTrend.toFixed(2)} points/period</strong>.</li>`;
+            insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up me-2 text-success"></i>Svc Trend: <strong>${svcTrend.toFixed(2)} points/period</strong>.</li>`;
+
+            if (commonLength >= Math.max(3, (2 * 2 + 1)) ) { // Ensure enough data for lead/lag (maxLag of 2)
+                const leadLagResult = analyzeLeadLag(alignedMfg, alignedSvc, 2); // Max lag of 2
+                insightsHTML += `<li class="mt-2"><i class="bi bi-hourglass-split me-2 text-primary"></i>Lead/Lag: ${leadLagResult}</li>`;
+            } else {
+                insightsHTML += `<li class="mt-2"><i class="bi bi-hourglass-split me-2 text-muted"></i>Not enough data for robust lead/lag analysis.</li>`;
+            }
+
+            insightsHTML += `</ul>`;
+            insightsContainer.innerHTML = insightsHTML;
+        }
+
+
+        function calculateCorrelation(xArray, yArray) {
+            if (xArray.length !== yArray.length || xArray.length === 0) return NaN;
+            const n = xArray.length;
+            const sumX = xArray.reduce((s, v) => s + v, 0);
+            const sumY = yArray.reduce((s, v) => s + v, 0);
+            const sumXY = xArray.reduce((s, v, i) => s + v * yArray[i], 0);
+            const sumX2 = xArray.reduce((s, v) => s + v * v, 0);
+            const sumY2 = yArray.reduce((s, v) => s + v * v, 0);
+            const numerator = n * sumXY - sumX * sumY;
+            const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+            return denominator === 0 ? 0 : numerator / denominator;
+        }
+
+        function calculateTrend(values) {
+            if (values.length < 2) return NaN;
+            const n = values.length;
+            const x = Array.from({ length: n }, (_, i) => i); // Time periods 0, 1, 2...
+            const sumX = x.reduce((s, v) => s + v, 0);
+            const sumY = values.reduce((s, v) => s + v, 0);
+            const sumXY = x.reduce((s, v, i) => s + v * values[i], 0);
+            const sumX2 = x.reduce((s, v) => s + v * v, 0);
+            const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+            return isNaN(slope) ? 0 : slope; // Return 0 if slope is NaN (e.g. all x values are same)
+        }
+
+        function interpretCorrelation(corr) {
+            if (isNaN(corr)) return "N/A (insufficient data)";
+            const absCorr = Math.abs(corr);
+            if (absCorr >= 0.8) return `very strong ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            if (absCorr >= 0.6) return `strong ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            if (absCorr >= 0.4) return `moderate ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            if (absCorr >= 0.2) return `weak ${corr > 0 ? 'positive' : 'negative'} correlation`;
+            return 'very weak or no linear correlation';
+        }
+
+        function analyzeLeadLag(series1, series2, maxLag) {
+            if (series1.length < maxLag * 2 + 1 || series2.length < maxLag * 2 + 1) {
+                return "Insufficient data for lead/lag analysis.";
+            }
+            let bestCorr = -2; // Impossible correlation value
+            let bestLag = 0;
+            let leadSeries = "";
+
+            for (let lag = -maxLag; lag <= maxLag; lag++) {
+                let s1, s2;
+                if (lag === 0) {
+                    s1 = series1;
+                    s2 = series2;
+                } else if (lag > 0) { // series1 leads series2 by 'lag' periods
+                    s1 = series1.slice(0, series1.length - lag);
+                    s2 = series2.slice(lag);
+                } else { // series2 leads series1 by 'abs(lag)' periods
+                    s1 = series1.slice(Math.abs(lag));
+                    s2 = series2.slice(0, series2.length - Math.abs(lag));
+                }
+                
+                // Ensure arrays are of same length for correlation
+                const commonLen = Math.min(s1.length, s2.length);
+                if (commonLen < 3) continue; // Need at least 3 points for a meaningful correlation
+
+                s1 = s1.slice(0, commonLen);
+                s2 = s2.slice(0, commonLen);
+
+                const corr = calculateCorrelation(s1, s2);
+                if (!isNaN(corr) && Math.abs(corr) > Math.abs(bestCorr)) {
+                    bestCorr = corr;
+                    bestLag = lag;
+                }
+            }
+
+            if (Math.abs(bestCorr) < 0.3) { // Threshold for "significant" correlation for lead/lag
+                return `No clear lead/lag relationship detected (max correlation ${bestCorr.toFixed(2)}).`;
+            }
+            if (bestLag > 0) {
+                return `Manufacturing appears to lead Services by ${bestLag} month(s) (correlation: ${bestCorr.toFixed(2)}).`;
+            } else if (bestLag < 0) {
+                return `Services appears to lead Manufacturing by ${Math.abs(bestLag)} month(s) (correlation: ${bestCorr.toFixed(2)}).`;
+            } else {
+                return `Manufacturing and Services move mostly in tandem (correlation: ${bestCorr.toFixed(2)} at 0 lag).`;
+            }
+        }
+
+        // Function to draw regression line (optional, if needed for scatter plot)
+        function drawRegressionLine(chartInstance, scatterData) {
+            if (scatterData.length < 2) return;
+            const xValues = scatterData.map(p => p.x);
+            const yValues = scatterData.map(p => p.y);
+
+            // Calculate linear regression parameters (slope 'm' and intercept 'b')
+            const n = xValues.length;
+            const sumX = xValues.reduce((a, b) => a + b, 0);
+            const sumY = yValues.reduce((a, b) => a + b, 0);
+            const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
+            const sumX2 = xValues.reduce((sum, x) => sum + x * x, 0);
+
+            const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+            const intercept = (sumY - slope * sumX) / n;
+
+            if (isNaN(slope) || isNaN(intercept)) return; // Avoid drawing if calculation fails
+
+            // Find min and max X values to determine line endpoints
+            const minX = Math.min(...xValues);
+            const maxX = Math.max(...xValues);
+            const regressionLineData = [
+                { x: minX, y: slope * minX + intercept },
+                { x: maxX, y: slope * maxX + intercept }
+            ];
+
+            // Add regression line as a new dataset or update existing one
+            const regressionDatasetIndex = chartInstance.data.datasets.findIndex(ds => ds.label === 'Regression Line');
+            if (regressionDatasetIndex > -1) {
+                chartInstance.data.datasets[regressionDatasetIndex].data = regressionLineData;
+            } else {
+                chartInstance.data.datasets.push({
+                    label: 'Regression Line',
+                    data: regressionLineData,
+                    type: 'line',
+                    borderColor: 'rgba(128, 0, 128, 0.7)', // Purple
+                    borderWidth: 2,
+                    fill: false,
+                    pointRadius: 0,
+                    tension: 0 // Straight line
+                });
+            }
+            chartInstance.update();
+        }
+
+
+        function loadComparisonView() {
+            const indexSelect = document.getElementById('comparisonIndexSelect');
+            const timeRangeSelect = document.getElementById('comparisonTimeRange');
+            const insightsContainer = document.getElementById('comparisonInsights');
+
+            if (!indexSelect || !timeRangeSelect || !insightsContainer) {
+                console.error("Comparison view essential elements are missing.");
+                const compTabContent = document.getElementById('comparison');
+                if (compTabContent) compTabContent.innerHTML = "<div class='alert alert-danger'>Error initializing comparison view components.</div>";
+                return;
+            }
+
+            const indexName = indexSelect.value || 'PMI';
+            const timeRange = timeRangeSelect.value || '12';
+
+            const mfgChartContainer = document.getElementById('manufacturingComparisonChartContainer');
+            const svcChartContainer = document.getElementById('servicesComparisonChartContainer');
+            const diffChartContainer = document.getElementById('differenceChartContainer');
+            const corrChartContainer = document.getElementById('correlationChartContainer');
+            const metricsMfg = document.getElementById('manufacturingMetrics');
+            const metricsSvc = document.getElementById('servicesMetrics');
+
+            const loadingHTML = (height = '300px') => `<div class="loading-overlay d-flex align-items-center justify-content-center" style="height:${height};"><div class="loading-spinner"></div></div>`;
+            
+            if (mfgChartContainer) mfgChartContainer.innerHTML = loadingHTML();
+            if (svcChartContainer) svcChartContainer.innerHTML = loadingHTML();
+            if (diffChartContainer) diffChartContainer.innerHTML = loadingHTML();
+            if (corrChartContainer) corrChartContainer.innerHTML = loadingHTML();
+            if (metricsMfg) metricsMfg.innerHTML = loadingHTML('120px');
+            if (metricsSvc) metricsSvc.innerHTML = loadingHTML('120px');
+            if (insightsContainer) insightsContainer.innerHTML = loadingHTML('100px');
+
+            // Populate dropdown if not already done
+            if (indexSelect.options.length <= 1) { // Allows for a default "PMI" option
+                Promise.all([
+                    fetch('/api/all_indices?report_type=Manufacturing').then(r => r.json()),
+                    fetch('/api/all_indices?report_type=Services').then(r => r.json())
+                ]).then(([mfgIndicesAll, svcIndicesAll]) => {
+                    const commonIndices = mfgIndicesAll.filter(idx => 
+                        svcIndicesAll.includes(idx) && 
+                        idx !== 'Manufacturing PMI' && // Already covered by "PMI" option
+                        idx !== 'Services PMI'
+                    ).sort();
+
+                    // Clear existing options except for a potential default "PMI"
+                    let pmiOptionExists = false;
+                    Array.from(indexSelect.options).forEach(opt => {
+                        if (opt.value === 'PMI') pmiOptionExists = true;
+                        else indexSelect.remove(opt.index);
+                    });
+                    if (!pmiOptionExists) {
+                        const pmiOpt = document.createElement('option');
+                        pmiOpt.value = 'PMI';
+                        pmiOpt.text = 'PMI (Overall)';
+                        indexSelect.insertBefore(pmiOpt, indexSelect.firstChild);
+                    }
+
+                    commonIndices.forEach(idx => {
+                        const option = document.createElement('option');
+                        option.value = idx;
+                        option.text = idx;
+                        indexSelect.appendChild(option);
+                    });
+                    indexSelect.value = indexName; // Set to current/default after populating
+                    fetchComparisonData(indexName, timeRange); // Now fetch data
+                }).catch(error => {
+                    console.error('Error populating comparison index select:', error);
+                    fetchComparisonData(indexName, timeRange); // Try fetching with default anyway
+                });
+            } else {
+                fetchComparisonData(indexName, timeRange);
+            }
+        }
+
+        function fetchComparisonData(indexNameToFetch, timeRange) {
+            const mfgIndex = indexNameToFetch === 'PMI' ? 'Manufacturing PMI' : indexNameToFetch;
+            const svcIndex = indexNameToFetch === 'PMI' ? 'Services PMI' : indexNameToFetch;
+            const showDifferencesToggle = document.getElementById('showDifferencesToggle'); // get toggle state
+
+            Promise.all([
+                fetch(`/api/index_trends/${encodeURIComponent(mfgIndex)}?months=${timeRange}&report_type=Manufacturing`).then(handleFetchResponse),
+                fetch(`/api/index_trends/${encodeURIComponent(svcIndex)}?months=${timeRange}&report_type=Services`).then(handleFetchResponse)
+            ])
+            .then(([manufacturingData, servicesData]) => {
+                renderComparisonCharts(manufacturingData, servicesData, indexNameToFetch);
+                updateComparisonMetrics('manufacturingMetrics', manufacturingData, 'Manufacturing');
+                updateComparisonMetrics('servicesMetrics', servicesData, 'Services');
+                analyzeDifferences(manufacturingData, servicesData, indexNameToFetch);
+            })
+            .catch(error => {
+                console.error('Error loading comparison data:', error);
+                const errorMsg = `Failed to load comparison data for ${indexNameToFetch}: ${error.message || error}.`;
+                document.getElementById('manufacturingComparisonChartContainer').innerHTML = `<div class="alert alert-danger p-2 m-2">${errorMsg}</div>`;
+                // Clear other containers or show specific error messages
+                ['servicesComparisonChartContainer', 'differenceChartContainer', 'correlationChartContainer', 'manufacturingMetrics', 'servicesMetrics', 'comparisonInsights'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = `<div class="alert alert-warning p-1 m-1 small">Data unavailable due to previous error.</div>`;
+                });
+            });
+        }
+
+        function handleFetchResponse(response) {
+            if (!response.ok) {
+                return response.text().then(text => { throw new Error(`API Error ${response.status}: ${text || response.statusText}`) });
+            }
+            return response.json();
+        }
+       
         // Main initialization function
         document.addEventListener('DOMContentLoaded', function() {
             // Update KPI cards
@@ -719,6 +1645,27 @@
             // Initialize the heatmap if it's the active tab
             if (document.getElementById('heatmap-tab').classList.contains('active')) {
                 loadHeatmapData();
+            }
+
+            // Initialize heatmap title based on current report type
+            const currentType = getCurrentReportType();
+            const heatmapTitle = document.getElementById('heatmapTitle');
+            if (heatmapTitle) {
+                if (currentType === 'Services') {
+                    heatmapTitle.textContent = 'Services PMI Heatmap Summary';
+                } else {
+                    heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                }
+            }
+
+            // Initialize trends title based on current report type
+            const trendsTitle = document.getElementById('trendsTitle');
+            if (trendsTitle) {
+                if (currentType === 'Services') {
+                    trendsTitle.textContent = 'Services PMI Trends';
+                } else {
+                    trendsTitle.textContent = 'Manufacturing PMI Trends';
+                }
             }
 
             // Set up index selection changes for both tabs
@@ -808,7 +1755,7 @@
                     // Force redraw by emptying the container first
                     const heatmapContainer = document.querySelector('.heatmap-container');
                     heatmapContainer.innerHTML = '';
-                    loadHeatmapData();
+                    loadHeatmapData(getCurrentReportType());
                 });
             }
             
@@ -832,7 +1779,7 @@
                             // Update the current index display
                             document.getElementById('currentIndexName').textContent = indexSelect.options[indexSelect.selectedIndex].text;
                             // Load data for this index
-                            loadGrowthTable('alpha', selectedIndex);
+                            loadGrowthTable('alpha', selectedIndex, getCurrentReportType());
                         }
                     });
                 }
@@ -857,94 +1804,189 @@
         }
 
         // KPI Cards Functions
-        function updateKpiCards() {
+        function updateKpiCards(reportType = "Manufacturing") {
             try {
-                // Check if heatmap_data exists and has at least one record
-                if (typeof heatmap_data === 'undefined' || !heatmap_data || heatmap_data.length === 0) {
-                    console.warn("No heatmap data available for KPI cards");
-                    return;
-                }
+                // Define the index names based on report type
+                const pmiKey = reportType === "Services" ? "Services PMI" : "Manufacturing PMI";
+                const productionKey = reportType === "Services" ? "Business Activity" : "Production";
                 
-                // Get the most recent month's data
-                const latestData = heatmap_data[0];
-                
-                // Update Manufacturing PMI
-                if (latestData.indices && latestData.indices['Manufacturing PMI']) {
-                    const pmiData = latestData.indices['Manufacturing PMI'];
-                    const pmiValue = pmiData.value;
-                    const pmiDirection = pmiData.direction;
-                    
-                    document.getElementById('mainPmiValue').textContent = pmiValue;
-                    
-                    const directionElem = document.getElementById('mainPmiDirection');
-                    directionElem.textContent = pmiDirection;
-                    
-                    if (pmiDirection === 'Growing') {
-                        directionElem.className = 'kpi-direction text-growing';
-                    } else if (pmiDirection === 'Contracting') {
-                        directionElem.className = 'kpi-direction text-contracting';
-                    } else {
-                        directionElem.className = 'kpi-direction text-muted';
-                    }
-                    
-                    // Add change if available in data
-                    if (heatmap_data.length > 1) {
-                        const prevData = heatmap_data[1];
-                        if (prevData.indices && prevData.indices['Manufacturing PMI']) {
-                            const prevValue = parseFloat(prevData.indices['Manufacturing PMI'].value);
-                            const currentValue = parseFloat(pmiValue);
-                            
-                            if (!isNaN(prevValue) && !isNaN(currentValue)) {
-                                const change = (currentValue - prevValue).toFixed(1);
-                                const changeElem = document.getElementById('mainPmiChange');
-                                
-                                if (parseFloat(change) > 0) {
-                                    changeElem.textContent = `+${change} from previous`;
-                                    changeElem.className = 'badge rounded-pill bg-success';
-                                } else if (parseFloat(change) < 0) {
-                                    changeElem.textContent = `${change} from previous`;
-                                    changeElem.className = 'badge rounded-pill bg-danger';
-                                } else {
-                                    changeElem.textContent = 'No change';
-                                    changeElem.className = 'badge rounded-pill bg-secondary';
-                                }
+                // Fetch fresh data for the selected report type
+                // This is critical - we need to get data specific to the report type
+                fetch(`/api/heatmap_data/6?report_type=${reportType}`)
+                    .then(response => response.json())
+                    .then(freshData => {
+                        // Update global heatmap_data with the fetched data
+                        window.heatmap_data = freshData;
+                        
+                        // Check if heatmap_data exists and has at least one record
+                        if (!window.heatmap_data || !window.heatmap_data.length) {
+                            console.warn(`No heatmap data available for ${reportType} KPI cards`);
+                            clearKpiCards();
+                            return;
+                        }
+                        
+                        // Update the title text for the KPI cards to reflect report type
+                        const mainPmiTitle = document.querySelector('#mainPmiValue').closest('.kpi-card').querySelector('.kpi-title');
+                        if (mainPmiTitle) {
+                            // Update just the text node, preserving the info icon
+                            const textNode = mainPmiTitle.childNodes[0];
+                            if (textNode) {
+                                textNode.nodeValue = `${pmiKey} `;
+                            } else {
+                                mainPmiTitle.prepend(document.createTextNode(`${pmiKey} `));
                             }
                         }
-                    }
-                }
-                
-                // Update other KPIs
-                updateSingleKpi('New Orders', 'newOrdersValue', 'newOrdersDirection', latestData);
-                updateSingleKpi('Production', 'productionValue', 'productionDirection', latestData);
-                updateSingleKpi('Employment', 'employmentValue', 'employmentDirection', latestData);
+                        
+                        const productionTitle = document.querySelector('#productionValue').closest('.kpi-card').querySelector('.kpi-title');
+                        if (productionTitle) {
+                            const textNode = productionTitle.childNodes[0];
+                            if (textNode) {
+                                textNode.nodeValue = `${productionKey} `;
+                            } else {
+                                productionTitle.prepend(document.createTextNode(`${productionKey} `));
+                            }
+                        }
+                        
+                        // Get the most recent month's data
+                        const latestData = window.heatmap_data[0];
+                        
+                        // Update Main PMI (Manufacturing or Services)
+                        if (latestData.indices && latestData.indices[pmiKey]) {
+                            const pmiData = latestData.indices[pmiKey];
+                            const pmiValue = pmiData.value;
+                            const pmiDirection = pmiData.direction;
+                            
+                            const mainPmiValueElem = document.getElementById('mainPmiValue');
+                            if (mainPmiValueElem) mainPmiValueElem.textContent = pmiValue;
+                            
+                            const directionElem = document.getElementById('mainPmiDirection');
+                            if (directionElem) {
+                                directionElem.textContent = pmiDirection;
+                                
+                                if (pmiDirection === 'Growing') {
+                                    directionElem.className = 'kpi-direction text-growing';
+                                } else if (pmiDirection === 'Contracting') {
+                                    directionElem.className = 'kpi-direction text-contracting';
+                                } else {
+                                    directionElem.className = 'kpi-direction text-muted';
+                                }
+                            }
+                            
+                            // Add change if available in data
+                            if (window.heatmap_data.length > 1) {
+                                const prevData = window.heatmap_data[1];
+                                if (prevData.indices && prevData.indices[pmiKey]) {
+                                    const prevValue = parseFloat(prevData.indices[pmiKey].value);
+                                    const currentValue = parseFloat(pmiValue);
+                                    
+                                    if (!isNaN(prevValue) && !isNaN(currentValue)) {
+                                        const change = (currentValue - prevValue).toFixed(1);
+                                        const changeElem = document.getElementById('mainPmiChange');
+                                        
+                                        if (changeElem) {
+                                            if (parseFloat(change) > 0) {
+                                                changeElem.textContent = `+${change} from previous`;
+                                                changeElem.className = 'badge rounded-pill bg-success';
+                                            } else if (parseFloat(change) < 0) {
+                                                changeElem.textContent = `${change} from previous`;
+                                                changeElem.className = 'badge rounded-pill bg-danger';
+                                            } else {
+                                                changeElem.textContent = 'No change';
+                                                changeElem.className = 'badge rounded-pill bg-secondary';
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Clear the PMI data if not available
+                            const mainPmiValueElem = document.getElementById('mainPmiValue');
+                            if (mainPmiValueElem) mainPmiValueElem.textContent = '--';
+                            
+                            const directionElem = document.getElementById('mainPmiDirection');
+                            if (directionElem) {
+                                directionElem.textContent = '--';
+                                directionElem.className = 'kpi-direction text-muted';
+                            }
+                            
+                            const changeElem = document.getElementById('mainPmiChange');
+                            if (changeElem) {
+                                changeElem.textContent = '';
+                                changeElem.className = 'badge rounded-pill';
+                            }
+                        }
+                        
+                        // Update other KPIs - using correct productionKey
+                        updateSingleKpi('New Orders', 'newOrdersValue', 'newOrdersDirection', 'newOrdersChange', latestData);
+                        updateSingleKpi(productionKey, 'productionValue', 'productionDirection', 'productionChange', latestData);
+                        updateSingleKpi('Employment', 'employmentValue', 'employmentDirection', 'employmentChange', latestData);
+                    })
+                    .catch(error => {
+                        console.error(`Error fetching KPI data for ${reportType}:`, error);
+                        clearKpiCards();
+                    });
             } catch (error) {
-                console.error("Error updating KPI cards:", error);
+                console.error(`Error updating ${reportType} KPI cards:`, error);
+                clearKpiCards();
             }
         }
-    
-        function updateSingleKpi(indexName, valueId, directionId, latestData) {
-            if (latestData.indices[indexName]) {
+
+        function clearKpiCards() {
+            const valueElements = ['mainPmiValue', 'newOrdersValue', 'productionValue', 'employmentValue'];
+            const directionElements = ['mainPmiDirection', 'newOrdersDirection', 'productionDirection', 'employmentDirection'];
+            const changeElements = ['mainPmiChange', 'newOrdersChange', 'productionChange', 'employmentChange'];
+            
+            valueElements.forEach(id => {
+                const elem = document.getElementById(id);
+                if (elem) elem.textContent = '--';
+            });
+            
+            directionElements.forEach(id => {
+                const elem = document.getElementById(id);
+                if (elem) {
+                    elem.textContent = '--';
+                    elem.className = 'kpi-direction text-muted';
+                }
+            });
+            
+            changeElements.forEach(id => {
+                const elem = document.getElementById(id);
+                if (elem) {
+                    elem.textContent = '';
+                    elem.className = 'badge rounded-pill';
+                }
+            });
+        }
+
+        function updateSingleKpi(indexName, valueId, directionId, changeId, latestData) {
+            const valueElem = document.getElementById(valueId);
+            const directionElem = document.getElementById(directionId);
+            const changeElem = document.getElementById(changeId);
+            
+            if (!valueElem || !directionElem) return; // Guard clause if elements don't exist
+            
+            if (latestData.indices && latestData.indices[indexName]) {
                 const data = latestData.indices[indexName];
                 const value = data.value;
                 const direction = data.direction;
                 
-                document.getElementById(valueId).textContent = value;
+                valueElem.textContent = value;
                 
-                const directionElem = document.getElementById(directionId);
                 directionElem.textContent = direction;
                 
-                if (direction === 'Growing' || direction === 'Increasing') {
+                // Expanded status mapping to handle all possible statuses
+                const positiveStatuses = ['Growing', 'Increasing', 'Higher', 'Too High', 'Slowing', 'Slower'];
+                const negativeStatuses = ['Contracting', 'Decreasing', 'Lower', 'Too Low', 'Faster'];
+                
+                if (positiveStatuses.includes(direction)) {
                     directionElem.className = 'kpi-direction text-growing';
-                } else if (direction === 'Contracting' || direction === 'Decreasing') {
+                } else if (negativeStatuses.includes(direction)) {
                     directionElem.className = 'kpi-direction text-contracting';
                 } else {
                     directionElem.className = 'kpi-direction text-muted';
                 }
                 
-                // Add change pill based on the valueId
-                const changeId = valueId.replace('Value', 'Change');
-                const changeElem = document.getElementById(changeId);
-                
+                // Update change pill
                 if (changeElem && heatmap_data.length > 1) {
                     const prevData = heatmap_data[1];
                     if (prevData.indices && prevData.indices[indexName]) {
@@ -967,119 +2009,180 @@
                         }
                     }
                 }
+            } else {
+                // Clear the data if not available
+                valueElem.textContent = '--';
+                directionElem.textContent = '--';
+                directionElem.className = 'kpi-direction text-muted';
+                
+                if (changeElem) {
+                    changeElem.textContent = '';
+                    changeElem.className = 'badge rounded-pill';
+                }
             }
         }
-
+                
         // Heatmap Functions
-        function loadHeatmapData() {
+        async function loadHeatmapData(reportType = getCurrentReportType()) {
             const heatmapContainer = document.querySelector('.heatmap-container');
-            // Clear any existing content to ensure fresh rendering
-            heatmapContainer.innerHTML = '';
-            
-            // Check if we have heatmap data
-            if (!heatmap_data || heatmap_data.length === 0) {
-                heatmapContainer.innerHTML = '<p class="text-center text-muted">No heatmap data available</p>';
+            if (!heatmapContainer) {
+                console.error("Heatmap container not found!");
                 return;
             }
-            
-            // Create table for heatmap
-            const table = document.createElement('table');
-            table.className = 'table table-bordered';
-            
-            // Create header row with months
-            const headerRow = document.createElement('tr');
-            headerRow.innerHTML = '<th>Index</th>';
-            
-            // Use the monthly data already available in heatmap_data
-            const months = heatmap_data.slice(0, 12).map(data => data.month_year);
-            
-            months.forEach(month => {
-                headerRow.innerHTML += `<th>${month}</th>`;
-            });
-            
-            const thead = document.createElement('thead');
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-            
-            // Create tbody and rows for each index
-            const tbody = document.createElement('tbody');
-            
-            // Get all unique indices
-            const allIndices = new Set();
-            heatmap_data.forEach(data => {
-                Object.keys(data.indices).forEach(index => allIndices.add(index));
-            });
-            
-            // Set fixed scale boundaries
-            const minScale = 40;  // Threshold for bright red
-            const midScale = 50;  // Neutral threshold - light green
-            const maxScale = 60;  // Threshold for bright green
-            
-            // Create row for each index
-            Array.from(allIndices).sort().forEach(index => {
-                const row = document.createElement('tr');
-                row.innerHTML = `<td>${index}</td>`;
-                
-                // Add data for each month
-                months.forEach(month => {
-                    const monthData = heatmap_data.find(data => data.month_year === month);
-                    const indexData = monthData && monthData.indices[index];
-                    
-                    if (indexData) {
-                        const value = parseFloat(indexData.value);
-                        if (!isNaN(value)) {
-                            const cellColor = calculateGlobalCellColor(value, minScale, midScale, maxScale);
-                            row.innerHTML += `<td style="background-color: ${cellColor}">${value}</td>`;
-                        } else {
-                            row.innerHTML += `<td>-</td>`;
-                        }
+            heatmapContainer.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
+
+            const heatmapTitle = document.getElementById('heatmapTitle');
+                if (heatmapTitle) {
+                    if (reportType === 'Services') {
+                        heatmapTitle.textContent = 'Services PMI Heatmap Summary';
                     } else {
-                        row.innerHTML += `<td>-</td>`;
+                        heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                    }
+                }
+
+            
+            // Get time range selection from the persistent select
+            const timeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent'); // Use the ID of the persistent select
+            const timeRangeValue = timeRangeSelect ? timeRangeSelect.value : '12'; // Default to 12 if select not found yet
+            const timeRangeUrl = timeRangeValue === 'all' ? 'all' : timeRangeValue;
+            
+            try {
+                const response = await fetch(`/api/heatmap_data/${timeRangeUrl}?report_type=${reportType}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status} while fetching heatmap data for ${reportType}`);
+                }
+                const fetchedData = await response.json(); // Use a different variable name to avoid confusion
+                
+                window.heatmap_data = fetchedData; // Update global variable if other parts rely on it directly (though ideally they'd also use fetchedData or DataProvider)
+                
+                heatmapContainer.innerHTML = ''; // Clear loading indicator
+                
+                if (!fetchedData || fetchedData.length === 0) {
+                    heatmapContainer.innerHTML = '<p class="text-center text-muted">No heatmap data available for selected criteria.</p>';
+                    updateKpiCards(reportType); // Update KPIs even if heatmap is empty (to show '--')
+                    return;
+                }
+
+                const table = document.createElement('table');
+                table.className = 'table table-bordered data-table'; // Added data-table for styling
+                
+                const headerRow = document.createElement('tr');
+                headerRow.innerHTML = '<th>Index</th>';
+                
+                // Use the months from the actual fetchedData
+                const months = fetchedData.map(item => item.month_year); 
+                
+                months.forEach(month => {
+                    headerRow.innerHTML += `<th>${month}</th>`;
+                });
+                
+                const thead = document.createElement('thead');
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                const tbody = document.createElement('tbody');
+                const allIndices = new Set();
+                // Iterate over fetchedData to collect all unique indices present in *this specific dataset*
+                fetchedData.forEach(monthEntry => {
+                    if (monthEntry.indices) {
+                        Object.keys(monthEntry.indices).forEach(index => allIndices.add(index));
                     }
                 });
                 
-                tbody.appendChild(row);
-            });
-            
-            table.appendChild(tbody);
-            heatmapContainer.appendChild(table);
-            
-            // Add time range filter below the table
-            const timeRangeControlDiv = document.createElement('div');
-            timeRangeControlDiv.className = 'mt-4 d-flex justify-content-end';
-            
-            // If we're using a clone instead of moving the actual element
-            const timeRangeClone = document.createElement('div');
-            timeRangeClone.className = 'filter-select';
-            timeRangeClone.innerHTML = `
-                <label for="heatmapTimeRange" class="form-label">Time Range:</label>
-                <select class="form-select" id="heatmapTimeRange">
-                    <option value="6">Last 6 Months</option>
-                    <option value="12" selected>Last 12 Months</option>
-                    <option value="24">Last 24 Months</option>
-                    <option value="36">Last 36 Months</option>
-                    <option value="all">All Available Data</option>
-                </select>
-            `;
-            
-            // Add event listener for the time range filter
-            timeRangeClone.querySelector('select').addEventListener('change', function() {
-                // Update the original time range filter value to maintain sync
-                const originalFilter = document.getElementById('timeRangeFilter');
-                if (originalFilter) {
-                    originalFilter.value = this.value;
-                }
+                const minScale = 40;
+                const midScale = 50;
+                const maxScale = 60;
                 
-                // Reload heatmap with new time range
-                loadHeatmapData();
-            });
-            
-            timeRangeControlDiv.appendChild(timeRangeClone);
-            heatmapContainer.appendChild(timeRangeControlDiv);
-            
-            console.log("Heatmap loaded successfully with time range control below");
-        }
+                // Define the desired order of indices
+                const pmiKey = reportType === "Services" ? "Services PMI" : "Manufacturing PMI";
+                const productionKey = reportType === "Services" ? "Business Activity" : "Production";
+                const customerInvKey = reportType === "Services" ? "Inventory Sentiment" : "Customers' Inventories";
 
+                const orderedPrimaryIndices = [
+                    pmiKey, "New Orders", productionKey, "Employment", "Supplier Deliveries", 
+                    "Inventories", customerInvKey, "Prices", "Backlog of Orders", 
+                    "New Export Orders", "Imports"
+                ];
+                
+                const otherIndicesPresent = [...allIndices].filter(index => !orderedPrimaryIndices.includes(index) && !index.toUpperCase().includes("ECONOMY") && !index.toUpperCase().includes("SECTOR")).sort();
+                const finalOrderedIndicesToDisplay = [...orderedPrimaryIndices.filter(index => allIndices.has(index)), ...otherIndicesPresent];
+
+                finalOrderedIndicesToDisplay.forEach(index => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `<td>${index}</td>`;
+                    
+                    months.forEach(month => {
+                        const monthEntry = fetchedData.find(item => item.month_year === month);
+                        const indexDataForMonth = monthEntry && monthEntry.indices ? monthEntry.indices[index] : null;
+                        
+                        let cellContent = '-';
+                        let cellStyle = '';
+
+                        if (indexDataForMonth && (typeof indexDataForMonth.value !== 'undefined' && indexDataForMonth.value !== null)) {
+                            const value = parseFloat(indexDataForMonth.value);
+                            if (!isNaN(value)) {
+                                cellContent = value.toFixed(1); // Display one decimal place
+                                const cellColor = calculateGlobalCellColor(value, minScale, midScale, maxScale);
+                                const textColor = getTextColorForBackground(cellColor);
+                                cellStyle = `background-color: ${cellColor}; color: ${textColor};`;
+                            }
+                        }
+                        row.innerHTML += `<td style="${cellStyle}">${cellContent}</td>`;
+                    });
+                    tbody.appendChild(row);
+                });
+                
+                table.appendChild(tbody);
+                heatmapContainer.appendChild(table);
+                
+                // --- Persistent Time Range Filter ---
+                // Ensure the time range filter is part of the static HTML in the heatmap tab,
+                // or manage its creation/update carefully to avoid duplicates.
+                // For this example, assuming it exists with ID 'heatmapTimeRangeSelectPersistent'
+                let persistentTimeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent');
+                if (!persistentTimeRangeSelect) {
+                    // If it wasn't in HTML, create it (less ideal than static HTML for this control)
+                    const timeRangeControlDiv = document.createElement('div');
+                    timeRangeControlDiv.className = 'mt-4 d-flex justify-content-end heatmap-time-range-controls';
+                    const timeRangeSelectHTML = `
+                        <div class="filter-select">
+                            <label for="heatmapTimeRangeSelectPersistent" class="form-label">Time Range:</label>
+                            <select class="form-select" id="heatmapTimeRangeSelectPersistent">
+                                <option value="6">Last 6 Months</option>
+                                <option value="12">Last 12 Months</option>
+                                <option value="24">Last 24 Months</option>
+                                <option value="36">Last 36 Months</option>
+                                <option value="all">All Available Data</option>
+                            </select>
+                        </div>
+                    `;
+                    timeRangeControlDiv.innerHTML = timeRangeSelectHTML;
+                    heatmapContainer.appendChild(timeRangeControlDiv);
+                    persistentTimeRangeSelect = document.getElementById('heatmapTimeRangeSelectPersistent');
+                    
+                    // Add event listener only if newly created
+                    persistentTimeRangeSelect.addEventListener('change', function() {
+                        loadHeatmapData(); // Reload with currentReportTypeGlobal (implicitly)
+                    });
+                }
+                // Set its value to what was used for the current fetch
+                persistentTimeRangeSelect.value = timeRangeValue;
+                    
+                console.log("Heatmap loaded successfully.");
+                updateKpiCards(reportType); // Update KPIs with the data relevant to this reportType and fetched timeRange
+            } catch (error) {
+                console.error('Error fetching or rendering heatmap data:', error);
+                if (heatmapContainer) {
+                    heatmapContainer.innerHTML = `
+                        <div class="error-container">
+                        <div class="error-title">Error Loading Heatmap Data</div>
+                        <p>${error.message || 'Please try again later.'}</p>
+                        </div>
+                    `;
+                }
+            }
+        }
+        
         // Helper function to calculate cell color based on global scale
         function calculateGlobalCellColor(value, min, mid, max) {
                 function rgbToHex(r, g, b) {
@@ -1127,6 +2230,7 @@
                 }
                 return rgbToHex(r, g, b);
             }
+        
         function getTextColorForBackground(hexColor) {
             function hexToRgb(hex) {
                 if (!hex || hex.length < 4) return null;
@@ -1145,16 +2249,24 @@
             }
 
         // Growth Table Functions
-        function loadGrowthTable(tableType, indexName) {
+        function loadGrowthTable(tableType, indexName, reportType = getCurrentReportType()) {
             const isAlpha = tableType === 'alpha';
             const tableId = isAlpha ? 'alphaTableBody' : 'numTableBody';
             const headerRowId = isAlpha ? 'alphaHeaderRow' : 'numHeaderRow';
             
             // Show loading indicator
-            document.getElementById(tableId).innerHTML = '<tr><td colspan="20" class="text-center">Loading...</td></tr>';
+            document.getElementById(tableId).innerHTML = `
+                <tr><td colspan="20" class="text-center">
+                <div class="loading-spinner d-inline-block"></div> Loading...
+                </td></tr>`;
             
-            fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
-                .then(response => response.json())
+            fetch(`/api/industry_status/${encodeURIComponent(indexName)}?report_type=${reportType}`)
+                .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                return response.json();
+                })
                 .then(data => {
                     // Sort industries alphabetically for the alpha table
                     const industries = isAlpha 
@@ -1232,9 +2344,14 @@
                 })
                 .catch(error => {
                     console.error('Error fetching industry status:', error);
-                    document.getElementById(tableId).innerHTML = 
-                        '<tr><td colspan="20" class="text-center text-danger">Error loading data</td></tr>';
-                });
+                    document.getElementById(tableId).innerHTML = `
+                        <tr><td colspan="20" class="text-center">
+                        <div class="error-container">
+                            <div class="error-title">Error Loading Data</div>
+                            <p>Unable to load industry data: ${error.message}</p>
+                        </div>
+                        </td></tr>`;
+                    });
         }
 
         // Helper function for growth table sorting
@@ -1257,9 +2374,10 @@
         }
         
         // Numerical Growth Table
-        function loadNumericalGrowthTable(selectedValue) {
+        function loadNumericalGrowthTable(selectedValue, reportType = getCurrentReportType()) {
             console.log("Loading data for:", selectedValue);
             const cardBody = document.querySelector('.card-body');
+
             if (!cardBody) return;
 
             // Clear previous content
@@ -1267,7 +2385,7 @@
 
             if (selectedValue === "All") {
                 // Load all indices
-                fetch('/api/all_indices')
+                fetch(`/api/all_indices?report_type=${reportType}`)
                     .then(response => response.json())
                     .then(indicesList => {
                         processAllIndices(cardBody, indicesList.filter(index => index !== 'Manufacturing PMI').sort());
@@ -1279,7 +2397,7 @@
             } else {
                 // Load single index
                 cardBody.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading index...</p></div>';
-                fetch(`/api/industry_status/${encodeURIComponent(selectedValue)}`)
+                fetch(`/api/industry_status/${encodeURIComponent(selectedValue)}?report_type=${reportType}`)
                     .then(response => response.json())
                     .then(data => {
                         renderSingleIndexView(cardBody, selectedValue, data);
@@ -1389,6 +2507,7 @@
                 }
                 
                 const indexName = indices[completedCount];
+                const reportType = getCurrentReportType()
                 
                 // Create a container for this index
                 const indexContainer = document.createElement('div');
@@ -1402,7 +2521,7 @@
                 container.appendChild(indexContainer);
                 
                 // Fetch data for this index
-                fetch(`/api/industry_status/${encodeURIComponent(indexName)}?debug=true`)
+                fetch(`/api/industry_status/${encodeURIComponent(indexName)}?report_type=${reportType}&debug=true`)
                     .then(response => response.json())
                     .then(data => {
                         // Render this index
@@ -1773,14 +2892,15 @@
             }
             
             const cardBody = document.querySelector('.card-body');
+            const reportType = getCurrentReportType(); // Get current report type
             
             // Show loading indicator
             if (cardBody) {
                 cardBody.innerHTML = '<div class="text-center mt-4"><div class="spinner-border" role="status"></div><p class="mt-2">Loading indices...</p></div>';
             }
             
-            // Use the CORRECT endpoint URL - /api/all_indices instead of /api/indices
-            fetch('/api/all_indices')
+            // Add report_type parameter
+            fetch(`/api/all_indices?report_type=${reportType}`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error ${response.status}`);
@@ -1984,6 +3104,7 @@
                 }
                 
                 const indexName = indicesList[completed];
+                const reportType = getCurrentReportType()
                 progressBar.style.width = `${(completed / indicesList.length) * 100}%`;
                 progressBar.setAttribute('aria-valuenow', (completed / indicesList.length) * 100);
                 progressBar.textContent = `Loading ${indexName}... (${completed + 1}/${indicesList.length})`;
@@ -1994,7 +3115,7 @@
                 allIndicesContainer.appendChild(indexContainer);
                 
                 // Use the correct endpoint
-                fetch(`/api/industry_status/${encodeURIComponent(indexName)}`)
+                fetch(`/api/industry_status/${encodeURIComponent(indexName)}?report_type=${reportType}`)
                     .then(response => response.json())
                     .then(data => {
                         renderSingleIndexView(indexContainer, indexName, data);
@@ -2014,8 +3135,8 @@
         }
 
         // Trend Chart Functions
-        function fetchTrendData(indexName) {
-            return fetch(`/api/index_trends/${encodeURIComponent(indexName)}`)
+        function fetchTrendData(indexName, reportType = getCurrentReportType()) {
+            return fetch(`/api/index_trends/${encodeURIComponent(indexName)}?report_type=${reportType}`)
                 .then(response => response.json())
                 .catch(error => {
                     console.error('Error fetching trend data:', error);
@@ -2046,6 +3167,48 @@
             ))
             .then(results => renderMultiTrendChart(results))
             .catch(error => console.error('Error updating chart:', error));
+        }
+
+        function getCurrentReportType() {
+            // Prioritize the active button's data attribute
+            const activeButton = document.querySelector('.report-type-btn.active');
+            if (activeButton) {
+                return activeButton.getAttribute('data-report-type');
+            }
+            // Fallback to the global variable if no button is active (should not happen with proper init)
+            return window.currentReportType || 'Manufacturing';
+        }
+
+        function getCorrectIndexValue(latestData, reportType, indexName) {
+            // Define mappings between Manufacturing and Services indices
+            const indexMappings = {
+                'Manufacturing': {
+                    'Manufacturing PMI': ['Manufacturing PMI', 'PMI'],
+                    'Production': ['Production', 'Business Activity'],
+                    'New Orders': ['New Orders'],
+                    'Employment': ['Employment']
+                },
+                'Services': {
+                    'Services PMI': ['Services PMI', 'PMI', 'Manufacturing PMI'],
+                    'Business Activity': ['Business Activity', 'Production'],
+                    'New Orders': ['New Orders'],
+                    'Employment': ['Employment']
+                }
+            };
+            
+            // Get appropriate mapping
+            const mapping = indexMappings[reportType] || {};
+            const alternativeNames = mapping[indexName] || [indexName];
+            
+            // Try each alternative name
+            for (const name of alternativeNames) {
+                if (latestData.indices && latestData.indices[name]) {
+                    return latestData.indices[name];
+                }
+            }
+            
+            // Return empty object if no data found
+            return { value: '--', direction: '--' };
         }
 
         function renderMultiTrendChart(indexDataArray) {
@@ -2176,7 +3339,326 @@
                 }
             });
         }
-        }); 
+        
+        // Report Type Selector Logic
+        const reportTypeBtns = document.querySelectorAll('.report-type-btn');
+        const currentReportBadge = document.getElementById('currentReportBadge');
+        let currentReportType = localStorage.getItem('preferredReportType') || 'Manufacturing';
+        
+        // Initialize from URL parameter if present
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('report_type')) {
+            currentReportType = urlParams.get('report_type');
+        }
+        
+        // Initialize report type
+        updateReportType(currentReportType);
+        
+        // Add event listeners to report type buttons
+        reportTypeBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+            const reportType = this.getAttribute('data-report-type');
+            updateReportType(reportType);
+            
+            // Reload data for all tabs
+            refreshAllData(reportType);
+            
+            // Update URL for bookmarking
+            updateUrlParameter('report_type', reportType);
+            
+            // Store preference
+            localStorage.setItem('preferredReportType', reportType);
+            });
+            
+            // Set initial active state based on current report type
+            if (btn.getAttribute('data-report-type') === currentReportType) {
+            btn.classList.add('active');
+            } else {
+            btn.classList.remove('active');
+            }
+        });
+        
+        function updateReportType(reportType) {
+            // Update button states
+            reportTypeBtns.forEach(btn => {
+            if (btn.getAttribute('data-report-type') === reportType) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+            });
+
+        // Update trends title
+        const trendsTitle = document.getElementById('trendsTitle');
+        if (trendsTitle) {
+            if (reportType === 'Services') {
+                trendsTitle.textContent = 'Services PMI Trends';
+            } else {
+                trendsTitle.textContent = 'Manufacturing PMI Trends';
+            }
+        }
+            
+            // Update indicator badge
+            currentReportBadge.textContent = reportType + ' Report';
+            currentReportBadge.className = 'report-type-indicator report-type-' + reportType.toLowerCase();
+            
+            // Add appropriate icon
+            const iconClass = reportType === 'Manufacturing' ? 'bi-gear-fill' : 'bi-people-fill';
+            currentReportBadge.innerHTML = `<i class="bi ${iconClass} me-1"></i>${reportType} Report`;
+            
+            // Update page title
+            document.title = `${reportType} Report Dashboard - ISM Analysis`;
+
+            const heatmapTitle = document.getElementById('heatmapTitle');
+                if (heatmapTitle) {
+                    if (reportType === 'Services') {
+                        heatmapTitle.textContent = 'Services PMI Heatmap Summary';
+                    } else {
+                        heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                    }
+                }
+            
+            // Update current report type variable
+            currentReportType = reportType;
+        }
+        
+        function updateUrlParameter(key, value) {
+            const url = new URL(window.location.href);
+            url.searchParams.set(key, value);
+            window.history.replaceState({}, '', url);
+        }
+        
+        function refreshAllData(reportType) {
+            // Trigger data refresh for active tab
+            const activeTab = document.querySelector('.nav-link.tab-level.active');
+            if (activeTab) {
+                const tabId = activeTab.id;
+                
+                if (tabId === 'heatmap-tab') {
+                    loadHeatmapData(reportType);
+                } else if (tabId === 'growth-alpha-tab') {
+                    const indexSelect = document.getElementById('alphaIndexSelect');
+                    if (indexSelect) {
+                        loadGrowthTable('alpha', indexSelect.value, reportType);
+                    }
+                } else if (tabId === 'growth-num-tab') {
+                    const numIndexSelect = document.getElementById('numIndexSelect');
+                    if (numIndexSelect) {
+                        loadNumericalGrowthTable(numIndexSelect.value, reportType);
+                    }
+                } else if (tabId === 'trends-tab') {
+                    updateChart(reportType);
+                } else if (tabId === 'comparison-tab') {
+                    loadComparisonView();
+                }
+            }
+            
+            // Update available indices for the selected report type
+            loadAvailableIndices(reportType);
+            
+            // Update KPI cards with the new report type data
+            updateKpiCards(reportType);
+        }
+
+        function loadAvailableIndices(reportType) {
+            // Fetch indices specific to the report type
+            fetch(`/api/all_indices?report_type=${reportType}`)
+            .then(response => response.json())
+            .then(indices => {
+                // Update dropdown options in both views
+                updateIndexDropdowns(indices);
+            })
+            .catch(error => {
+                console.error("Error fetching indices:", error);
+            });
+        }
+        
+        function updateIndexDropdowns(indices) {
+            // Update Alpha tab dropdown
+            const alphaIndexSelect = document.getElementById('alphaIndexSelect');
+            if (alphaIndexSelect) {
+            const selectedValue = alphaIndexSelect.value;
+            
+            // Clear existing options
+            alphaIndexSelect.innerHTML = '';
+            
+            // Add new options
+            indices.forEach(index => {
+                if (index !== 'Manufacturing PMI' && index !== 'Services PMI') {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = index;
+                alphaIndexSelect.appendChild(option);
+                }
+            });
+            
+            // Try to restore previously selected value
+            if (indices.includes(selectedValue)) {
+                alphaIndexSelect.value = selectedValue;
+            } else {
+                // Default to first option
+                alphaIndexSelect.selectedIndex = 0;
+            }
+            }
+            
+            // Update Numerical tab dropdown
+            const numIndexSelect = document.getElementById('numIndexSelect');
+            if (numIndexSelect) {
+            const selectedValue = numIndexSelect.value;
+            
+            // Clear existing options
+            numIndexSelect.innerHTML = '';
+            
+            // Add "All" option
+            const allOption = document.createElement('option');
+            allOption.value = "All";
+            allOption.text = "All Indices";
+            numIndexSelect.appendChild(allOption);
+            
+            // Add new options
+            indices.forEach(index => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.text = index;
+                numIndexSelect.appendChild(option);
+            });
+            
+            // Try to restore previously selected value
+            if (selectedValue === "All" || indices.includes(selectedValue)) {
+                numIndexSelect.value = selectedValue;
+            } else {
+                // Default to "All"
+                numIndexSelect.value = "All";
+            }
+            }
+            
+            // Update trends checkboxes
+            const indexCheckboxes = document.getElementById('indexCheckboxes');
+            if (indexCheckboxes) {
+            // Save currently checked boxes
+            const checkedIndices = Array.from(
+                document.querySelectorAll('.index-checkbox:checked')
+            ).map(cb => cb.value);
+            
+            // Clear existing checkboxes
+            indexCheckboxes.innerHTML = '';
+            
+            // Always include main PMI
+            const pmiName = currentReportType === 'Manufacturing' ? 'Manufacturing PMI' : 'Services PMI';
+            const pmiDiv = document.createElement('div');
+            pmiDiv.className = 'form-check me-3 mb-2';
+            pmiDiv.innerHTML = `
+                <input class="form-check-input index-checkbox" type="checkbox" 
+                id="check_${pmiName.replace(' ', '_')}" 
+                value="${pmiName}" 
+                ${checkedIndices.includes(pmiName) || checkedIndices.length === 0 ? 'checked' : ''}>
+                <label class="form-check-label" for="check_${pmiName.replace(' ', '_')}">
+                ${pmiName}
+                </label>
+            `;
+            indexCheckboxes.appendChild(pmiDiv);
+            
+            // Add other indices
+            indices.forEach(index => {
+                if (index !== pmiName) {
+                const div = document.createElement('div');
+                div.className = 'form-check me-3 mb-2';
+                div.innerHTML = `
+                    <input class="form-check-input index-checkbox" type="checkbox" 
+                    id="check_${index.replace(' ', '_')}" 
+                    value="${index}"
+                    ${checkedIndices.includes(index) ? 'checked' : ''}>
+                    <label class="form-check-label" for="check_${index.replace(' ', '_')}">
+                    ${index}
+                    </label>
+                `;
+                indexCheckboxes.appendChild(div);
+                }
+            });
+            
+            // Re-attach event listeners
+            document.querySelectorAll('.index-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', () => updateChart(currentReportType));
+            });
+            }
+        }
+
+        // Initialize comparison tab events
+        document.getElementById('comparison-tab')?.addEventListener('shown.bs.tab', function() {
+            loadComparisonView();
+        });
+        
+        // Initialize comparison view button
+        document.getElementById('compareViewBtn')?.addEventListener('click', function() {
+            // Activate the comparison tab
+            const comparisonTab = document.getElementById('comparison-tab');
+            if (comparisonTab) {
+            const tab = new bootstrap.Tab(comparisonTab);
+            tab.show();
+            }
+        });
+        
+        // Initialize time range change
+        document.getElementById('comparisonTimeRange')?.addEventListener('change', function() {
+            loadComparisonView();
+        });
+        
+        // Initialize index selection change
+        document.getElementById('comparisonIndexSelect')?.addEventListener('change', function() {
+            loadComparisonView();
+        });
+        
+        // Initialize highlight differences toggle
+        document.getElementById('showDifferencesToggle')?.addEventListener('change', function() {
+            loadComparisonView();
+        });
+        
+        // Comparison Tab specific initializations
+        const comparisonTab = document.getElementById('comparison-tab');
+        if (comparisonTab) {
+            comparisonTab.addEventListener('shown.bs.tab', function() {
+                loadComparisonView(); // This function handles its own data fetching
+            });
+        }
+        
+        const compareViewBtn = document.getElementById('compareViewBtn');
+        if (compareViewBtn) {
+            compareViewBtn.addEventListener('click', function() {
+                const comparisonTabTrigger = document.getElementById('comparison-tab');
+                if (comparisonTabTrigger) {
+                    const tab = new bootstrap.Tab(comparisonTabTrigger);
+                    tab.show();
+                }
+            });
+        }
+
+        const comparisonIndexSelect = document.getElementById('comparisonIndexSelect');
+        if (comparisonIndexSelect) {
+            comparisonIndexSelect.addEventListener('change', loadComparisonView);
+        }
+
+        const comparisonTimeRange = document.getElementById('comparisonTimeRange');
+        if (comparisonTimeRange) {
+            comparisonTimeRange.addEventListener('change', loadComparisonView);
+        }
+        
+        // Listener for "Highlight Differences" toggle
+        const showDifferencesToggle = document.getElementById('showDifferencesToggle');
+        if (showDifferencesToggle) {
+            showDifferencesToggle.addEventListener('change', loadComparisonView); // Reload charts to apply fill
+        }
+
+        // Listener for "Show Moving Average" toggle
+        const showMovingAverageToggle = document.getElementById('showMovingAverageToggle');
+        if (showMovingAverageToggle) {
+            showMovingAverageToggle.addEventListener('change', loadComparisonView); // Reload charts
+        }
+
+        // Initial load if comparison tab is active by default (unlikely, but good practice)
+        if (document.getElementById('comparison')?.classList.contains('active')) {
+            loadComparisonView();
+        }
+    });
     </script>
 </body>
 </html>

@@ -23,6 +23,7 @@ from agents import (
     create_orchestrator_agent,
     create_data_correction_agent
 )
+from db_utils import store_report_data_in_db
 
 # Configure logging
 logging.basicConfig(
@@ -53,6 +54,17 @@ def safely_parse_agent_output(output):
     """
     try:
         logger.info(f"Attempting to parse agent output of type: {type(output)}")
+        
+        # If output is None, return a default structure
+        if output is None:
+            logger.warning("Agent output is None, returning default structure")
+            return {
+                "month_year": "Unknown",
+                "report_type": "Manufacturing",
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {}
+            }
         
         # If it's already a dict, validate it has actual data
         if isinstance(output, dict):
@@ -169,8 +181,15 @@ def safely_parse_agent_output(output):
         logger.error(f"Error parsing agent output: {str(e)}")
         logger.error(f"Raw output type: {type(output)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        return None
-
+        # Return a default structure rather than None
+        return {
+            "month_year": "Unknown",
+            "report_type": "Manufacturing",
+            "manufacturing_table": "",
+            "index_summaries": {},
+            "industry_data": {}
+        }
+    
 def extract_from_crew_output(crew_output):
     """Extract dictionary data directly from a CrewOutput object."""
     try:
@@ -180,6 +199,29 @@ def extract_from_crew_output(crew_output):
         # If it's already a dict, return it
         if isinstance(crew_output, dict):
             return crew_output
+            
+        # If it's None, return a default structure
+        if crew_output is None:
+            logger.warning("CrewOutput is None, returning default structure")
+            return {
+                "month_year": "Unknown",
+                "report_type": "Manufacturing",
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {}
+            }
+        
+        # Handle the case where the agent responded with an error message
+        str_output = str(crew_output)
+        if "I tried reusing the same input" in str_output:
+            logger.warning("Agent reported input reuse error, providing fallback structure")
+            return {
+                "month_year": "Unknown",
+                "report_type": "Manufacturing",
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {}
+            }
             
         # Try to access common attributes that might contain the output
         attributes_to_check = ['result', 'raw_output', 'content', 'output', 'final_answer']
@@ -356,6 +398,7 @@ def extract_from_crew_output(crew_output):
         # Return a minimal valid structure as a last resort
         return {
             "month_year": "Unknown",
+            "report_type": "Manufacturing",
             "manufacturing_table": "",
             "index_summaries": {},
             "industry_data": {}
@@ -366,6 +409,7 @@ def extract_from_crew_output(crew_output):
         # Return a minimal valid structure
         return {
             "month_year": "Unknown",
+            "report_type": "Manufacturing",
             "manufacturing_table": "",
             "index_summaries": {},
             "industry_data": {}
@@ -436,6 +480,11 @@ def process_single_pdf(pdf_path, visualization_options=None):
         else:
             logger.warning("sheet_id.txt not found. A new Google Sheet will be created.")
 
+        # Detect report type
+        from report_handlers import ReportTypeFactory
+        report_type = ReportTypeFactory.detect_report_type(pdf_path)
+        logger.info(f"Detected report type: {report_type}")
+
         # Create agents
         extractor_agent = create_extractor_agent()
         data_correction_agent = create_data_correction_agent()
@@ -443,66 +492,37 @@ def process_single_pdf(pdf_path, visualization_options=None):
         formatter_agent = create_formatter_agent()
 
         # Execute extraction
-        logger.info("Starting data extraction...")
+        logger.info(f"Starting data extraction for {report_type} report...")
 
         # Always attempt direct PDF parsing first to get baseline data
         direct_data = None
         try:
             from pdf_utils import parse_ism_report
             logger.info("Performing initial direct PDF parsing")
-            direct_data = parse_ism_report(pdf_path)
+            direct_data = parse_ism_report(pdf_path, report_type)
 
         except Exception as e:
             logger.error(f"Error in initial direct PDF parsing: {str(e)}")
 
-        # Custom extraction task
+        # Custom extraction task with report_type
         extraction_task = Task(
             description=f"""
-            Extract all relevant data from the ISM Manufacturing Report PDF.
+            Extract all relevant data from the ISM {report_type} Report PDF.
             The PDF path is: {pdf_path}
 
             When using the PDF Extraction Tool, pass the path in this format:
             {{
                 "extracted_data": {{
-                    "pdf_path": "{pdf_path}"
+                    "pdf_path": "{pdf_path}",
+                    "report_type": "{report_type}"
                 }}
             }}
 
             You must extract:
             1. The month and year of the report
-            2. The Manufacturing at a Glance table
-            3. All index-specific summaries (New Orders, Production, etc.)
+            2. The {'Manufacturing' if report_type == 'Manufacturing' else 'Services'} at a Glance table
+            3. All index-specific summaries
             4. Industry mentions in each index summary
-
-            VERY IMPORTANT CLASSIFICATION RULES:
-            For each index, you must carefully identify the correct category for each industry:
-
-            - New Orders, Production, Employment, Backlog of Orders, New Export Orders, Imports:
-            * GROWING category: Industries explicitly mentioned as reporting "growth", "expansion", "increase", or similar positive terms
-            * DECLINING category: Industries explicitly mentioned as reporting "contraction", "decline", "decrease" or similar negative terms
-
-            - Supplier Deliveries:
-            * SLOWER category: Industries reporting "slower" deliveries (NOTE: slower deliveries are a POSITIVE economic indicator)
-            * FASTER category: Industries reporting "faster" deliveries (NOTE: faster deliveries are a NEGATIVE economic indicator)
-
-            - Inventories:
-            * HIGHER category: Industries reporting "higher" or "increased" inventories
-            * LOWER category: Industries reporting "lower" or "decreased" inventories
-
-            - Customers' Inventories:
-            * TOO HIGH category: Industries reporting customers' inventories as "too high"
-            * TOO LOW category: Industries reporting customers' inventories as "too low"
-
-            - Prices:
-            * INCREASING category: Industries reporting "higher" or "increasing" prices
-            * DECREASING category: Industries reporting "lower" or "decreasing" prices
-
-            READ THE TEXT CAREFULLY AND LOOK FOR THESE SPECIFIC TERMS AND PHRASES. Do not guess or infer - only place industries in categories when the text explicitly states their status.
-
-            Look for sentences like:
-            - "The X industries reporting growth in February are..."
-            - "The Y industries reporting contraction in February are..."
-            - "The industries reporting slower supplier deliveries are..."
 
             YOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.
             Format your answer as:
@@ -533,6 +553,25 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
+        logger.info(f"extraction_data after safely_parse_agent_output: {extraction_data}")
+        
+        extraction_data = validate_and_preserve_indices(extraction_data, report_type)
+        logger.info(f"extraction_data after validate_and_preserve_indices: {extraction_data}")
+
+        # Initialize extraction_data if it's None to avoid reference errors
+        if extraction_data is None:
+            extraction_data = {
+                "month_year": "Unknown", 
+                "manufacturing_table": "",
+                "index_summaries": {},
+                "industry_data": {},
+                "report_type": report_type
+            }
+            logger.warning("extraction_data was None, initializing with default structure")
+
+        # Add report_type to extraction_data
+        if isinstance(extraction_data, dict):
+            extraction_data['report_type'] = report_type
 
         # Check if direct parsing found any industries
         industry_count = 0
@@ -580,7 +619,8 @@ def process_single_pdf(pdf_path, visualization_options=None):
                     "month_year": "Unknown",
                     "manufacturing_table": "",
                     "index_summaries": {},
-                    "industry_data": {}
+                    "industry_data": {},
+                    "report_type": report_type
                 }
         elif direct_data:
             # Compare both methods and merge results to get the most comprehensive data
@@ -619,10 +659,67 @@ def process_single_pdf(pdf_path, visualization_options=None):
                 extraction_data['industry_data'] = merged_industry_data
                 logger.info(f"Keeping agent extraction with merged industry data")
 
-        # STORE DATA IN DATABASE - CRITICAL STEP - happen after EXTRACTION
+        # After extraction
+        if extraction_data:
+            # Add report_type to extraction_data if not present
+            if 'report_type' not in extraction_data:
+                extraction_data['report_type'] = report_type
+                logger.info(f"Adding missing report_type: {report_type}")
+            
+            # Ensure month_year exists and is not Unknown if we can get it from somewhere
+            if 'month_year' not in extraction_data or extraction_data['month_year'] == "Unknown":
+                if direct_data and 'month_year' in direct_data and direct_data['month_year'] != "Unknown":
+                    extraction_data['month_year'] = direct_data['month_year']
+                    logger.info(f"Using month_year from direct parsing: {extraction_data['month_year']}")
+            
+            # Ensure index_summaries exists
+            if 'index_summaries' not in extraction_data or not extraction_data['index_summaries']:
+                logger.warning("Missing index_summaries, creating empty structure")
+                extraction_data['index_summaries'] = {}
+                
+                # Try to extract summaries from PDF directly if available
+                if direct_data and 'index_summaries' in direct_data and direct_data['index_summaries']:
+                    extraction_data['index_summaries'] = direct_data['index_summaries']
+                    logger.info("Populated index_summaries from direct parsing")
+            
+            # Ensure industry_data exists
+            if 'industry_data' not in extraction_data or not extraction_data['industry_data']:
+                logger.warning("Missing industry_data, creating empty structure")
+                extraction_data['industry_data'] = {}
+                
+                # Try to populate from direct parsing
+                if direct_data and 'industry_data' in direct_data and direct_data['industry_data']:
+                    extraction_data['industry_data'] = direct_data['industry_data']
+                    logger.info("Populated industry_data from direct parsing")
+            elif all(not industries for categories in extraction_data['industry_data'].values() 
+                    for industries in categories.values() if isinstance(categories, dict)):
+                logger.warning("industry_data exists but contains no actual industries")
+                # Try to populate from direct parsing if it has industries
+                if direct_data and 'industry_data' in direct_data:
+                    direct_count = sum(len(industries) for categories in direct_data['industry_data'].values() 
+                                    for industries in categories.values() if isinstance(categories, dict))
+                    if direct_count > 0:
+                        extraction_data['industry_data'] = direct_data['industry_data']
+                        logger.info(f"Replaced empty industry_data with direct parsing data ({direct_count} industries)")
+
+            # If verification result has industry data but extraction doesn't, use the verification data
+            verification_result = None  # Initialize to avoid reference errors
+            if 'verified_data' in locals() and verified_data and isinstance(verified_data, dict):
+                if 'corrected_industry_data' in verified_data:
+                    if not extraction_data['industry_data']:
+                        extraction_data['industry_data'] = verified_data['corrected_industry_data']
+                        logger.info("Using corrected_industry_data from verified_data")
+
+        # STORE DATA IN DATABASE - CRITICAL STEP - update to include report_type
         from db_utils import store_report_data_in_db
         try:
-            store_result = store_report_data_in_db(extraction_data, pdf_path)
+            # Ensure report_type exists in extraction_data
+            if 'report_type' not in extraction_data:
+                extraction_data['report_type'] = report_type
+                
+            logger.info(f"Indices being sent to database: {list(extraction_data.get('indices', {}).keys())}")
+
+            store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data['report_type'])
 
             if store_result:
                 logger.info(f"Successfully stored data from {pdf_path} in database")
@@ -632,32 +729,34 @@ def process_single_pdf(pdf_path, visualization_options=None):
             logger.error(f"Error storing data in database: {str(e)}")
             # Continue processing to return the data even if database storage fails
 
+        # Prepare for JSON serialization - handle ellipsis and other non-serializable types
         try:
-            json_data = json.dumps(extraction_data.get('industry_data', {}))
+            import copy
+            sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
+            
+            # Function to recursively replace problematic values
+            def sanitize_for_json(obj):
+                if obj is ...:  # Handle ellipsis
+                    return None
+                elif isinstance(obj, dict):
+                    return {k: sanitize_for_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [sanitize_for_json(item) for item in obj]
+                elif isinstance(obj, (int, float, str, bool, type(None))):
+                    return obj
+                else:
+                    # Convert other types to string
+                    return str(obj)
+            
+            sanitized_data = sanitize_for_json(sanitized_data)
+            json_data = json.dumps(sanitized_data)
+            
         except TypeError as e:
-            if "ellipsis is not JSON serializable" in str(e):
-                # Just for this run, create a sanitized copy
-                import copy
-                sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
-                
-                # Function to recursively replace ellipsis
-                def replace_ellipsis(obj):
-                    if obj is ...:
-                        return None
-                    elif isinstance(obj, dict):
-                        return {k: replace_ellipsis(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [replace_ellipsis(item) for item in obj]
-                    else:
-                        return obj
-                
-                sanitized_data = replace_ellipsis(sanitized_data)
-                json_data = json.dumps(sanitized_data)
-                logger.warning("Handled ellipsis in JSON serialization as a one-time fix")
-            else:
-                raise  # Re-raise if it's a different TypeError
+            logger.warning(f"JSON serialization issue: {str(e)}")
+            # Create a minimal serializable structure
+            json_data = "{}"
 
-        # Then use json_data in your Task description
+        # Create the verification task
         verification_task = Task(
             description=f"""
             CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
@@ -711,6 +810,11 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Safely parse verification result
         verified_data = safely_parse_agent_output(verified_result)
+
+        # Initialize verified_data if None to avoid reference errors
+        if verified_data is None:
+            verified_data = {}
+            logger.warning("verified_data was None, initializing with empty dict")
 
         # Ensure we're working with the correct data
         if verified_data:
@@ -768,15 +872,32 @@ def process_single_pdf(pdf_path, visualization_options=None):
             extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
 
         # Use the verified data if it was successfully parsed
+        structured_data = None  # Initialize to avoid reference errors
         if verified_data and 'corrected_industry_data' in verified_data:
-            structured_data = structurer_tool._run({
-                'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
-                'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
-                'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
-                'industry_data': verified_data.get('corrected_industry_data', {})
-            })
+            try:
+                structured_data = structurer_tool._run({
+                    'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
+                    'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
+                    'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
+                    'industry_data': verified_data.get('corrected_industry_data', {})
+                })
+            except Exception as e:
+                logger.error(f"Error in structuring with verified data: {str(e)}")
+                # If structuring with verified data fails, try with original extraction_data
+                try:
+                    structured_data = structurer_tool._run(extraction_data)
+                except Exception as e2:
+                    logger.error(f"Error in structuring with extraction_data: {str(e2)}")
+                    # Provide fallback structured_data
+                    structured_data = {}
         else:
-            structured_data = structurer_tool._run(extraction_data)
+            try:
+                structured_data = structurer_tool._run(extraction_data)
+            except Exception as e:
+                logger.error(f"Error in structuring: {str(e)}")
+                # Provide fallback structured_data
+                structured_data = {}
+
         logger.info("Data structuring completed")
 
         # Check if structured_data is empty or None and fix if needed
@@ -878,6 +999,56 @@ def process_single_pdf(pdf_path, visualization_options=None):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return False
     
+def validate_and_preserve_indices(extraction_data, report_type):
+    """
+    Validate that all expected indices are present in the extraction data.
+    
+    Args:
+        extraction_data: The extracted data dictionary
+        report_type: The report type (Manufacturing or Services)
+    
+    Returns:
+        The extraction data with validation logging
+    """
+
+    logger.info(f"extraction_data in def validate_and_preserve_indices: {extraction_data}")
+
+    if not extraction_data or 'indices' not in extraction_data:
+        logger.warning("No indices found in extraction data")
+        return extraction_data
+    
+    # Get expected indices based on report type
+    if report_type == "Services":
+        expected_indices = [
+            "Services PMI", "Business Activity", "New Orders", "Employment",
+            "Supplier Deliveries", "Inventories", "Inventory Sentiment", 
+            "Prices", "Backlog of Orders", "New Export Orders", "Imports"
+        ]
+    else:
+        expected_indices = [
+            "Manufacturing PMI", "New Orders", "Production", "Employment",
+            "Supplier Deliveries", "Inventories", "Customers' Inventories",
+            "Prices", "Backlog of Orders", "New Export Orders", "Imports"
+        ]
+    
+    # Check which indices are present
+    present_indices = list(extraction_data['indices'].keys())
+    missing_indices = [idx for idx in expected_indices if idx not in present_indices]
+    
+    if missing_indices:
+        logger.warning(f"Missing indices for {report_type} report: {missing_indices}")
+    
+    logger.info(f"Present indices for {report_type} report: {present_indices}")
+    
+    # Log the actual values for debugging
+    for idx, data in extraction_data['indices'].items():
+        if isinstance(data, dict):
+            value = data.get('current', data.get('value', 'N/A'))
+            direction = data.get('direction', 'N/A')
+            logger.info(f"  {idx}: {value} ({direction})")
+    
+    return extraction_data
+
 def count_industries(industry_data):
     """Count the total number of industries in the industry_data dict."""
     count = 0

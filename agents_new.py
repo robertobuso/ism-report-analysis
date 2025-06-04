@@ -10,7 +10,7 @@ from tools_new import (
 
 def create_extractor_agent():
     # Create LangChain tool from our BaseTool implementation
-    tool = SimplePDFExtractionTool()
+    tool = ()
     extraction_tool = Tool(
         name=tool.name,
         func=tool._run,
