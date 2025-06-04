@@ -52,6 +52,9 @@ def check_tables_exist(db_path):
         conn.close()
         
         required_tables = ['reports', 'pmi_indices', 'industry_status']
+
+        logger.info(f"Tables found: {tables}")
+
         return all(table in tables for table in required_tables)
     except Exception as e:
         logger.error(f"Error checking tables: {e}")

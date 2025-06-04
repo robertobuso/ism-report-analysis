@@ -1,0 +1,501 @@
+            ],
+            "Growing": [
+                "Paper Products",
+                "Primary Metals",
+                "Wood Products",
+                "Computer & Electronic Products"
+            ]
+        },
+        "Employment": {
+            "Declining": [
+                "Plastics & Rubber Products",
+                "Wood Products",
+                "Textile Mills",
+                "Electrical Equipment, Appliances & Components",
+                "Fabricated Metal Products",
+                "Paper Products",
+                "Transportation Equipment",
+                "Computer & Electronic Products",
+                "Chemical Products",
+                "Miscellaneous Manufacturing"
+            ],
+            "Growing": [
+                "Furniture & Related Products",
+                "Food, Beverage & Tobacco Products",
+                "Primary Metals"
+            ]
+        }
+    }
+}[00m
+
+
+🚀 Crew: crew
+└── 📋 Task: d59fc24f-dc82-416b-8d69-5c6067544aab
+    Assigned to: Data Verification and Correction Specialist
+    Status: ✅ Completed╭────────────────────────────── Task Completion ───────────────────────────────╮
+│                                                                              │
+│  Task Completed                                                              │
+│  Name: d59fc24f-dc82-416b-8d69-5c6067544aab                                  │
+│  Agent: Data Verification and Correction Specialist                          │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+2025-06-04 20:06:29,935 - main - INFO - Successfully applied corrected industry data
+2025-06-04 20:06:29,935 - main - INFO - Successfully applied corrected industry data
+2025-06-04 20:06:29,935 - main - INFO - Starting data structuring...
+2025-06-04 20:06:29,936 - tools - INFO - Data Structurer Tool received input
+2025-06-04 20:06:29,936 - tools - INFO - Structuring data for August 2024
+2025-06-04 20:06:29,936 - tools - INFO - Using industry_data from extraction
+2025-06-04 20:06:29,936 - tools - INFO - Structured New Orders: 15 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Production: 10 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Employment: 13 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Supplier Deliveries: 13 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Inventories: 15 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Customers' Inventories: 10 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Prices: 15 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Backlog of Orders: 12 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured New Export Orders: 12 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Structured Imports: 13 industries across 2 categories
+2025-06-04 20:06:29,936 - tools - INFO - Total industries in structured data: 128
+2025-06-04 20:06:29,936 - main - INFO - Data structuring completed
+2025-06-04 20:06:29,936 - main - INFO - Starting data validation...
+╭─────────────────────────── Crew Execution Started ───────────────────────────╮
+│                                                                              │
+│  Crew Execution Started                                                      │
+│  Name: crew                                                                  │
+│  ID: bcda66f2-e4d2-4e8e-a8e8-4f857c3b8878                                    │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+[1m[95m# Agent:[00m [1m[92mQA & Validation Specialist[00m
+[95m## Task:[00m [92m
+            Validate the structured ISM Manufacturing Report data for accuracy and completeness.
+
+            Check:
+            1. All expected indices are present
+            2. Each index has the appropriate categories
+            3. No missing data or incorrect classifications
+            4. Industries are preserved exactly as listed in the report
+
+            Flag any issues that would require manual review.
+
+            The structured data is: {'New Orders': {'month_year': 'August 2024', 'categories': {'Declining': ['Nonmetallic Mineral Products', 'Printing & Related Support Activities', 'Plastics & Rubber Products', 'Fabricated Metal Products', 'Transportation Equipment', 'Furniture & Related Products', 'Electrical Equipment, Appliances & Components', 'Miscellaneous Manufacturing', 'Machinery', 'Chemical Products', 'Food, Beverage & Tobacco Products'], 'Growing': ['Paper Products', 'Primary Metals', 'Wood Products', 'Computer & Electronic Products']}}, 'Production': {'month_year': 'August 2024', 'categories': {'Declining': ['Transportation Equipment', 'Textile Mills', 'Nonmetallic Mineral Products', 'Electrical Equipment, Appliances & Components', 'Machinery', 'Fabricated Metal Products', 'Chemical Products'], 'Growing': ['Computer & Electronic Products', 'Primary Metals', 'Miscellaneous Manufacturing']}}, 'Employment': {'month_year': 'August 2024', 'categories': {'Declining': ['Plastics & Rubber Products', 'Wood Products', 'Textile Mills', 'Electrical Equipment, Appliances & Components', 'Fabricated Metal Products', 'Paper Products', 'Transportation Equipment', 'Computer & Electronic Products', 'Chemical Products', 'Miscellaneous Manufacturing'], 'Growing': ['Furniture & Related Products', 'Food, Beverage & Tobacco Products', 'Primary Metals']}}, 'Supplier Deliveries': {'month_year': 'August 2024', 'categories': {'Slower': ['Petroleum & Coal Products', 'Textile Mills', 'Furniture & Related Products', 'Miscellaneous Manufacturing', 'Food, Beverage & Tobacco Products', 'Computer & Electronic Products', 'Transportation Equipment', 'Electrical Equipment, Appliances & Components'], 'Faster': ['Paper Products', 'Fabricated Metal Products', 'Primary Metals', 'Machinery', 'Chemical Products']}}, 'Inventories': {'month_year': 'August 2024', 'categories': {'Lower': ['Textile Mills', 'Wood Products', 'Printing & Related Support Activities', 'Electrical Equipment, Appliances & Components', 'Paper Products', 'Miscellaneous Manufacturing', 'Machinery'], 'Higher': ['Petroleum & Coal Products', 'Furniture & Related Products', 'Primary Metals', 'Food, Beverage & Tobacco Products', 'Computer & Electronic Products', 'Fabricated Metal Products', 'Transportation Equipment', 'Chemical Products']}}, "Customers' Inventories": {'month_year': 'August 2024', 'categories': {'Too Low': ['Nonmetallic Mineral Products', 'Paper Products', 'Primary Metals', 'Transportation Equipment', 'Food, Beverage & Tobacco Products', 'Fabricated Metal Products'], 'Too High': ['Textile Mills', 'Machinery', 'Electrical Equipment, Appliances & Components', 'Computer & Electronic Products']}}, 'Prices': {'month_year': 'August 2024', 'categories': {'Decreasing': ['Apparel, Leather & Allied Products', 'Fabricated Metal Products', 'Primary Metals', 'Nonmetallic Mineral Products', 'Electrical Equipment, Appliances & Components', 'Machinery'], 'Increasing': ['Textile Mills', 'Furniture & Related Products', 'Plastics & Rubber Products', 'Petroleum & Coal Products', 'Miscellaneous Manufacturing', 'Chemical Products', 'Computer & Electronic Products', 'Food, Beverage & Tobacco Products', 'Transportation Equipment']}}, 'Backlog of Orders': {'month_year': 'August 2024', 'categories': {'Declining': ['Nonmetallic Mineral Products', 'Fabricated Metal Products', 'Machinery', 'Electrical Equipment, Appliances & Components', 'Wood Products', 'Furniture & Related Products', 'Food, Beverage & Tobacco Products', 'Transportation Equipment', 'Plastics & Rubber Products', 'Chemical Products', 'Primary Metals'], 'Growing': ['Computer & Electronic Products']}}, 'New Export Orders': {'month_year': 'August 2024', 'categories': {'Declining': ['Plastics & Rubber Products', 'Fabricated Metal Products', 'Chemical Products', 'Machinery', 'Electrical Equipment, Appliances & Components', 'Transportation Equipment'], 'Growing': ['Nonmetallic Mineral Products', 'Furniture & Related Products', 'Paper Products', 'Food, Beverage & Tobacco Products', 'Computer & Electronic Products', 'Miscellaneous Manufacturing']}}, 'Imports': {'month_year': 'August 2024', 'categories': {'Declining': ['Textile Mills', 'Nonmetallic Mineral Products', 'Fabricated Metal Products', 'Primary Metals', 'Plastics & Rubber Products', 'Transportation Equipment', 'Machinery'], 'Growing': ['Wood Products', 'Furniture & Related Products', 'Miscellaneous Manufacturing', 'Computer & Electronic Products', 'Chemical Products', 'Food, Beverage & Tobacco Products']}}}
+            [00m
+[92m20:06:29 - LiteLLM:INFO[0m: utils.py:2827 - 
+LiteLLM completion() model= gpt-4o-mini; provider = openai
+2025-06-04 20:06:42,641 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[92m20:06:42 - LiteLLM:INFO[0m: utils.py:1185 - Wrapper: Completed Call, calling success_handler
+[92m20:06:42 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+[92m20:06:42 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+[92m20:06:42 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+
+
+[1m[95m# Agent:[00m [1m[92mQA & Validation Specialist[00m
+[95m## Thought:[00m [92mAction: validate_data[00m
+[95m## Using tool:[00m [92mvalidate_data[00m
+[95m## Tool Output:[00m [92m
+[95m## Tool Input:[00m [92m
+{'New Orders': True, 'Production': True, 'Employment': True, 'Supplier Deliveries': True, 'Inventories': True, "Customers' Inventories": True, 'Prices': True, 'Backlog of Orders': True, 'New Export Orders': True, 'Imports': True}[00m
+[92m20:06:42 - LiteLLM:INFO[0m: utils.py:2827 - 
+LiteLLM completion() model= gpt-4o-mini; provider = openai
+"{\"structured_data\": {\"New Orders\": {\"month_year\": \"August 2024\", \"categories\": {\"Declining\": [\"Nonmetallic Mineral Products\", \"Printing & Related Support Activities\", \"Plastics & Rubber Products\", \"Fabricated Metal Products\", \"Transportation Equipment\", \"Furniture & Related Products\", \"Electrical Equipment, Appliances & Components\", \"Miscellaneous Manufacturing\", \"Machinery\", \"Chemical Products\", \"Food, Beverage & Tobacco Products\"], \"Growing\": [\"Paper Products\", \"Primary Metals\", \"Wood Products\", \"Computer & Electronic Products\"]}}, \"Production\": {\"month_year\": \"August 2024\", \"categories\": {\"Declining\": [\"Transportation Equipment\", \"Textile Mills\", \"Nonmetallic Mineral Products\", \"Electrical Equipment, Appliances & Components\", \"Machinery\", \"Fabricated Metal Products\", \"Chemical Products\"], \"Growing\": [\"Computer & Electronic Products\", \"Primary Metals\", \"Miscellaneous Manufacturing\"]}}, \"Employment\": {\"month_year\": \"August 2024\", \"categories\": {\"Declining\": [\"Plastics & Rubber Products\", \"Wood Products\", \"Textile Mills\", \"Electrical Equipment, Appliances & Components\", \"Fabricated Metal Products\", \"Paper Products\", \"Transportation Equipment\", \"Computer & Electronic Products\", \"Chemical Products\", \"Miscellaneous Manufacturing\"], \"Growing\": [\"Furniture & Related Products\", \"Food, Beverage & Tobacco Products\", \"Primary Metals\"]}}, \"Supplier Deliveries\": {\"month_year\": \"August 2024\", \"categories\": {\"Slower\": [\"Petroleum & Coal Products\", \"Textile Mills\", \"Furniture & Related Products\", \"Miscellaneous Manufacturing\", \"Food, Beverage & Tobacco Products\", \"Computer & Electronic Products\", \"Transportation Equipment\", \"Electrical Equipment, Appliances & Components\"], \"Faster\": [\"Paper Products\", \"Fabricated Metal Products\", \"Primary Metals\", \"Machinery\", \"Chemical Products\"]}}, \"Inventories\": {\"month_year\": \"August 2024\", \"categories\": {\"Lower\": [\"Textile Mills\", \"Wood Products\", \"Printing & Related Support Activities\", \"Electrical Equipment, Appliances & Components\", \"Paper Products\", \"Miscellaneous Manufacturing\", \"Machinery\"], \"Higher\": [\"Petroleum & Coal Products\", \"Furniture & Related Products\", \"Primary Metals\", \"Food, Beverage & Tobacco Products\", \"Computer & Electronic Products\", \"Fabricated Metal Products\", \"Transportation Equipment\", \"Chemical Products\"]}}, \"Customers' Inventories\": {\"month_year\": \"August 2024\", \"categories\": {\"Too Low\": [\"Nonmetallic Mineral Products\", \"Paper Products\", \"Primary Metals\", \"Transportation Equipment\", \"Food, Beverage & Tobacco Products\", \"Fabricated Metal Products\"], \"Too High\": [\"Textile Mills\", \"Machinery\", \"Electrical Equipment, Appliances & Components\", \"Computer & Electronic Products\"]}}, \"Prices\": {\"month_year\": \"August 2024\", \"categories\": {\"Decreasing\": [\"Apparel, Leather & Allied Products\", \"Fabricated Metal Products\", \"Primary Metals\", \"Nonmetallic Mineral Products\", \"Electrical Equipment, Appliances & Components\", \"Machinery\"], \"Increasing\": [\"Textile Mills\", \"Furniture & Related Products\", \"Plastics & Rubber Products\", \"Petroleum & Coal Products\", \"Miscellaneous Manufacturing\", \"Chemical Products\", \"Computer & Electronic Products\", \"Food, Beverage & Tobacco Products\", \"Transportation Equipment\"]}}, \"Backlog of Orders\": {\"month_year\": \"August 2024\", \"categories\": {\"Declining\": [\"Nonmetallic Mineral Products\", \"Fabricated Metal Products\", \"Machinery\", \"Electrical Equipment, Appliances & Components\", \"Wood Products\", \"Furniture & Related Products\", \"Food, Beverage & Tobacco Products\", \"Transportation Equipment\", \"Plastics & Rubber Products\", \"Chemical Products\", \"Primary Metals\"], \"Growing\": [\"Computer & Electronic Products\"]}}, \"New Export Orders\": {\"month_year\": \"August 2024\", \"categories\": {\"Declining\": [\"Plastics & Rubber Products\", \"Fabricated Metal Products\", \"Chemical Products\", \"Machinery\", \"Electrical Equipment, Appliances & Components\", \"Transportation Equipment\"], \"Growing\": [\"Nonmetallic Mineral Products\", \"Furniture & Related Products\", \"Paper Products\", \"Food, Beverage & Tobacco Products\", \"Computer & Electronic Products\", \"Miscellaneous Manufacturing\"]}}, \"Imports\": {\"month_year\": \"August 2024\", \"categories\": {\"Declining\": [\"Textile Mills\", \"Nonmetallic Mineral Products\", \"Fabricated Metal Products\", \"Primary Metals\", \"Plastics & Rubber Products\", \"Transportation Equipment\", \"Machinery\"], \"Growing\": [\"Wood Products\", \"Furniture & Related Products\", \"Miscellaneous Manufacturing\", \"Computer & Electronic Products\", \"Chemical Products\", \"Food, Beverage & Tobacco Products\"]}}}}"[00m
+2025-06-04 20:06:44,884 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[92m20:06:44 - LiteLLM:INFO[0m: utils.py:1185 - Wrapper: Completed Call, calling success_handler
+[92m20:06:44 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+
+
+[1m[95m# Agent:[00m [1m[92mQA & Validation Specialist[00m
+[95m## Final Answer:[00m [92m
+{'New Orders': True, 'Production': True, 'Employment': True, 'Supplier Deliveries': True, 'Inventories': True, "Customers' Inventories": True, 'Prices': True, 'Backlog of Orders': True, 'New Export Orders': True, 'Imports': True}[00m
+
+
+🚀 Crew: crew
+└── 📋 Task: 83c24d5f-8605-4f90-ad5f-45e22ed80ac5
+    Assigned to: QA & Validation Specialist
+    Status: ✅ Completed
+    └── 🔧 Used validate_data (1)╭────────────────────────────── Task Completion ───────────────────────────────╮
+│                                                                              │
+│  Task Completed                                                              │
+│  Name: 83c24d5f-8605-4f90-ad5f-45e22ed80ac5                                  │
+│  Agent: QA & Validation Specialist                                           │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+[92m20:06:44 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+╭────────────────────────────── Crew Completion ───────────────────────────────╮
+│                                                                              │
+│  Crew Execution Completed                                                    │
+│  Name: crew                                                                  │
+│  ID: bcda66f2-e4d2-4e8e-a8e8-4f857c3b8878                                    │
+│                                                                              │
+│                                                                              │
+2025-06-04 20:06:44,899 - pdf_utils - INFO - Extracted PMI value for Employment: 43.7 (Growing)
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+2025-06-04 20:06:44,899 - pdf_utils - INFO - Extracted PMI value for Supplier Deliveries: 50.5 (Slowing)
+2025-06-04 20:06:44,898 - main - INFO - Attempting to parse agent output of type: <class 'crewai.crews.crew_output.CrewOutput'>
+2025-06-04 20:06:44,898 - main - INFO - Attempting to extract from CrewOutput of type: <class 'crewai.crews.crew_output.CrewOutput'>
+2025-06-04 20:06:44,899 - pdf_utils - INFO - Extracted PMI value for Inventories: 50.3 (Growing)
+2025-06-04 20:06:44,898 - main - INFO - Found 128 industries in structured data
+2025-06-04 20:06:44,899 - pdf_utils - INFO - Extracted PMI value for New Orders: 44.6 (Growing)
+2025-06-04 20:06:44,899 - pdf_utils - INFO - Extracted PMI value for Customers' Inventories: 48.4 (Slowing)
+2025-06-04 20:06:44,900 - pdf_utils - INFO - Extracted PMI value for Backlog of Orders: 43.6 (Growing)
+2025-06-04 20:06:44,899 - pdf_utils - INFO - Extracted PMI value for Production: 44.8 (Contracting)
+2025-06-04 20:06:44,900 - pdf_utils - INFO - Extracted PMI value for Prices: 1.1 (Growing)
+2025-06-04 20:06:44,900 - pdf_utils - INFO - Extracted PMI value for New Export Orders: 48.6 (Growing)
+2025-06-04 20:06:44,900 - pdf_utils - INFO - Extracted PMI value for Imports: 49.6 (Growing)
+2025-06-04 20:06:44,900 - main - INFO - Added PMI data for 10 indices
+2025-06-04 20:06:44,901 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:06:44,902 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:06:44,903 - db_utils - WARNING - No indices data found, attempting to extract from summaries as fallback
+2025-06-04 20:06:44,903 - db_utils - INFO - extracted_data in store_report_data_in_db: {'month_year': 'August 2024', 'indices': {}, 'industry_data': {'New Export Orders': {'Declining': ['Plastics & Rubber Products', 'Fabricated Metal Products', 'Chemical Products', 'Machinery', 'Electrical Equipment, Appliances & Components', 'Transportation Equipment'], 'Growing': ['Nonmetallic Mineral Products', 'Furniture & Related Products', 'Paper Products', 'Food, Beverage & Tobacco Products', 'Computer & Electronic Products', 'Miscellaneous Manufacturing']}, 'Production': {'Declining': ['Transportation Equipment', 'Textile Mills', 'Nonmetallic Mineral Products', 'Electrical Equipment, Appliances & Components', 'Machinery', 'Fabricated Metal Products', 'Chemical Products'], 'Growing': ['Computer & Electronic Products', 'Primary Metals', 'Miscellaneous Manufacturing']}, 'Inventories': {'Lower': ['Textile Mills', 'Wood Products', 'Printing & Related Support Activities', 'Electrical Equipment, Appliances & Components', 'Paper Products', 'Miscellaneous Manufacturing', 'Machinery'], 'Higher': ['Petroleum & Coal Products', 'Furniture & Related Products', 'Primary Metals', 'Food, Beverage & Tobacco Products', 'Computer & Electronic Products', 'Fabricated Metal Products', 'Transportation Equipment', 'Chemical Products']}, 'Backlog of Orders': {'Declining': ['Nonmetallic Mineral Products', 'Fabricated Metal Products', 'Machinery', 'Electrical Equipment, Appliances & Components', 'Wood Products', 'Furniture & Related Products', 'Food, Beverage & Tobacco Products', 'Transportation Equipment', 'Plastics & Rubber Products', 'Chemical Products', 'Primary Metals'], 'Growing': ['Computer & Electronic Products']}, 'Supplier Deliveries': {'Slower': ['Petroleum & Coal Products', 'Textile Mills', 'Furniture & Related Products', 'Miscellaneous Manufacturing', 'Food, Beverage & Tobacco Products', 'Computer & Electronic Products', 'Transportation Equipment', 'Electrical Equipment, Appliances & Components'], 'Faster': ['Paper Products', 'Fabricated Metal Products', 'Primary Metals', 'Machinery', 'Chemical Products']}, 'Prices': {'Decreasing': ['Apparel, Leather & Allied Products', 'Fabricated Metal Products', 'Primary Metals', 'Nonmetallic Mineral Products', 'Electrical Equipment, Appliances & Components', 'Machinery'], 'Increasing': ['Textile Mills', 'Furniture & Related Products', 'Plastics & Rubber Products', 'Petroleum & Coal Products', 'Miscellaneous Manufacturing', 'Chemical Products', 'Computer & Electronic Products', 'Food, Beverage & Tobacco Products', 'Transportation Equipment']}, 'Imports': {'Declining': ['Textile Mills', 'Nonmetallic Mineral Products', 'Fabricated Metal Products', 'Primary Metals', 'Plastics & Rubber Products', 'Transportation Equipment', 'Machinery'], 'Growing': ['Wood Products', 'Furniture & Related Products', 'Miscellaneous Manufacturing', 'Computer & Electronic Products', 'Chemical Products', 'Food, Beverage & Tobacco Products']}, "Customers' Inventories": {'Too Low': ['Nonmetallic Mineral Products', 'Paper Products', 'Primary Metals', 'Transportation Equipment', 'Food, Beverage & Tobacco Products', 'Fabricated Metal Products'], 'Too High': ['Textile Mills', 'Machinery', 'Electrical Equipment, Appliances & Components', 'Computer & Electronic Products']}, 'New Orders': {'Declining': ['Nonmetallic Mineral Products', 'Printing & Related Support Activities', 'Plastics & Rubber Products', 'Fabricated Metal Products', 'Transportation Equipment', 'Furniture & Related Products', 'Electrical Equipment, Appliances & Components', 'Miscellaneous Manufacturing', 'Machinery', 'Chemical Products', 'Food, Beverage & Tobacco Products'], 'Growing': ['Paper Products', 'Primary Metals', 'Wood Products', 'Computer & Electronic Products']}, 'Employment': {'Declining': ['Plastics & Rubber Products', 'Wood Products', 'Textile Mills', 'Electrical Equipment, Appliances & Components', 'Fabricated Metal Products', 'Paper Products', 'Transportation Equipment', 'Computer & Electronic Products', 'Chemical Products', 'Miscellaneous Manufacturing'], 'Growing': ['Furniture & Related Products', 'Food, Beverage & Tobacco Products', 'Primary Metals']}}, 'report_type': 'Manufacturing', 'index_summaries': {'New Orders': 'ISM’s New Orders Index contracted in August for the fifth consecutive month, registering 44.6 percent, a decrease of 2.8 percentage points compared to July’s figure of 47.4 percent. The New Orders Index hasn’t indicated consistent growth since a 24-month streak of expansion ended in May 2022. “Of the six largest manufacturing sectors, only one (Computer & Electronic Products) reported increased new orders. Panelists noted a continued level of uncertainty and concern about a lack of new order activity — with a 1-to-1.6 ratio of positive comments versus those expressing concern — and their confidence in the future economic environment remains at its lowest levels since the coronavirus pandemic recovery,” says Fiore. A New Orders Index above 52.3 percent, over time, is generally consistent with an increase in the Census Bureau’s series on manufacturing orders (in constant 2000 dollars).', 'Production': 'The Production Index continued in contraction territory in August, registering 44.8 percent, 1.1 percentage points lower than the July reading of 45.9 percent. Of the six largest manufacturing sectors, only Computer & Electronic Products reported increased production. The index is at its lowest level since May 2020, when it registered 34.2 percent. “Panelists’ companies reduced output levels compared to July. New order rates remain weak, and backlog levels continue to decline. Companies continue to avoid investing in inventory due to the current economic uncertainty,” says Fiore. An index above 52.2 percent, over time, is generally consistent with an increase in the Federal Reserve Board’s Industrial Production figures.', 'Employment': 'ISM’s Employment Index registered 46 percent in August, 2.6 percentage points higher than the July reading of 43.4 percent. The July and August readings are among the four lowest recorded since the index registered 43.7 percent in July 2020, early in the economic recovery; the others are 45.9 percent in February and 45 percent in July 2023. “The index contracted for the third consecutive month after an expansion in May, which broke a seven-month streak of contraction. Of the six big manufacturing sectors only Food, Beverage & Tobacco Products expanded employment in August, primarily due to seasonality factors. Respondents’ companies are continuing to reduce head counts through layoffs, attrition and hiring freezes. Sentiment in August indicated continued staff reductions compared to July, supported by the approximately 1-to-1.2 ratio of hiring versus head-count reduction comments,” says Fiore. An Employment Index above 50.3 percent, over time, is generally consistent with an increase in the Bureau of Labor Statistics (BLS) data on manufacturing employment.', 'Supplier Deliveries': 'Delivery performance of suppliers to manufacturing organizations was marginally slower in August, with the Supplier Deliveries Index registering 50.5 percent, a 2.1-percentage point decrease compared to the reading of 52.6 percent reported in July. This is the second month of slower deliveries after four consecutive months of faster deliveries. After a reading of 52.4 percent in September 2022, the index went into contraction territory the following month and remained there until February. Of the six big industries, three (Food, Beverage & Tobacco Products; Computer & Electronic Products; and Transportation Equipment) reported slower supplier deliveries in August. “Supplier deliveries are stabilizing as panelists’ companies continue to rely on their suppliers to manage their purchased material inventories, putting strain on the supply chain,” says Fiore. A reading below 50 percent indicates faster deliveries, while a reading above 50 percent indicates slower deliveries.', 'Inventories': 'The Inventories Index registered 50.3 percent in August, up a substantial 5.8 percentage points compared to the reading of 44.5 percent reported in July. “Manufacturing inventories grew as a result of panelists’ companies adjusting to lower new output levels and the subsequent timing issues. Of the six big industries, five (Food, Beverage & Tobacco Products; Computer & Electronic Products; Fabricated Metal Products; Transportation Equipment; and Chemical Products) reported increased manufacturing inventories in August,” says Fiore. An Inventories Index greater than 44.4 percent, over time, is generally consistent with expansion in the Bureau of Economic Analysis (BEA) figures on overall manufacturing inventories (in chained 2000 dollars).', "Customers' Inventories": 'ISM’s Customers’ Inventories Index registered 48.4 percent in August, up 2.6 percentage points compared to the 45.8 percent reported in July. “Customers’ inventory levels decreased at a slower rate in August, with the index moving upward to approach the lower end of ‘just right’ territory. This means panelists are reporting their companies’ customers have adequate (or just right) amounts of their products in inventory compared to the previous month, suggesting a demand level that is typically neutral for future new orders and production,” says Fiore.', 'Prices': 'The ISM Prices Index registered 54 percent, 1.1 percentage points higher compared to the July reading of 52.9 percent, indicating raw materials prices increased in August for the eighth straight month after eight consecutive months of decreases. Of the six largest manufacturing industries, four — Chemical Products; Computer & Electronic Products; Food, Beverage & Tobacco Products; and Transportation Equipment — reported price increases in August. “The Prices Index indicated expansion in August, at a faster rate compared to the previous month. Commodity prices continue to be volatile, especially oil, natural gas, aluminum, corrugate, freight transportation and plastic resins. Steel prices remain at historical lows. Twenty-one percent of companies reported higher prices in August, compared to 23 percent in July,” says Fiore. A Prices Index above 52.8 percent, over time, is generally consistent with an increase in the Bureau of Labor Statistics (BLS) Producer Price Index for Intermediate Materials.', 'Backlog of Orders': 'ISM’s Backlog of Orders Index registered 43.6 percent, a gain of 1.9 percentage points compared to the July reading of 41.7 percent, indicating order backlogs contracted for the 23rd consecutive month after a 27-month period of expansion. Of the six largest manufacturing industries, only Computer & Electronic Products reported expanded order backlogs in August. “The index remained in contraction in August, as lower new order and production rates were insufficient to allow backlogs to grow,” says Fiore.', 'New Export Orders': 'ISM’s New Export Orders Index registered 48.6 percent in August, down 0.4 percentage point from July’s reading of 49 percent. “The New Export Orders Index reading indicates that export orders contracted for a third month after expanding in May and contracting in April, with two straight months of expansion before that. New export orders remain sluggish as international trading partners continue to struggle with weak economies,” says Fiore.', 'Imports': 'ISM’s Imports Index continued to indicate cooling in August with a reading of 49.6 percent, an increase of 1 percentage point compared to July’s figure of 48.6 percent. “Imports contracted for the third month in a row after five consecutive months of expansion preceded by 14 consecutive months of contraction. Respondents’ companies have limited their investments in inventory, as growth prospects remain unclear. Ocean freight costs continue to rise, and access to equipment remains challenged,” says Fiore.'}, 'manufacturing_table': '', 'pmi_data': {'New Orders': {'value': 44.6, 'direction': 'Growing'}, 'Production': {'value': 44.8, 'direction': 'Contracting'}, 'Employment': {'value': 43.7, 'direction': 'Growing'}, 'Supplier Deliveries': {'value': 50.5, 'direction': 'Slowing'}, 'Inventories': {'value': 50.3, 'direction': 'Growing'}, "Customers' Inventories": {'value': 48.4, 'direction': 'Slowing'}, 'Prices': {'value': 1.1, 'direction': 'Growing'}, 'Backlog of Orders': {'value': 43.6, 'direction': 'Growing'}, 'New Export Orders': {'value': 48.6, 'direction': 'Growing'}, 'Imports': {'value': 49.6, 'direction': 'Growing'}}}.
+2025-06-04 20:06:44,904 - db_utils - INFO - Extracted Employment from summary: 43.7 (Growing)
+2025-06-04 20:06:44,904 - db_utils - INFO - Extracted Inventories from summary: 50.3 (Growing)
+2025-06-04 20:06:44,905 - db_utils - INFO - Extracted Backlog of Orders from summary: 43.6 (Growing)
+2025-06-04 20:06:44,905 - db_utils - INFO - Final indices_data before DB insertion: {'Employment': {'value': 43.7, 'direction': 'Growing'}, 'Inventories': {'value': 50.3, 'direction': 'Growing'}, 'Backlog of Orders': {'value': 43.6, 'direction': 'Growing'}}
+2025-06-04 20:06:44,905 - db_utils - INFO - Processing index: Employment
+2025-06-04 20:06:44,905 - db_utils - INFO - Inserting Employment: value=43.7, direction=Growing, report_type=Manufacturing
+2025-06-04 20:06:44,905 - db_utils - INFO - Successfully inserted index data for Employment
+2025-06-04 20:06:44,906 - db_utils - INFO - Processing index: Inventories
+2025-06-04 20:06:44,906 - db_utils - INFO - Inserting Inventories: value=50.3, direction=Growing, report_type=Manufacturing
+2025-06-04 20:06:44,906 - db_utils - INFO - Successfully inserted index data for Inventories
+2025-06-04 20:06:44,906 - db_utils - INFO - Processing index: Backlog of Orders
+2025-06-04 20:06:44,906 - db_utils - INFO - Inserting Backlog of Orders: value=43.6, direction=Growing, report_type=Manufacturing
+2025-06-04 20:06:44,906 - db_utils - INFO - Successfully inserted index data for Backlog of Orders
+2025-06-04 20:06:44,959 - db_utils - INFO - Successfully stored data for report August 2024 (type: Manufacturing) in database
+2025-06-04 20:06:44,960 - tools - INFO - Database storage result: True
+2025-06-04 20:06:44,961 - googleapiclient.discovery_cache - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-06-04 20:06:44,965 - tools - INFO - Creating new Google Sheet
+2025-06-04 20:06:46,107 - tools - INFO - Created new sheet with ID: 14p5AG6dVijbZkV8S0GFOm76wvZgSMu9gBMZN0d2XB3Y
+2025-06-04 20:06:46,108 - tools - INFO - Saved sheet ID to sheet_id.txt
+2025-06-04 20:06:47,096 - tools - INFO - Set up all tabs and removed default Sheet1
+2025-06-04 20:06:47,300 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:06:47,301 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:06:47,813 - tools - INFO - Created new heatmap summary with 1 rows
+2025-06-04 20:06:48,018 - tools - INFO - Successfully updated and formatted heatmap summary (values only)
+2025-06-04 20:06:48,018 - tools - INFO - Successfully updated heatmap tab with values only
+2025-06-04 20:06:48,020 - tools - INFO - Successfully created/updated required tabs
+2025-06-04 20:06:48,018 - tools - ERROR - Error creating alphabetical growth tab: name 'getCurrentReportType' is not defined
+2025-06-04 20:06:48,020 - tools - INFO - Successfully updated Google Sheets
+2025-06-04 20:06:48,020 - tools - ERROR - Traceback (most recent call last):
+2025-06-04 20:06:48,020 - main - INFO - Google Sheets formatting completed
+  File "/app/tools.py", line 3648, in create_alphabetical_growth_tab
+2025-06-04 20:06:48,020 - app - INFO - Removed uploaded file: uploads/4ca1df7e-5750-4266-8a36-2c1ef2e1618b_824_ISM-Manu_Report_incl_July_copy.pdf
+    report_type = getCurrentReportType()  # You need to implement this function or pass it from the caller
+2025-06-04 20:06:48,020 - app - INFO - Redirecting to dashboard with report_type: Manufacturing
+                  ^^^^^^^^^^^^^^^^^^^^
+NameError: name 'getCurrentReportType' is not defined. Did you mean: 'self.getCurrentReportType'?
+
+2025-06-04 20:06:48,020 - tools - WARNING - Failed to create alphabetical growth tab
+2025-06-04 20:06:48,020 - tools - ERROR - Error creating numerical growth tab: name 'getCurrentReportType' is not defined
+2025-06-04 20:06:48,020 - tools - ERROR - Traceback (most recent call last):
+  File "/app/tools.py", line 3961, in create_numerical_growth_tab
+    report_type = getCurrentReportType()
+                 ^^^^^^^^^^^^^^^^^^^^
+NameError: name 'getCurrentReportType' is not defined. Did you mean: 'self.getCurrentReportType'?
+
+2025-06-04 20:06:48,020 - tools - WARNING - Failed to create numerical growth tab
+2025-06-04 20:06:48,223 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:06:48,224 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:06:48,410 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:06:48,410 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:06:48,413 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:06:48,414 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:06:48,475 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:06:48,475 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:24:57,974 - app - INFO - In industry_status, report_type is: Manufacturing
+2025-06-04 20:25:02,350 - app - INFO - In industry_status, report_type is: Manufacturing
+2025-06-04 20:25:13,737 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:13,737 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:14,670 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:14,671 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:17,475 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:17,475 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:17,532 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:17,532 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:21,371 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:21,372 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:21,421 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:21,422 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:23,428 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:23,429 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:23,624 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:23,625 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:23,635 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:23,636 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:23,695 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:23,696 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:28,853 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:25:28,854 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:25:40,064 - app - INFO - File 1_25_ISM-Services_Report.pdf saved to uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf
+2025-06-04 20:25:40,067 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:40,068 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:42,251 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:42,251 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:42,255 - report_detection - INFO - Detection scores - Keyword: (8.785529715762273, 91.21447028423772), Structure: (25.0, 20.0), Industry: (2.6490066225165565, 97.35099337748345)
+2025-06-04 20:25:42,255 - report_detection - INFO - Combined scores - Manufacturing: 12.422566182384447, Services: 71.07743381761554
+2025-06-04 20:25:42,255 - app - INFO - Detected report type for 1_25_ISM-Services_Report.pdf as Services
+2025-06-04 20:25:42,255 - app - INFO - Processing single file: 1_25_ISM-Services_Report.pdf of type Services
+2025-06-04 20:25:42,255 - main - INFO - Processing PDF: uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf
+2025-06-04 20:25:42,255 - main - INFO - Found sheet_id.txt file with ID: 14p5AG6dVijbZkV8S0GFOm76wvZgSMu9gBMZN0d2XB3Y
+2025-06-04 20:25:42,257 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:42,257 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,844 - report_detection - INFO - Combined scores - Manufacturing: 12.422566182384447, Services: 71.07743381761554
+2025-06-04 20:25:46,844 - tools - INFO - Detected report type: Services
+2025-06-04 20:25:44,394 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,844 - tools - INFO - Initial month_year from filename: Unknown
+2025-06-04 20:25:44,395 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,846 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,847 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:44,399 - report_detection - INFO - Detection scores - Keyword: (8.785529715762273, 91.21447028423772), Structure: (25.0, 20.0), Industry: (2.6490066225165565, 97.35099337748345)
+2025-06-04 20:25:46,847 - tools - INFO - Extracting all 2 pages from PDF
+2025-06-04 20:25:44,400 - report_detection - INFO - Combined scores - Manufacturing: 12.422566182384447, Services: 71.07743381761554
+2025-06-04 20:25:48,690 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:44,400 - main - INFO - Detected report type: Services
+2025-06-04 20:25:48,690 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:44,404 - main - INFO - Starting data extraction for Services report...
+2025-06-04 20:25:48,691 - tools - INFO - Successfully extracted 36608 chars from full PDF
+2025-06-04 20:25:44,404 - main - INFO - Performing initial direct PDF parsing
+2025-06-04 20:25:44,668 - pdf_utils - INFO - Extracted month and year: January 2025
+2025-06-04 20:25:48,707 - tools - INFO - Extracted month_year from text: January 2025
+2025-06-04 20:25:44,672 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:44,672 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,838 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,838 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:25:46,844 - report_detection - INFO - Detection scores - Keyword: (8.785529715762273, 91.21447028423772), Structure: (25.0, 20.0), Industry: (2.6490066225165565, 97.35099337748345)
+2025-06-04 20:26:24,479 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-06-04 20:26:24,544 - tools - INFO - Final indices after _ensure_correct_pmi_index: ['Services PMI', 'New Orders', 'Business Activity', 'Employment', 'Supplier Deliveries', 'Inventories', 'Inventory Sentiment', 'Prices', 'Backlog of Orders', 'New Export Orders', 'Imports', 'OVERALL ECONOMY', 'Services Sector']
+2025-06-04 20:26:24,544 - pdf_utils - INFO - LLM extraction completed successfully for uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf
+╭─────────────────────────── Crew Execution Started ───────────────────────────╮
+│                                                                              │
+│  Crew Execution Started                                                      │
+│  Name: crew                                                                  │
+│  ID: 63a3d1eb-5061-4091-ac44-792daeba71f4                                    │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+[1m[95m# Agent:[00m [1m[92mDocument Extractor[00m
+[95m## Task:[00m [92m
+            Extract all relevant data from the ISM Services Report PDF.
+            The PDF path is: uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf
+
+            When using the PDF Extraction Tool, pass the path in this format:
+            {
+                "extracted_data": {
+2025-06-04 20:26:28,337 - report_detection - INFO - Combined scores - Manufacturing: 12.422566182384447, Services: 71.07743381761554
+2025-06-04 20:26:28,337 - tools - INFO - Detected report type: Services
+                    "pdf_path": "uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf",
+                    "report_type": "Services"
+2025-06-04 20:26:28,337 - tools - INFO - Initial month_year from filename: Unknown
+                }
+            }
+
+            You must extract:
+            1. The month and year of the report
+            2. The Services at a Glance table
+            3. All index-specific summaries
+            4. Industry mentions in each index summary
+2025-06-04 20:26:28,339 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+
+            YOUR FINAL ANSWER MUST BE A VALID DICTIONARY containing all extracted data.
+2025-06-04 20:26:28,340 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:28,340 - tools - INFO - Extracting all 2 pages from PDF
+            Format your answer as:
+
+            {
+                'month_year': 'Month Year',
+                'manufacturing_table': 'table content',
+                'index_summaries': {...},
+                'industry_data': {...}
+            }
+
+            Ensure all data is correctly identified and structured for further processing.
+            [00m
+[92m20:26:24 - LiteLLM:INFO[0m: utils.py:2827 - 
+LiteLLM completion() model= gpt-4o-mini; provider = openai
+2025-06-04 20:26:26,019 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[92m20:26:26 - LiteLLM:INFO[0m: utils.py:1185 - Wrapper: Completed Call, calling success_handler
+[92m20:26:26 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+[92m20:26:26 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+2025-06-04 20:26:26,027 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:26,028 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:28,332 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:28,333 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:28,337 - report_detection - INFO - Detection scores - Keyword: (8.785529715762273, 91.21447028423772), Structure: (25.0, 20.0), Industry: (2.6490066225165565, 97.35099337748345)
+2025-06-04 20:26:30,245 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:30,245 - pdfminer.pdfpage - WARNING - CropBox missing from /Page, defaulting to MediaBox
+2025-06-04 20:26:30,246 - tools - INFO - Successfully extracted 36608 chars from full PDF
+2025-06-04 20:26:30,262 - tools - INFO - Extracted month_year from text: January 2025
+2025-06-04 20:26:54,868 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-06-04 20:26:54,938 - tools - INFO - Final indices after _ensure_correct_pmi_index: ['Services PMI', 'New Orders', 'Business Activity', 'Employment', 'Supplier Deliveries', 'Inventories', 'Inventory Sentiment', 'Prices', 'Backlog of Orders', 'New Export Orders', 'Imports', 'OVERALL ECONOMY', 'Services Sector']
+
+
+[1m[95m# Agent:[00m [1m[92mDocument Extractor[00m
+[95m## Thought:[00m [92mAction: extract_pdf_data[00m
+[95m## Using tool:[00m [92mextract_pdf_data[00m
+[95m## Tool Input:[00m [92m
+"{\"input_data\": {\"pdf_path\": \"uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf\", \"report_type\": \"Services\"}}"[00m
+[95m## Tool Output:[00m [92m
+{'month_year': 'January 2025', 'indices': {'Services PMI': {'current': '52.8', 'direction': 'Growing', 'series_index': '52.8'}, 'New Orders': {'current': '51.3', 'direction': 'Growing', 'series_index': '51.3'}, 'Business Activity': {'current': '54.5', 'direction': 'Growing', 'series_index': '54.5'}, 'Employment': {'current': '52.3', 'direction': 'Growing', 'series_index': '52.3'}, 'Supplier Deliveries': {'current': '53.0', 'direction': 'Slower', 'series_index': '53.0'}, 'Inventories': {'current': '47.5', 'direction': 'Contracting', 'series_index': '47.5'}, 'Inventory Sentiment': {'current': '53.5', 'direction': 'Too High', 'series_index': '53.5'}, 'Prices': {'current': '60.4', 'direction': 'Increasing', 'series_index': '60.4'}, 'Backlog of Orders': {'current': '44.8', 'direction': 'Contracting', 'series_index': '44.8'}, 'New Export Orders': {'current': '52.0', 'direction': 'Growing', 'series_index': '52.0'}, 'Imports': {'current': '49.8', 'direction': 'Contracting', 'series_index': '49.8'}, 'OVERALL ECONOMY': {'direction': 'Growing'}, 'Services Sector': {'direction': 'Growing'}}, 'industry_data': {'New Orders': {'Growing': ['Accommodation & Food Services', 'Agriculture, Forestry, Fishing & Hunting', 'Educational Services', 'Finance & Insurance', 'Wholesale Trade', 'Transportation & Warehousing', 'Health Care & Social Assistance', 'Public Administration', 'Construction', 'Retail Trade'], 'Declining': ['Real Estate, Rental & Leasing', 'Other Services', 'Professional, Scientific & Technical Services', 'Information', 'Management of Companies & Support Services']}, 'Business Activity': {'Growing': ['Accommodation & Food Services', 'Agriculture, Forestry, Fishing & Hunting', 'Educational Services', 'Finance & Insurance', 'Retail Trade', 'Health Care & Social Assistance', 'Public Administration', 'Transportation & Warehousing', 'Wholesale Trade'], 'Declining': ['Other Services', 'Professional, Scientific & Technical Services', 'Real Estate, Rental & Leasing', 'Construction']}, 'Employment': {'Growing': ['Construction', 'Finance & Insurance', 'Management of Companies & Support Services', 'Wholesale Trade', 'Health Care & Social Assistance', 'Utilities'], 'Declining': ['Retail Trade', 'Other Services', 'Professional, Scientific & Technical Services', 'Public Administration', 'Educational Services']}, 'Supplier Deliveries': {'Slower': ['Mining', 'Agriculture, Forestry, Fishing & Hunting', 'Information', 'Retail Trade', 'Wholesale Trade', 'Construction', 'Professional, Scientific & Technical Services', 'Health Care & Social Assistance', 'Public Administration'], 'Faster': ['Other Services', 'Finance & Insurance', 'Educational Services']}, 'Inventories': {'Higher': ['Agriculture, Forestry, Fishing & Hunting', 'Health Care & Social Assistance', 'Information', 'Educational Services', 'Management of Companies & Support Services', 'Construction', 'Transportation & Warehousing', 'Utilities'], 'Lower': ['Retail Trade', 'Real Estate, Rental & Leasing', 'Other Services', 'Wholesale Trade', 'Public Administration', 'Professional, Scientific & Technical Services']}, 'Inventory Sentiment': {'Too High': ['Accommodation & Food Services', 'Arts, Entertainment & Recreation', 'Wholesale Trade', 'Utilities', 'Educational Services', 'Construction', 'Information', 'Professional, Scientific & Technical Services', 'Health Care & Social Assistance', 'Retail Trade'], 'Too Low': ['Management of Companies & Support Services']}, 'Prices': {'Increasing': ['Mining', 'Other Services', 'Finance & Insurance', 'Accommodation & Food Services', 'Construction', 'Professional, Scientific & Technical Services', 'Wholesale Trade', 'Transportation & Warehousing', 'Utilities', 'Public Administration', 'Real Estate, Rental & Leasing', 'Educational Services', 'Information', 'Health Care & Social Assistance', 'Management of Companies & Support Services'], 'Decreasing': []}, 'Backlog of Orders': {'Growing': ['Agriculture, Forestry, Fishing & Hunting', 'Finance & Insurance', 'Wholesale Trade', 'Professional, Scientific & Technical Services', 'Management of Companies & Support Services'], 'Declining': ['Real Estate, Rental & Leasing', 'Other Services', 'Arts, Entertainment & Recreation', 'Transportation & Warehousing', 'Educational Services', 'Information', 'Construction', 'Utilities', 'Health Care & Social Assistance']}, 'New Export Orders': {'Growing': ['Transportation & Warehousing', 'Retail Trade', 'Finance & Insurance', 'Wholesale Trade', 'Information'], 'Declining': ['Real Estate, Rental & Leasing', 'Professional, Scientific & Technical Services', 'Educational Services']}, 'Imports': {'Growing': ['Agriculture, Forestry, Fishing & Hunting', 'Retail Trade', 'Health Care & Social Assistance', 'Professional, Scientific & Technical Services', 'Wholesale Trade'], 'Declining': ['Other Services', 'Educational Services', 'Information', 'Utilities']}}, 'index_summaries': {'New Orders': 'ISM’s New Orders Index registered 51.3 percent in January, 3.1 percentage points lower than the seasonally adjusted reading of 54.4 percent in December. The index was in expansion for the seventh consecutive month after contracting in June for just the second time since May 2020. Comments from respondents include: “Bid level is the highest level in over five years” and “High interest rates and inflation.”', 'Business Activity': 'ISM’s Business Activity Index registered 54.5 percent in January, 3.5 percentage points lower than the seasonally adjusted 58 percent recorded in December, a 56th month of expansion after seasonal adjustments dating back four years. The Business Activity Index has been in expansion territory since its coronavirus pandemic lows. Comments from respondents include: “Gearing up for 2025 projects” and “Spending by customers has increased; unclear if it’s truly a pickup in business or panic buying ahead of potential tariffs driving up prices.”', 'Employment': 'Employment activity in the services sector expanded in January for the fourth consecutive month after a contraction in September. The Employment Index registered 52.3 percent, up 1 percentage point from the seasonally adjusted December figure of 51.3 percent. Comments from respondents include: “Human resources department working aggressively to fill open positions” and “Belt tightening due to slowing consumer demand.”', 'Supplier Deliveries': 'In January, the Supplier Deliveries Index indicated slower supplier performance for the second month in a row. The index registered 53 percent, up 0.5 percentage point from the 52.5 percent recorded in December. A reading above 50 percent indicates slower deliveries, while a reading below 50 percent indicates faster deliveries. Comments from respondents include: “Weather delays and lack of availability of trucking on the East Coast have slowed down delivery times” and “Lunar New Year rush.”', 'Inventories': 'The Inventories Index landed in contraction territory for the third month in a row. The reading of 47.5 percent is a 1.9-percentage point decrease compared to the 49.4 percent reported in December. Of the total respondents in January, 45 percent indicated they do not have inventories or do not measure them. Comments from respondents include: “Lowering Inventory to keep carrying cost low during slow season” and “Post-holiday inventory levels.”', 'Prices': 'Prices paid by services organizations for materials and services increased in January for the 92nd consecutive month. The Prices Index registered 60.4 percent, 4 percentage points lower than the seasonally adjusted 64.4 percent recorded in December. The January reading is the 27th in a row below 70 percent, but the second consecutive month above 60 percent. Prior to December, the index had not been above 60 percent since January 2024 (62.9 percent).', 'Backlog of Orders': 'The ISM Services Backlog of Orders Index contracted in January for the sixth month in a row. The reading of 44.8 percent is 0.5 percentage point higher than the 44.3 percent reported in December. Of the total respondents in January, 43 percent indicated they do not measure backlog of orders. Respondent comments include: “Eating up backlog as new projects are slow to come online with higher land and capital costs” and “No backlog; supply is fine.”', 'New Export Orders': 'Orders and requests for services and other non-manufacturing activities to be provided outside of the U.S. by domestically based companies increased in January. The New Export Orders Index registered 52 percent, up 1.9 percentage points compared to the December reading of 50.1 percent and the second month in a row in expansion territory. Of the total respondents in January, 70 percent indicated they do not perform, or do not separately measure, orders for work outside of the U.S. Respondent comments include: “Less dependency on new international orders” and “New Canadian opportunities.”', 'Imports': 'The Imports Index contracted for the first time in seven months in January, registering 49.8 percent, 0.9 percentage point lower than the 50.7 percent reported in December. The index has indicated expansion in 23 of the last 29 months. Seventy-one percent of respondents reported that they do not use, or do not track the use of, imported materials. Respondent comments include: “Currently importing our spring season merchandise” and “Lower business in previous months; lower imports.”', 'Inventory Sentiment': 'The ISM Services Inventory Sentiment Index grew for the 21st consecutive month in January. The index registered 53.5 percent, an increase of 0.1 percentage point from December’s figure of 53.4 percent. This reading indicates that respondents feel their inventories are too high when correlated to industry levels.'}, 'report_type': 'Services'}[00m
+[92m20:26:54 - LiteLLM:INFO[0m: utils.py:2827 - 
+LiteLLM completion() model= gpt-4o-mini; provider = openai
+2025-06-04 20:27:23,831 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[92m20:27:23 - LiteLLM:INFO[0m: utils.py:1185 - Wrapper: Completed Call, calling success_handler
+[92m20:27:23 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+
+
+[1m[95m# Agent:[00m [1m[92mDocument Extractor[00m
+│                                                                              │
+[95m## Final Answer:[00m [92m
+│                                                                              │
+2025-06-04 20:27:23,852 - main - INFO - Attempting to parse agent output of type: <class 'crewai.crews.crew_output.CrewOutput'>
+╰──────────────────────────────────────────────────────────────────────────────╯
+2025-06-04 20:27:23,852 - main - INFO - Attempting to extract from CrewOutput of type: <class 'crewai.crews.crew_output.CrewOutput'>
+
+2025-06-04 20:27:23,852 - main - WARNING - No indices found in extraction data
+2025-06-04 20:27:23,852 - main - INFO - Direct PDF parsing found 122 industries
+╭────────────────────────────── Crew Completion ───────────────────────────────╮
+2025-06-04 20:27:23,852 - main - INFO - Direct PDF parsing found 122 industries
+2025-06-04 20:27:23,852 - main - INFO - Comparison: Agent found 122 industries, Direct parsing found 122 industries
+│                                                                              │
+2025-06-04 20:27:23,853 - main - INFO - Keeping agent extraction with merged industry data
+│  Crew Execution Completed                                                    │
+2025-06-04 20:27:23,853 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:27:23,853 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+│  Name: crew                                                                  │
+│  ID: 63a3d1eb-5061-4091-ac44-792daeba71f4                                    │
+│                                                                              │
+│                                                                              │
+2025-06-04 20:27:23,854 - db_utils - WARNING - No indices data found, attempting to extract from summaries as fallback
+2025-06-04 20:27:23,854 - db_utils - INFO - Extracted New Orders from summary: 51.3 (Growing)
+╰──────────────────────────────────────────────────────────────────────────────╯
+2025-06-04 20:27:23,854 - db_utils - INFO - Extracted Business Activity from summary: 54.5 (Growing)
+
+2025-06-04 20:27:23,854 - db_utils - INFO - Extracted Employment from summary: 52.3 (Contracting)
+2025-06-04 20:27:23,855 - db_utils - INFO - Inserting New Orders: value=51.3, direction=Growing, report_type=Services
+2025-06-04 20:27:23,852 - main - INFO - Extraction result received
+2025-06-04 20:27:23,855 - db_utils - INFO - Extracted Prices from summary: 60.4 (Unknown)
+2025-06-04 20:27:23,855 - db_utils - INFO - Successfully inserted index data for New Orders
+2025-06-04 20:27:23,855 - db_utils - INFO - Extracted Inventory Sentiment from summary: 53.5 (Unknown)
+2025-06-04 20:27:23,855 - db_utils - INFO - Processing index: Business Activity
+2025-06-04 20:27:23,855 - db_utils - INFO - Inserting Business Activity: value=54.5, direction=Growing, report_type=Services
+2025-06-04 20:27:23,855 - db_utils - INFO - Final indices_data before DB insertion: {'New Orders': {'value': 51.3, 'direction': 'Growing'}, 'Business Activity': {'value': 54.5, 'direction': 'Growing'}, 'Employment': {'value': 52.3, 'direction': 'Contracting'}, 'Prices': {'value': 60.4, 'direction': 'Unknown'}, 'Inventory Sentiment': {'value': 53.5, 'direction': 'Unknown'}}
+2025-06-04 20:27:23,855 - db_utils - INFO - Successfully inserted index data for Business Activity
+2025-06-04 20:27:23,855 - db_utils - INFO - Processing index: Employment
+2025-06-04 20:27:23,855 - db_utils - INFO - Processing index: New Orders
+2025-06-04 20:27:23,855 - db_utils - INFO - Inserting Employment: value=52.3, direction=Contracting, report_type=Services
+2025-06-04 20:27:23,855 - db_utils - INFO - Successfully inserted index data for Employment
+2025-06-04 20:27:23,855 - db_utils - INFO - Processing index: Prices
+2025-06-04 20:27:23,855 - db_utils - INFO - Inserting Prices: value=60.4, direction=Unknown, report_type=Services
+2025-06-04 20:27:23,855 - db_utils - INFO - Successfully inserted index data for Prices
+2025-06-04 20:27:23,856 - db_utils - INFO - Processing index: Inventory Sentiment
+2025-06-04 20:27:23,856 - db_utils - INFO - Inserting Inventory Sentiment: value=53.5, direction=Unknown, report_type=Services
+2025-06-04 20:27:23,856 - db_utils - INFO - Successfully inserted index data for Inventory Sentiment
+2025-06-04 20:27:23,944 - main - INFO - Successfully stored data from uploads/62f4ec8a-bff2-4fa4-b8c1-320b093f3961_1_25_ISM-Services_Report.pdf in database
+2025-06-04 20:27:23,944 - db_utils - INFO - Successfully stored data for report January 2025 (type: Services) in database
+╭─────────────────────────── Crew Execution Started ───────────────────────────╮
+│                                                                              │
+2025-06-04 20:27:23,854 - db_utils - INFO - extracted_data in store_report_data_in_db: {'month_year': 'January 2025', 'manufacturing_table': None, 'index_summaries': {'New Orders': 'ISM’s New Orders Index registered 51.3 percent in January, 3.1 percentage points lower than the seasonally adjusted reading of 54.4 percent in December. The index was in expansion for the seventh consecutive month after contracting in June for just the second time since May 2020. Comments from respondents include: “Bid level is the highest level in over five years” and “High interest rates and inflation.”', 'Business Activity': 'ISM’s Business Activity Index registered 54.5 percent in January, 3.5 percentage points lower than the seasonally adjusted 58 percent recorded in December, a 56th month of expansion after seasonal adjustments dating back four years. The Business Activity Index has been in expansion territory since its coronavirus pandemic lows. Comments from respondents include: “Gearing up for 2025 projects” and “Spending by customers has increased; unclear if it’s truly a pickup in business or panic buying ahead of potential tariffs driving up prices.”', 'Employment': 'Employment activity in the services sector expanded in January for the fourth consecutive month after a contraction in September. The Employment Index registered 52.3 percent, up 1 percentage point from the seasonally adjusted December figure of 51.3 percent. Comments from respondents include: “Human resources department working aggressively to fill open positions” and “Belt tightening due to slowing consumer demand.”', 'Supplier Deliveries': 'In January, the Supplier Deliveries Index indicated slower supplier performance for the second month in a row. The index registered 53 percent, up 0.5 percentage point from the 52.5 percent recorded in December. A reading above 50 percent indicates slower deliveries, while a reading below 50 percent indicates faster deliveries. Comments from respondents include: “Weather delays and lack of availability of trucking on the East Coast have slowed down delivery times” and “Lunar New Year rush.”', 'Inventories': 'The Inventories Index landed in contraction territory for the third month in a row. The reading of 47.5 percent is a 1.9-percentage point decrease compared to the 49.4 percent reported in December. Of the total respondents in January, 45 percent indicated they do not have inventories or do not measure them. Comments from respondents include: “Lowering Inventory to keep carrying cost low during slow season” and “Post-holiday inventory levels.”', 'Prices': 'Prices paid by services organizations for materials and services increased in January for the 92nd consecutive month. The Prices Index registered 60.4 percent, 4 percentage points lower than the seasonally adjusted 64.4 percent recorded in December. The January reading is the 27th in a row below 70 percent, but the second consecutive month above 60 percent. Prior to December, the index had not been above 60 percent since January 2024 (62.9 percent).', 'Backlog of Orders': 'The ISM Services Backlog of Orders Index contracted in January for the sixth month in a row. The reading of 44.8 percent is 0.5 percentage point higher than the 44.3 percent reported in December. Of the total respondents in January, 43 percent indicated they do not measure backlog of orders. Respondent comments include: “Eating up backlog as new projects are slow to come online with higher land and capital costs” and “No backlog; supply is fine.”', 'New Export Orders': 'Orders and requests for services and other non-manufacturing activities to be provided outside of the U.S. by domestically based companies increased in January. The New Export Orders Index registered 52 percent, up 1.9 percentage points compared to the December reading of 50.1 percent and the second month in a row in expansion territory. Of the total respondents in January, 70 percent indicated they do not perform, or do not separately measure, orders for work outside of the U.S. Respondent comments include: “Less dependency on new international orders” and “New Canadian opportunities.”', 'Imports': 'The Imports Index contracted for the first time in seven months in January, registering 49.8 percent, 0.9 percentage point lower than the 50.7 percent reported in December. The index has indicated expansion in 23 of the last 29 months. Seventy-one percent of respondents reported that they do not use, or do not track the use of, imported materials. Respondent comments include: “Currently importing our spring season merchandise” and “Lower business in previous months; lower imports.”', 'Inventory Sentiment': 'The ISM Services Inventory Sentiment Index grew for the 21st consecutive month in January. The index registered 53.5 percent, an increase of 0.1 percentage point from December’s figure of 53.4 percent. This reading indicates that respondents feel their inventories are too high when correlated to industry levels.'}, 'industry_data': {'New Export Orders': {'Declining': ['Real Estate, Rental & Leasing', 'Professional, Scientific & Technical Services', 'Educational Services'], 'Growing': ['Transportation & Warehousing', 'Retail Trade', 'Finance & Insurance', 'Wholesale Trade', 'Information']}, 'Business Activity': {'Declining': ['Other Services', 'Professional, Scientific & Technical Services', 'Real Estate, Rental & Leasing', 'Construction'], 'Growing': ['Accommodation & Food Services', 'Agriculture, Forestry, Fishing & Hunting', 'Educational Services', 'Finance & Insurance', 'Retail Trade', 'Health Care & Social Assistance', 'Public Administration', 'Transportation & Warehousing', 'Wholesale Trade']}, 'Inventories': {'Lower': ['Retail Trade', 'Real Estate, Rental & Leasing', 'Other Services', 'Wholesale Trade', 'Public Administration', 'Professional, Scientific & Technical Services'], 'Higher': ['Agriculture, Forestry, Fishing & Hunting', 'Health Care & Social Assistance', 'Information', 'Educational Services', 'Management of Companies & Support Services', 'Construction', 'Transportation & Warehousing', 'Utilities']}, 'Backlog of Orders': {'Declining': ['Real Estate, Rental & Leasing', 'Other Services', 'Arts, Entertainment & Recreation', 'Transportation & Warehousing', 'Educational Services', 'Information', 'Construction', 'Utilities', 'Health Care & Social Assistance'], 'Growing': ['Agriculture, Forestry, Fishing & Hunting', 'Finance & Insurance', 'Wholesale Trade', 'Professional, Scientific & Technical Services', 'Management of Companies & Support Services']}, 'Supplier Deliveries': {'Slower': ['Mining', 'Agriculture, Forestry, Fishing & Hunting', 'Information', 'Retail Trade', 'Wholesale Trade', 'Construction', 'Professional, Scientific & Technical Services', 'Health Care & Social Assistance', 'Public Administration'], 'Faster': ['Other Services', 'Finance & Insurance', 'Educational Services']}, 'Prices': {'Decreasing': [], 'Increasing': ['Mining', 'Other Services', 'Finance & Insurance', 'Accommodation & Food Services', 'Construction', 'Professional, Scientific & Technical Services', 'Wholesale Trade', 'Transportation & Warehousing', 'Utilities', 'Public Administration', 'Real Estate, Rental & Leasing', 'Educational Services', 'Information', 'Health Care & Social Assistance', 'Management of Companies & Support Services']}, 'Imports': {'Declining': ['Other Services', 'Educational Services', 'Information', 'Utilities'], 'Growing': ['Agriculture, Forestry, Fishing & Hunting', 'Retail Trade', 'Health Care & Social Assistance', 'Professional, Scientific & Technical Services', 'Wholesale Trade']}, 'Inventory Sentiment': {'Too Low': ['Management of Companies & Support Services'], 'Too High': ['Accommodation & Food Services', 'Arts, Entertainment & Recreation', 'Wholesale Trade', 'Utilities', 'Educational Services', 'Construction', 'Information', 'Professional, Scientific & Technical Services', 'Health Care & Social Assistance', 'Retail Trade']}, 'New Orders': {'Declining': ['Real Estate, Rental & Leasing', 'Other Services', 'Professional, Scientific & Technical Services', 'Information', 'Management of Companies & Support Services'], 'Growing': ['Accommodation & Food Services', 'Agriculture, Forestry, Fishing & Hunting', 'Educational Services', 'Finance & Insurance', 'Wholesale Trade', 'Transportation & Warehousing', 'Health Care & Social Assistance', 'Public Administration', 'Construction', 'Retail Trade']}, 'Employment': {'Declining': ['Retail Trade', 'Other Services', 'Professional, Scientific & Technical Services', 'Public Administration', 'Educational Services'], 'Growing': ['Construction', 'Finance & Insurance', 'Management of Companies & Support Services', 'Wholesale Trade', 'Health Care & Social Assistance', 'Utilities']}}, 'report_type': 'Services'}.
+{'month_year': 'January 2025', 'manufacturing_table': None, 'index_summaries': {'New Orders': 'ISM’s New Orders Index registered 51.3 percent in January, 3.1 percentage points lower than the seasonally adjusted reading of 54.4 percent in December. The index was in expansion for the seventh consecutive month after contracting in June for just the second time since May 2020. Comments from respondents include: “Bid level is the highest level in over five years” and “High interest rates and inflation.”', 'Business Activity': 'ISM’s Business Activity Index registered 54.5 percent in January, 3.5 percentage points lower than the seasonally adjusted 58 percent recorded in December, a 56th month of expansion after seasonal adjustments dating back four years. The Business Activity Index has been in expansion territory since its coronavirus pandemic lows. Comments from respondents include: “Gearing up for 2025 projects” and “Spending by customers has increased; unclear if it’s truly a pickup in business or panic buying ahead of potential tariffs driving up prices.”', 'Employment': 'Employment activity in the services sector expanded in January for the fourth consecutive month after a contraction in September. The Employment Index registered 52.3 percent, up 1 percentage point from the seasonally adjusted December figure of 51.3 percent. Comments from respondents include: “Human resources department working aggressively to fill open positions” and “Belt tightening due to slowing consumer demand.”', 'Supplier Deliveries': 'In January, the Supplier Deliveries Index indicated slower supplier performance for the second month in a row. The index registered 53 percent, up 0.5 percentage point from the 52.5 percent recorded in December. A reading above 50 percent indicates slower deliveries, while a reading below 50 percent indicates faster deliveries. Comments from respondents include: “Weather delays and lack of availability of trucking on the East Coast have slowed down delivery times” and “Lunar New Year rush.”', 'Inventories': 'The Inventories Index landed in contraction territory for the third month in a row. The reading of 47.5 percent is a 1.9-percentage point decrease compared to the 49.4 percent reported in December. Of the total respondents in January, 45 percent indicated they do not have inventories or do not measure them. Comments from respondents include: “Lowering Inventory to keep carrying cost low during slow season” and “Post-holiday inventory levels.”', 'Prices': 'Prices paid by services organizations for materials and services increased in January for the 92nd consecutive month. The Prices Index registered 60.4 percent, 4 percentage points lower than the seasonally adjusted 64.4 percent recorded in December. The January reading is the 27th in a row below 70 percent, but the second consecutive month above 60 percent. Prior to December, the index had not been above 60 percent since January 2024 (62.9 percent).', 'Backlog of Orders': 'The ISM Services Backlog of Orders Index contracted in January for the sixth month in a row. The reading of 44.8 percent is 0.5 percentage point higher than the 44.3 percent reported in December. Of the total respondents in January, 43 percent indicated they do not measure backlog of orders. Respondent comments include: “Eating up backlog as new projects are slow to come online with higher land and capital costs” and “No backlog; supply is fine.”', 'New Export Orders': 'Orders and requests for services and other non-manufacturing activities to be provided outside of the U.S. by domestically based companies increased in January. The New Export Orders Index registered 52 percent, up 1.9 percentage points compared to the December reading of 50.1 percent and the second month in a row in expansion territory. Of the total respondents in January, 70 percent indicated they do not perform, or do not separately measure, orders for work outside of the U.S. Respondent comments include: “Less dependency on new international orders” and “New Canadian opportunities.”', 'Imports': 'The Imports Index contracted for the first time in seven months in January, registering 49.8 percent, 0.9 percentage point lower than the 50.7 percent reported in December. The index has indicated expansion in 23 of the last 29 months. Seventy-one percent of respondents reported that they do not use, or do not track the use of, imported materials. Respondent comments include: “Currently importing our spring season merchandise” and “Lower business in previous months; lower imports.”', 'Inventory Sentiment': 'The ISM Services Inventory Sentiment Index grew for the 21st consecutive month in January. The index registered 53.5 percent, an increase of 0.1 percentage point from December’s figure of 53.4 percent. This reading indicates that respondents feel their inventories are too high when correlated to industry levels.'}, 'industry_data': {'New Orders': {'Growing': ['Accommodation & Food Services', 'Agriculture, Forestry, Fishing & Hunting', 'Educational Services', 'Finance & Insurance', 'Wholesale Trade', 'Transportation & Warehousing', 'Health Care & Social Assistance', 'Public Administration', 'Construction', 'Retail Trade'], 'Declining': ['Real Estate, Rental & Leasing', 'Other Services', 'Professional, Scientific & Technical Services', 'Information', 'Management of Companies & Support Services']}, 'Business Activity': {'Growing': ['Accommodation & Food Services', 'Agriculture, Forestry, Fishing & Hunting', 'Educational Services', 'Finance & Insurance', 'Retail Trade', 'Health Care & Social Assistance', 'Public Administration', 'Transportation & Warehousing', 'Wholesale Trade'], 'Declining': ['Other Services', 'Professional, Scientific & Technical Services', 'Real Estate, Rental & Leasing', 'Construction']}, 'Employment': {'Growing': ['Construction', 'Finance & Insurance', 'Management of Companies & Support Services', 'Wholesale Trade', 'Health Care & Social Assistance', 'Utilities'], 'Declining': ['Retail Trade', 'Other Services', 'Professional, Scientific & Technical Services', 'Public Administration', 'Educational Services']}, 'Supplier Deliveries': {'Slower': ['Mining', 'Agriculture, Forestry, Fishing & Hunting', 'Information', 'Retail Trade', 'Wholesale Trade', 'Construction', 'Professional, Scientific & Technical Services', 'Health Care & Social Assistance', 'Public Administration'], 'Faster': ['Other Services', 'Finance & Insurance', 'Educational Services']}, 'Inventories': {'Higher': ['Agriculture, Forestry, Fishing & Hunting', 'Health Care & Social Assistance', 'Information', 'Educational Services', 'Management of Companies & Support Services', 'Construction', 'Transportation & Warehousing', 'Utilities'], 'Lower': ['Retail Trade', 'Real Estate, Rental & Leasing', 'Other Services', 'Wholesale Trade', 'Public Administration', 'Professional, Scientific & Technical Services']}, 'Inventory Sentiment': {'Too High': ['Accommodation & Food Services', 'Arts, Entertainment & Recreation', 'Wholesale Trade', 'Utilities', 'Educational Services', 'Construction', 'Information', 'Professional, Scientific & Technical Services', 'Health Care & Social Assistance', 'Retail Trade'], 'Too Low': ['Management of Companies & Support Services']}, 'Prices': {'Increasing': ['Mining', 'Other Services', 'Finance & Insurance', 'Accommodation & Food Services', 'Construction', 'Professional, Scientific & Technical Services', 'Wholesale Trade', 'Transportation & Warehousing', 'Utilities', 'Public Administration', 'Real Estate, Rental & Leasing', 'Educational Services', 'Information', 'Health Care & Social Assistance', 'Management of Companies & Support Services'], 'Decreasing': []}, 'Backlog of Orders': {'Growing': ['Agriculture, Forestry, Fishing & Hunting', 'Finance & Insurance', 'Wholesale Trade', 'Professional, Scientific & Technical Services', 'Management of Companies & Support Services'], 'Declining': ['Real Estate, Rental & Leasing', 'Other Services', 'Arts, Entertainment & Recreation', 'Transportation & Warehousing', 'Educational Services', 'Information', 'Construction', 'Utilities', 'Health Care & Social Assistance']}, 'New Export Orders': {'Growing': ['Transportation & Warehousing', 'Retail Trade', 'Finance & Insurance', 'Wholesale Trade', 'Information'], 'Declining': ['Real Estate, Rental & Leasing', 'Professional, Scientific & Technical Services', 'Educational Services']}, 'Imports': {'Growing': ['Agriculture, Forestry, Fishing & Hunting', 'Retail Trade', 'Health Care & Social Assistance', 'Professional, Scientific & Technical Services', 'Wholesale Trade'], 'Declining': ['Other Services', 'Educational Services', 'Information', 'Utilities']}}}[00m
+│  Crew Execution Started                                                      │
+│  Name: crew                                                                  │
+│  ID: 23387194-7e83-4c3f-82f0-017ff9d5345e                                    │
+│                                                                              │
+
+│                                                                              │
+
+╰──────────────────────────────────────────────────────────────────────────────╯
+[92m20:27:23 - LiteLLM:INFO[0m: cost_calculator.py:655 - selected model name for cost calculation: openai/gpt-4o-mini-2024-07-18
+
+
+🚀 Crew: crew
+[1m[95m# Agent:[00m [1m[92mData Verification and Correction Specialist[00m
+[95m## Task:[00m [92m
+            STEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:
+└── 📋 Task: 6cd70f28-ceae-496b-bf9c-5556bbbc419f
+            CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
+            - GROWING vs DECLINING for most indices
+    Assigned to: Document Extractor
+
+            - SLOWER vs FASTER for Supplier Deliveries
+    Status: ✅ Completed
+            - HIGHER vs LOWER for Inventories
+    └── 🔧 Used extract_pdf_data (2)╭────────────────────────────── Task Completion ───────────────────────────────╮
+            - TOO HIGH vs TOO LOW for Customers' Inventories
+            - INCREASING vs DECREASING for Prices
+
+│                                                                              │
+            STEP 3: Compare your findings against industry_data to identify errors.
+│  Task Completed                                                              │
+            Common errors include:
+│  Name: 6cd70f28-ceae-496b-bf9c-5556bbbc419f                                  │
+            - Industries placed in the wrong category (e.g., growing when they should be declining)
+│  Agent: Document Extractor                                                   │
+            - Missing industries that were mentioned in the text
+            - Industries appearing in both categories for a single index
+
+            STEP 4: Correct any errors by:
+            - Moving industries to the correct category
+            The extracted data is: {"New Export Orders": {"Declining": ["Real Estate, Rental & Leasing", "Professional, Scientific & Technical Services", "Educational Services"], "Growing": ["Transportation & Warehousing", "Retail Trade", "Finance & Insurance", "Wholesale Trade", "Information"]}, "Business Activity": {"Declining": ["Other Services", "Professional, Scientific & Technical Services", "Real Estate, Rental & Leasing", "Construction"], "Growing": ["Accommodation & Food Services", "Agriculture, Forestry, Fishing & Hunting", "Educational Services", "Finance & Insurance", "Retail Trade", "Health Care & Social Assistance", "Public Administration", "Transportation & Warehousing", "Wholesale Trade"]}, "Inventories": {"Lower": ["Retail Trade", "Real Estate, Rental & Leasing", "Other Services", "Wholesale Trade", "Public Administration", "Professional, Scientific & Technical Services"], "Higher": ["Agriculture, Forestry, Fishing & Hunting", "Health Care & Social Assistance", "Information", "Educational Services", "Management of Companies & Support Services", "Construction", "Transportation & Warehousing", "Utilities"]}, "Backlog of Orders": {"Declining": ["Real Estate, Rental & Leasing", "Other Services", "Arts, Entertainment & Recreation", "Transportation & Warehousing", "Educational Services", "Information", "Construction", "Utilities", "Health Care & Social Assistance"], "Growing": ["Agriculture, Forestry, Fishing & Hunting", "Finance & Insurance", "Wholesale Trade", "Professional, Scientific & Technical Services", "Management of Companies & Support Services"]}, "Supplier Deliveries": {"Slower": ["Mining", "Agriculture, Forestry, Fishing & Hunting", "Information", "Retail Trade", "Wholesale Trade", "Construction", "Professional, Scientific & Technical Services", "Health Care & Social Assistance", "Public Administration"], "Faster": ["Other Services", "Finance & Insurance", "Educational Services"]}, "Prices": {"Decreasing": [], "Increasing": ["Mining", "Other Services", "Finance & Insurance", "Accommodation & Food Services", "Construction", "Professional, Scientific & Technical Services", "Wholesale Trade", "Transportation & Warehousing", "Utilities", "Public Administration", "Real Estate, Rental & Leasing", "Educational Services", "Information", "Health Care & Social Assistance", "Management of Companies & Support Services"]}, "Imports": {"Declining": ["Other Services", "Educational Services", "Information", "Utilities"], "Growing": ["Agriculture, Forestry, Fishing & Hunting", "Retail Trade", "Health Care & Social Assistance", "Professional, Scientific & Technical Services", "Wholesale Trade"]}, "Inventory Sentiment": {"Too Low": ["Management of Companies & Support Services"], "Too High": ["Accommodation & Food Services", "Arts, Entertainment & Recreation", "Wholesale Trade", "Utilities", "Educational Services", "Construction", "Information", "Professional, Scientific & Technical Services", "Health Care & Social Assistance", "Retail Trade"]}, "New Orders": {"Declining": ["Real Estate, Rental & Leasing", "Other Services", "Professional, Scientific & Technical Services", "Information", "Management of Companies & Support Services"], "Growing": ["Accommodation & Food Services", "Agriculture, Forestry, Fishing & Hunting", "Educational Services", "Finance & Insurance", "Wholesale Trade", "Transportation & Warehousing", "Health Care & Social Assistance", "Public Administration", "Construction", "Retail Trade"]}, "Employment": {"Declining": ["Retail Trade", "Other Services", "Professional, Scientific & Technical Services", "Public Administration", "Educational Services"], "Growing": ["Construction", "Finance & Insurance", "Management of Companies & Support Services", "Wholesale Trade", "Health Care & Social Assistance", "Utilities"]}}
+            
+            - Adding missing industries to appropriate categories
+            STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
+            - Removing industries from incorrect categories
+
+            STEP 5: Return a COMPLETE, CORRECTED copy of the data with your changes implemented.
+
+            IMPORTANT: For each industry, look for EXACT PHRASES in the index summaries that specify its status.
+            Do not make assumptions - only categorize based on explicit statements.
+
+            ESPECIALLY IMPORTANT: Make sure to include all parts of the original extraction (month_year, manufacturing_table,
+2025-06-04T20:27:30.205137172Z [INFO]  Backlog of Orders="The ISM Services Backlog of Orders Index contracted in January for the sixth month in a row. The reading of 44.8 percent is 0.5 percentage point higher than the 44.3 percent reported in December. Of the total respondents in January, 43 percent indicated they do not measure backlog of orders. Respondent comments include: “Eating up backlog as new projects are slow to come online with higher land and capital costs” and “No backlog; supply is fine.”" Business Activity="ISM’s Business Activity Index registered 54.5 percent in January, 3.5 percentage points lower than the seasonally adjusted 58 percent recorded in December, a 56th month of expansion after seasonal adjustments dating back four years. The Business Activity Index has been in expansion territory since its coronavirus pandemic lows. Comments from respondents include: “Gearing up for 2025 projects” and “Spending by customers has increased; unclear if it’s truly a pickup in business or panic buying ahead of potential tariffs driving up prices.”" Employment="Employment activity in the services sector expanded in January for the fourth consecutive month after a contraction in September. The Employment Index registered 52.3 percent, up 1 percentage point from the seasonally adjusted December figure of 51.3 percent. Comments from respondents include: “Human resources department working aggressively to fill open positions” and “Belt tightening due to slowing consumer demand.”" Imports="The Imports Index contracted for the first time in seven months in January, registering 49.8 percent, 0.9 percentage point lower than the 50.7 percent reported in December. The index has indicated expansion in 23 of the last 29 months. Seventy-one percent of respondents reported that they do not use, or do not track the use of, imported materials. Respondent comments include: “Currently importing our spring season merchandise” and “Lower business in previous months; lower imports.”" Inventories="The Inventories Index landed in contraction territory for the third month in a row. The reading of 47.5 percent is a 1.9-percentage point decrease compared to the 49.4 percent reported in December. Of the total respondents in January, 45 percent indicated they do not have inventories or do not measure them. Comments from respondents include: “Lowering Inventory to keep carrying cost low during slow season” and “Post-holiday inventory levels.”" Inventory Sentiment="The ISM Services Inventory Sentiment Index grew for the 21st consecutive month in January. The index registered 53.5 percent, an increase of 0.1 percentage point from December’s figure of 53.4 percent. This reading indicates that respondents feel their inventories are too high when correlated to industry levels." New Export Orders="Orders and requests for services and other non-manufacturing activities to be provided outside of the U.S. by domestically based companies increased in January. The New Export Orders Index registered 52 percent, up 1.9 percentage points compared to the December reading of 50.1 percent and the second month in a row in expansion territory. Of the total respondents in January, 70 percent indicated they do not perform, or do not separately measure, orders for work outside of the U.S. Respondent comments include: “Less dependency on new international orders” and “New Canadian opportunities.”" New Orders="ISM’s New Orders Index registered 51.3 percent in January, 3.1 percentage points lower than the seasonally adjusted reading of 54.4 percent in December. The index was in expansion for the seventh consecutive month after contracting in June for just the second time since May 2020. Comments from respondents include: “Bid level is the highest level in over five years” and “High interest rates and inflation.”" Prices="Prices paid by services organizations for materials and services increased in January for the 92nd consecutive month. The Prices Index registered 60.4 percent, 4 percentage points lower than the seasonally adjusted 64.4 percent recorded in December. The January reading is the 27th in a row below 70 percent, but the second consecutive month above 60 percent. Prior to December, the index had not been above 60 percent since January 2024 (62.9 percent)." Supplier Deliveries="In January, the Supplier Deliveries Index indicated slower supplier performance for the second month in a row. The index registered 53 percent, up 0.5 percentage point from the 52.5 percent recorded in December. A reading above 50 percent indicates slower deliveries, while a reading below 50 percent indicates faster deliveries. Comments from respondents include: “Weather delays and lack of availability of trucking on the East Coast have slowed down delivery times” and “Lunar New Year rush.”"
+            index_summaries, AND the corrected industry_data).
+
+            [00m
+[92m20:27:23 - LiteLLM:INFO[0m: utils.py:2827 - 
+LiteLLM completion() model= gpt-4o-mini; provider = openai
+[2025-06-04 20:28:10 +0000] [1] [CRITICAL] WORKER TIMEOUT (pid:5)
+[2025-06-04 20:28:10 +0000] [5] [INFO] Worker exiting (pid: 5)
+[2025-06-04 20:28:11 +0000] [1] [ERROR] Worker (pid:5) exited with code 1
+[2025-06-04 20:28:11 +0000] [1] [ERROR] Worker (pid:5) exited with code 1.
+[2025-06-04 20:28:11 +0000] [64] [INFO] Booting worker with pid: 64
+2025-06-04 20:28:15,359 - app - INFO - Secret key set.
+2025-06-04 20:28:15,359 - app - INFO - Flask app wrapped with ProxyFix.
+Web Insights module loaded successfully
+2025-06-04 20:29:33,436 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:33,437 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:33,438 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:33,438 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:33,703 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:33,704 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:33,706 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:33,706 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:33,767 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:33,768 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:36,753 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:36,754 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:36,755 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:36,755 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:36,826 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:36,827 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:38,977 - app - INFO - In industry_status, report_type is: Services
+2025-06-04 20:29:43,509 - app - INFO - In industry_status, report_type is: Manufacturing
+2025-06-04 20:29:43,513 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:43,513 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:44,883 - app - INFO - In industry_status, report_type is: Services
+2025-06-04 20:29:44,887 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:44,888 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:46,230 - app - INFO - In industry_status, report_type is: Manufacturing
+2025-06-04 20:29:46,232 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:46,233 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:29:47,708 - app - INFO - In industry_status, report_type is: Manufacturing
+2025-06-04 20:29:55,601 - app - INFO - In industry_status, report_type is: Services
+2025-06-04 20:29:55,604 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:29:55,604 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:30:07,018 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:30:07,018 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
+2025-06-04 20:30:07,068 - db_utils - INFO - Initializing database connection at: /data/ism_data.db
+2025-06-04 20:30:07,069 - db_utils - INFO - Database schema initialized successfully at /data/ism_data.db
