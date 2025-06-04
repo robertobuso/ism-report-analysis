@@ -286,7 +286,7 @@ class SimplePDFExtractionTool(BaseTool):
                     
                     # Get the response text
                     response_text = response.choices[0].message.content
-                    logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                    # Removed verbose logging
                     
                     # Try to parse the JSON
                     try:
@@ -398,7 +398,7 @@ class SimplePDFExtractionTool(BaseTool):
                                 logger.info("Copied manufacturing_table to indices field")
 
                         # Success! Return the parsed JSON
-                        logger.info(f"extraction_data returned from def _run {extraction_data}")
+                        # Removed verbose logging
                         return extraction_data
                         
                     except json.JSONDecodeError as e:
@@ -682,7 +682,7 @@ class SimplePDFExtractionTool(BaseTool):
                     
                     # Get the response text
                     response_text = response.choices[0].message.content
-                    logger.info(f"Received response from OpenAI ({len(response_text)} characters)")
+                    # Removed verbose logging
                     
                     # Try to parse the JSON
                     try:
@@ -1013,7 +1013,7 @@ class SimplePDFExtractionTool(BaseTool):
                     except (ValueError, TypeError) as e:
                         logger.warning(f"Could not validate value for {index_name}: {str(e)}")
         
-        logger.info(f"In _validate_and_fix_pmi_values indices are  {extraction_data['indices']}")
+        # Removed verbose logging
 
         return extraction_data
 
@@ -1893,7 +1893,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             row.append(manufacturing_sector.get('direction', default_mfg))
             
             # Log the final row being sent to Google Sheets for debugging
-            logger.info(f"Prepared row for Google Sheets: {row}")
+            # Removed verbose logging
             
             return row
         except Exception as e:

@@ -553,10 +553,10 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # Parse the extraction result
         extraction_data = safely_parse_agent_output(extraction_result)
-        logger.info(f"extraction_data after safely_parse_agent_output: {extraction_data}")
+        # Removed verbose logging
         
         extraction_data = validate_and_preserve_indices(extraction_data, report_type)
-        logger.info(f"extraction_data after validate_and_preserve_indices: {extraction_data}")
+        # Removed verbose logging
 
         # Initialize extraction_data if it's None to avoid reference errors
         if extraction_data is None:
@@ -670,7 +670,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
             if 'month_year' not in extraction_data or extraction_data['month_year'] == "Unknown":
                 if direct_data and 'month_year' in direct_data and direct_data['month_year'] != "Unknown":
                     extraction_data['month_year'] = direct_data['month_year']
-                    logger.info(f"Using month_year from direct parsing: {extraction_data['month_year']}")
+                    # Removed verbose logging
             
             # Ensure index_summaries exists
             if 'index_summaries' not in extraction_data or not extraction_data['index_summaries']:
@@ -717,7 +717,7 @@ def process_single_pdf(pdf_path, visualization_options=None):
             if 'report_type' not in extraction_data:
                 extraction_data['report_type'] = report_type
                 
-            logger.info(f"Indices being sent to database: {list(extraction_data.get('indices', {}).keys())}")
+            # Removed verbose logging
 
             store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data['report_type'])
 
@@ -1011,7 +1011,7 @@ def validate_and_preserve_indices(extraction_data, report_type):
         The extraction data with validation logging
     """
 
-    logger.info(f"extraction_data in def validate_and_preserve_indices: {extraction_data}")
+    # Removed verbose logging
 
     if not extraction_data or 'indices' not in extraction_data:
         logger.warning("No indices found in extraction data")

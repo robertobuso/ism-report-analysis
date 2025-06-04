@@ -12,7 +12,7 @@ DB_PATH = os.path.join(VOLUME_PATH, 'ism_data.db')
 
 files_to_delete = [TOKEN_PATH, SHEET_ID_PATH,DB_PATH]
 # Optional: Add DB_PATH here if you want to delete it too
-# files_to_delete.append(DB_PATH)
+files_to_delete.append(DB_PATH)
 
 logger.info(f"Attempting to delete state files from {VOLUME_PATH}...")
 
