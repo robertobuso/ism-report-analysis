@@ -128,7 +128,7 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 4px 20px var(--card-shadow);
-            padding: 1.75rem;
+            padding: 1.25rem; /* Reduced from 1.75rem */
             height: 100%;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
@@ -149,16 +149,21 @@
             align-items: center;
         }
         
-        .kpi-title i {
-            margin-left: 0.5rem;
-            font-size: 0.85rem;
-            color: var(--primary-color);
+        .kpi-title {
+            color: var(--light-text);
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem; /* Reduced from 0.75rem */
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            display: flex;
+            align-items: center;
         }
 
         .kpi-value {
-            font-size: 2.5rem;
+            font-size: 2rem; /* Reduced from 2.5rem */
             font-weight: 700;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem; /* Reduced from 0.5rem */
             color: #0f172a;
             letter-spacing: -0.03em;
             font-feature-settings: "tnum";
@@ -166,8 +171,13 @@
         }
 
         .kpi-direction {
-            font-size: 1rem;
+            font-size: 0.9rem; /* Reduced from 1rem */
             font-weight: 600;
+        }
+
+        /* Reduce margin on KPI cards row */
+        .row.mb-4 {
+            margin-bottom: 2rem !important; /* Reduced from default */
         }
         
         .text-growing {
@@ -183,7 +193,7 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 4px 20px var(--card-shadow);
-            margin-bottom: 2rem;
+            margin-bottom: 1rem; /* Reduced from 2rem */
             overflow: hidden;
         }
         
@@ -214,7 +224,7 @@
         }
         
         .tab-content {
-            padding: 2rem;
+            padding: 0.75rem;
         }
         
         /* Content card styling */
@@ -222,16 +232,17 @@
             background: white;
             border-radius: 16px;
             box-shadow: 0 4px 20px var(--card-shadow);
-            margin-bottom: 2rem;
+            margin-bottom: 1rem; /* Reduced from 2rem */
             overflow: hidden;
         }
         
         .content-card-header {
-            padding: 1.5rem 2rem;
+            padding: 1rem 1.5rem; /* Reduced from 1.5rem 2rem */
             border-bottom: 1px solid rgba(0, 0, 0, 0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            min-height: auto;
         }
         
         .content-card-header h5 {
@@ -242,29 +253,33 @@
         }
         
         .content-card-body {
-            padding: 2rem;
+            padding: 1rem; /* Reduced from 2rem */
         }
         
-        /* Enhanced table styling */
         .data-table {
-            width: 100%;
+            width: auto !important; /* Override the existing width: 100% */
             border-collapse: separate;
             border-spacing: 0;
+            table-layout: auto;
         }
-        
+
         .data-table th {
             background-color: #f8f9fa;
             color: #495057;
             font-weight: 600;
             text-align: left;
-            padding: 1rem 1.25rem;
+            padding: 0.75rem 1rem; /* REDUCED from 1rem 1.25rem */
             border-bottom: 2px solid #e9ecef;
+            width: fit-content; /* ADDED */
+            white-space: nowrap; /* ADDED */
         }
-        
+
         .data-table td {
-            padding: 1rem 1.25rem;
+            padding: 0.75rem 1rem; /* REDUCED from 1rem 1.25rem */
             border-bottom: 1px solid #e9ecef;
             vertical-align: middle;
+            width: fit-content; /* ADDED */
+            white-space: nowrap; /* ADDED */
         }
         
         .data-table tr:hover {
@@ -273,6 +288,42 @@
         
         .data-table tr:last-child td {
             border-bottom: none;
+        }
+
+        .month-table-container table {
+            table-layout: auto;
+        }
+
+        .month-table-container th,
+        .month-table-container td {
+            padding: 0.5rem 0.75rem;
+            white-space: nowrap;
+            width: fit-content;
+        }
+
+        .month-table-container td:first-child {
+            max-width: 180px;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+
+        .month-table-container td:nth-child(2) {
+            width: 60px;
+            min-width: 60px;
+            max-width: 60px;
+            text-align: center;
+        }
+
+        /* Override Bootstrap's default table behavior */
+        .table-responsive .table,
+        .content-card-body .table {
+            width: auto !important;
+            min-width: auto !important;
+        }
+
+        /* Ensure the table container doesn't force full width */
+        .content-card-body .table-responsive {
+            overflow-x: auto;
         }
         
         /* Status colors - keep the same */
@@ -329,22 +380,28 @@
         }
         
         /* Heatmap enhancements */
-        .heatmap-container {
+       .heatmap-container {
             overflow-x: auto;
-            margin-top: 1.5rem;
+            margin-top: 0.5rem; /* Reduced from 1.5rem */
             border-radius: 8px;
             border: 1px solid #e9ecef;
+            width: fit-content;
+            max-width: 100%;
         }
 
         .heatmap-container table {
-            min-width: 100%;
+            min-width: auto !important; /* Override the existing min-width: 100% */
+            width: auto !important; /* Don't force full width */
             border-collapse: collapse;
+            table-layout: auto;
         }
 
         .heatmap-container th, .heatmap-container td {
-            padding: 0.75rem 1rem;
+            padding: 0.5rem 0.75rem; /* REDUCED from 0.75rem 1rem */
             text-align: center;
             border: 1px solid #e9ecef;
+            white-space: nowrap; /* ADDED */
+            width: fit-content; /* ADDED */
         }
 
         .heatmap-container th {
@@ -362,22 +419,14 @@
             background-color: #f8f9fa;
             z-index: 5;
             font-weight: 500;
-        }
-        
-        /* Footer */
-        .footer {
-            background-color: white;
-            border-top: 1px solid rgba(0, 0, 0, 0.05);
-            padding: 1.5rem 0;
-            text-align: center;
-            color: var(--light-text);
-            margin-top: 2rem;
+            max-width: 200px; /* ADDED */
+            white-space: normal; /* ADDED */
         }
         
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .content-container {
-                padding: 1rem;
+                padding: 1rem; /* Keep mobile padding reasonable */
             }
             
             .kpi-card {
@@ -398,7 +447,7 @@
             }
             
             .content-card-header, .content-card-body {
-                padding: 1.25rem;
+                padding: 0.75rem; /* Even more compact on mobile */
             }
         }
 
@@ -765,7 +814,7 @@
             <div class="tab-pane fade" id="trends" role="tabpanel">
                 <div class="content-card">
                     <div class="content-card-header">
-                        <h5>Manufacturing PMI Trends</h5>
+                        <h5 id="trendsTitle">Manufacturing PMI Trends</h5>
                         <button id="exportTrendsBtn" class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-download"></i> Export Data
                         </button>
@@ -1606,6 +1655,16 @@
                     heatmapTitle.textContent = 'Services PMI Heatmap Summary';
                 } else {
                     heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
+                }
+            }
+
+            // Initialize trends title based on current report type
+            const trendsTitle = document.getElementById('trendsTitle');
+            if (trendsTitle) {
+                if (currentType === 'Services') {
+                    trendsTitle.textContent = 'Services PMI Trends';
+                } else {
+                    trendsTitle.textContent = 'Manufacturing PMI Trends';
                 }
             }
 
@@ -3328,6 +3387,16 @@
                 btn.classList.remove('active');
             }
             });
+
+        // Update trends title
+        const trendsTitle = document.getElementById('trendsTitle');
+        if (trendsTitle) {
+            if (reportType === 'Services') {
+                trendsTitle.textContent = 'Services PMI Trends';
+            } else {
+                trendsTitle.textContent = 'Manufacturing PMI Trends';
+            }
+        }
             
             // Update indicator badge
             currentReportBadge.textContent = reportType + ' Report';
