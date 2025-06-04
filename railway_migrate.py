@@ -39,37 +39,29 @@ def find_database_path():
     
     return db_path
 
-def check_database_structure(db_path):
-    """Check the current database structure."""
+def check_tables_exist(db_path):
+    """Check if the main tables exist in the database."""
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Check tables
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
         logger.info(f"Found tables: {tables}")
         
-        # Check each table's columns
-        for table in ['reports', 'pmi_indices', 'industry_status']:
-            if table in tables:
-                cursor.execute(f"PRAGMA table_info({table})")
-                columns = [col[1] for col in cursor.fetchall()]
-                logger.info(f"Table {table} columns: {columns}")
-            else:
-                logger.warning(f"Table {table} not found")
-        
         conn.close()
-        return True
+        
+        required_tables = ['reports', 'pmi_indices', 'industry_status']
+        return all(table in tables for table in required_tables)
     except Exception as e:
-        logger.error(f"Error checking database structure: {e}")
+        logger.error(f"Error checking tables: {e}")
         return False
 
-def migrate_database(db_path):
-    """Migrate database to add report_type columns."""
+def initialize_database_schema(db_path):
+    """Initialize database with the correct schema including report_type columns."""
     conn = None
     try:
-        logger.info(f"Starting migration for database: {db_path}")
+        logger.info(f"Initializing database schema at: {db_path}")
         
         # Ensure database directory exists
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -79,6 +71,81 @@ def migrate_database(db_path):
         
         # Enable foreign keys
         cursor.execute("PRAGMA foreign_keys = ON")
+        
+        # Create reports table with report_type column
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY,
+            report_date DATE NOT NULL,
+            file_path TEXT,
+            processing_date DATETIME NOT NULL,
+            month_year TEXT NOT NULL,
+            report_type TEXT DEFAULT 'Manufacturing' NOT NULL,
+            UNIQUE(report_date, report_type)
+        )
+        ''')
+        
+        # Create pmi_indices table with report_type column
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pmi_indices (
+            id INTEGER PRIMARY KEY,
+            report_date DATE NOT NULL,
+            index_name TEXT NOT NULL,
+            index_value DECIMAL(5,1) NOT NULL,
+            direction TEXT NOT NULL,
+            report_type TEXT NOT NULL,
+            UNIQUE(report_date, index_name, report_type),
+            FOREIGN KEY(report_date) REFERENCES reports(report_date)
+        )
+        ''')
+        
+        # Create industry_status table with report_type column
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS industry_status (
+            id INTEGER PRIMARY KEY,
+            report_date DATE NOT NULL,
+            index_name TEXT NOT NULL,
+            industry_name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            category TEXT NOT NULL,
+            rank INTEGER,
+            report_type TEXT NOT NULL,
+            UNIQUE(report_date, index_name, industry_name, report_type),
+            FOREIGN KEY(report_date) REFERENCES reports(report_date)
+        )
+        ''')
+        
+        # Create indexes
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_date ON pmi_indices(report_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_name ON pmi_indices(index_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_type ON pmi_indices(report_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_date ON industry_status(report_date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_index ON industry_status(index_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_industry ON industry_status(industry_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_type ON industry_status(report_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type)')
+        
+        conn.commit()
+        logger.info("Database schema initialized successfully with report_type columns")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error initializing database schema: {str(e)}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+def migrate_existing_database(db_path):
+    """Migrate existing database to add report_type columns."""
+    conn = None
+    try:
+        logger.info(f"Migrating existing database: {db_path}")
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
         
         migrations_applied = 0
         
@@ -118,12 +185,6 @@ def migrate_database(db_path):
         else:
             logger.info("industry_status table already has report_type column")
         
-        # Create indexes
-        logger.info("Creating/updating indexes...")
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_type ON pmi_indices(report_type)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_type ON industry_status(report_type)')
-        
         # Add rank column to industry_status if missing
         if 'rank' not in industry_columns:
             logger.info("Adding rank column to industry_status table")
@@ -131,12 +192,14 @@ def migrate_database(db_path):
             cursor.execute('UPDATE industry_status SET rank = id WHERE rank IS NULL')
             migrations_applied += 1
         
+        # Create/update indexes
+        logger.info("Creating/updating indexes...")
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(report_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_pmi_indices_type ON pmi_indices(report_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_industry_status_type ON industry_status(report_type)')
+        
         conn.commit()
         logger.info(f"Migration completed successfully! Applied {migrations_applied} migrations.")
-        
-        # Verify the migration
-        check_database_structure(db_path)
-        
         return True
         
     except Exception as e:
@@ -159,15 +222,15 @@ def main():
         logger.error("Could not determine database path")
         return False
     
-    # Check current structure
-    logger.info("Checking current database structure...")
-    if os.path.exists(db_path):
-        check_database_structure(db_path)
-    else:
-        logger.info("Database file does not exist yet - will be created")
+    # Check if tables exist
+    tables_exist = check_tables_exist(db_path)
     
-    # Run migration
-    success = migrate_database(db_path)
+    if not tables_exist:
+        logger.info("Tables don't exist - initializing new database with correct schema")
+        success = initialize_database_schema(db_path)
+    else:
+        logger.info("Tables exist - running migration to add missing columns")
+        success = migrate_existing_database(db_path)
     
     if success:
         logger.info("✅ Migration completed successfully!")
