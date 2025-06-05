@@ -455,7 +455,7 @@ def fallback_regex_parsing(text):
             "industry_data": {}
         }
 
-def process_single_pdf(pdf_path, visualization_options=None):
+def process_single_pdf(pdf_path, visualization_options=None, report_type=None):
     """Process a single PDF file with optional visualization selections."""
     logger.info(f"Processing PDF: {pdf_path}")
 
@@ -481,9 +481,12 @@ def process_single_pdf(pdf_path, visualization_options=None):
             logger.warning("sheet_id.txt not found. A new Google Sheet will be created.")
 
         # Detect report type
-        from report_handlers import ReportTypeFactory
-        report_type = ReportTypeFactory.detect_report_type(pdf_path)
-        logger.info(f"Detected report type: {report_type}")
+        if not report_type:
+            from report_handlers import ReportTypeFactory
+            report_type = ReportTypeFactory.detect_report_type(pdf_path)
+            logger.info(f"Detected report type: {report_type}")
+        else:
+            logger.info(f"Using provided report type: {report_type}")
 
         # Create agents
         extractor_agent = create_extractor_agent()
@@ -573,29 +576,26 @@ def process_single_pdf(pdf_path, visualization_options=None):
         if isinstance(extraction_data, dict):
             extraction_data['report_type'] = report_type
 
-        # Check if direct parsing found any industries
-        industry_count = 0
-        if direct_data and 'industry_data' in direct_data:
-            for index, categories in direct_data['industry_data'].items():
-                for category, industries in categories.items():
-                    industry_count += len(industries)
+        if not extraction_data.get('industry_data') and not extraction_data.get('indices'):
+            try:
+                from pdf_utils import parse_ism_report
+                logger.info("Attempting direct PDF parsing as fallback")
+                direct_data = parse_ism_report(pdf_path, report_type)
+                if direct_data:
+                    logger.info("Successfully parsed PDF directly as fallback")
+                    extraction_data.update(direct_data)
+            except Exception as e:
+                logger.error(f"Direct PDF parsing failed: {str(e)}")
 
-            logger.info(f"Direct PDF parsing found {industry_count} industries")
-            
-            # If direct parsing found a significant number of industries, use them
-            if industry_count > 0:
-                # Either merge with existing extraction_data or use as primary source
-                if not 'industry_data' in extraction_data or not extraction_data['industry_data']:
-                    logger.info(f"Using industry data from direct parsing")
-                    extraction_data['industry_data'] = direct_data['industry_data']
-                else:
-                    # Compare and use the better source
-                    extraction_industries = count_industries(extraction_data.get('industry_data', {}))
-                    if industry_count > extraction_industries:
-                        logger.info(f"Direct parsing found more industries ({industry_count}) than extraction ({extraction_industries})")
-                        extraction_data['industry_data'] = direct_data['industry_data']
+        # FIXED: Simplified verification - only if we have minimal data
+        total_industries = 0
+        if extraction_data.get('industry_data'):
+            total_industries = sum(
+                len(industries) for categories in extraction_data['industry_data'].values() 
+                for industries in categories.values() if isinstance(categories, dict)
+            )
 
-        logger.info(f"Direct PDF parsing found {industry_count} industries")
+        logger.info(f"Direct PDF parsing found {total_industries} industries")
 
         # Add handling for the case where extraction_data is a Python object with corrected_industry_data
         if hasattr(extraction_data, 'corrected_industry_data'):
@@ -712,287 +712,284 @@ def process_single_pdf(pdf_path, visualization_options=None):
 
         # STORE DATA IN DATABASE - CRITICAL STEP - update to include report_type
         from db_utils import store_report_data_in_db
-        try:
-            # Ensure report_type exists in extraction_data
-            if 'report_type' not in extraction_data:
-                extraction_data['report_type'] = report_type
-                
-            # Removed verbose logging
+        
+        # Ensure report_type exists in extraction_data
+        if 'report_type' not in extraction_data:
+            extraction_data['report_type'] = report_type
 
-            store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data['report_type'])
-
-            if store_result:
-                logger.info(f"Successfully stored data from {pdf_path} in database")
-            else:
-                logger.warning(f"Failed to store data from {pdf_path} in database")
-        except Exception as e:
-            logger.error(f"Error storing data in database: {str(e)}")
-            # Continue processing to return the data even if database storage fails
-
-        # Prepare for JSON serialization - handle ellipsis and other non-serializable types
-        try:
-            import copy
-            sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
-            
-            # Function to recursively replace problematic values
-            def sanitize_for_json(obj):
-                if obj is ...:  # Handle ellipsis
-                    return None
-                elif isinstance(obj, dict):
-                    return {k: sanitize_for_json(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [sanitize_for_json(item) for item in obj]
-                elif isinstance(obj, (int, float, str, bool, type(None))):
-                    return obj
-                else:
-                    # Convert other types to string
-                    return str(obj)
-            
-            sanitized_data = sanitize_for_json(sanitized_data)
-            json_data = json.dumps(sanitized_data)
-            
-        except TypeError as e:
-            logger.warning(f"JSON serialization issue: {str(e)}")
-            # Create a minimal serializable structure
-            json_data = "{}"
-
-        # Create the verification task
-        verification_task = Task(
-            description=f"""
-            CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
-
-            The extracted data is: {json_data}
-            
-            STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
-            {json.dumps(extraction_data.get('index_summaries', {}))}
-
-            STEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:
-            - GROWING vs DECLINING for most indices
-            - SLOWER vs FASTER for Supplier Deliveries
-            - HIGHER vs LOWER for Inventories
-            - TOO HIGH vs TOO LOW for Customers' Inventories
-            - INCREASING vs DECREASING for Prices
-
-            STEP 3: Compare your findings against industry_data to identify errors.
-            Common errors include:
-            - Industries placed in the wrong category (e.g., growing when they should be declining)
-            - Missing industries that were mentioned in the text
-            - Industries appearing in both categories for a single index
-
-            STEP 4: Correct any errors by:
-            - Moving industries to the correct category
-            - Adding missing industries to appropriate categories
-            - Removing industries from incorrect categories
-
-            STEP 5: Return a COMPLETE, CORRECTED copy of the data with your changes implemented.
-
-            IMPORTANT: For each industry, look for EXACT PHRASES in the index summaries that specify its status.
-            Do not make assumptions - only categorize based on explicit statements.
-
-            ESPECIALLY IMPORTANT: Make sure to include all parts of the original extraction (month_year, manufacturing_table,
-            index_summaries, AND the corrected industry_data).
-
-            """,
-            expected_output="A complete dictionary containing the verified data with month_year, manufacturing_table, index_summaries, and corrected industry_data",
-            agent=data_correction_agent
-        )
-
-        # Create verification crew
-        verification_crew = Crew(
-            agents=[data_correction_agent],
-            tasks=[verification_task],
-            verbose=True,
-            process=Process.sequential
-        )
-
-        verified_result = verification_crew.kickoff()
-        logger.info("Verification result received")
-
-        # Safely parse verification result
-        verified_data = safely_parse_agent_output(verified_result)
-
-        # Initialize verified_data if None to avoid reference errors
-        if verified_data is None:
-            verified_data = {}
-            logger.warning("verified_data was None, initializing with empty dict")
-
-        # Ensure we're working with the correct data
-        if verified_data:
-            # Ensure month_year is preserved correctly
-            if 'month_year' in verified_data and verified_data['month_year'] != extraction_data.get('month_year'):
-                logger.warning(f"Month/year changed from {extraction_data.get('month_year')} to {verified_data['month_year']} - using original")
-                verified_data['month_year'] = extraction_data.get('month_year')
-
-            # Use the verified data if it was successfully parsed
-            if 'industry_data' in verified_data:
-                extraction_data = verified_data
-                logger.info("Successfully verified and corrected data")
-            elif 'corrected_industry_data' in verified_data:
-                # Use the corrected industry data but preserve the original month_year
-                extraction_data['industry_data'] = verified_data['corrected_industry_data']
-                logger.info("Successfully applied corrected industry data")
-            else:
-                logger.warning("Verification didn't return expected structure, using original data")
-
-            # Use the verified data if it was successfully parsed
-            if 'industry_data' in verified_data:
-                extraction_data = verified_data
-                logger.info("Successfully verified and corrected data")
-            elif 'corrected_industry_data' in verified_data:
-                # Use the corrected industry data
-                extraction_data['industry_data'] = verified_data['corrected_industry_data']
-                logger.info("Successfully applied corrected industry data")
-            else:
-                logger.warning("Verification didn't return expected structure, using original data")
-        else:
-            logger.warning("Verification failed, continuing with unverified data")
-
-        # Execute structuring - ensure we have valid data for structuring
-        logger.info("Starting data structuring...")
-        from tools import SimpleDataStructurerTool
-        structurer_tool = SimpleDataStructurerTool()
-
-        # Ensure extraction_data has required keys before structuring
-        if not isinstance(extraction_data, dict):
-            extraction_data = {}
-
-        # Add missing required keys to prevent downstream errors
-        required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
-        for key in required_keys:
-            if key not in extraction_data:
-                if key == "month_year":
-                    extraction_data[key] = ""
-                elif key == "manufacturing_table":
-                    extraction_data[key] = ""
-                else:
-                    extraction_data[key] = {}
-
-        # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
-        if "corrected_industry_data" in extraction_data and not extraction_data.get("industry_data"):
-            extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
-
-        # Use the verified data if it was successfully parsed
-        structured_data = None  # Initialize to avoid reference errors
-        if verified_data and 'corrected_industry_data' in verified_data:
             try:
-                structured_data = structurer_tool._run({
-                    'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
-                    'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
-                    'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
-                    'industry_data': verified_data.get('corrected_industry_data', {})
-                })
+                store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data.get('report_type', report_type))
+                if store_result:
+                    logger.info(f"Successfully stored data from {pdf_path} in database")
+                else:
+                    logger.warning(f"Failed to store data from {pdf_path} in database")
             except Exception as e:
-                logger.error(f"Error in structuring with verified data: {str(e)}")
-                # If structuring with verified data fails, try with original extraction_data
+                logger.error(f"Error storing data in database: {str(e)}")
+
+            # Prepare for JSON serialization - handle ellipsis and other non-serializable types
+            try:
+                import copy
+                sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
+                
+                # Function to recursively replace problematic values
+                def sanitize_for_json(obj):
+                    if obj is ...:  # Handle ellipsis
+                        return None
+                    elif isinstance(obj, dict):
+                        return {k: sanitize_for_json(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [sanitize_for_json(item) for item in obj]
+                    elif isinstance(obj, (int, float, str, bool, type(None))):
+                        return obj
+                    else:
+                        # Convert other types to string
+                        return str(obj)
+                
+                sanitized_data = sanitize_for_json(sanitized_data)
+                json_data = json.dumps(sanitized_data)
+                
+            except TypeError as e:
+                logger.warning(f"JSON serialization issue: {str(e)}")
+                # Create a minimal serializable structure
+                json_data = "{}"
+
+            # Create the verification task
+            verification_task = Task(
+                description=f"""
+                CRITICAL TASK: You must carefully verify and correct the industry categorization in the extracted data.
+
+                The extracted data is: {json_data}
+                
+                STEP 1: Carefully examine the textual summaries in index_summaries to find industry mentions:
+                {json.dumps(extraction_data.get('index_summaries', {}))}
+
+                STEP 2: For each index (New Orders, Production, etc.), verify which industries are mentioned as:
+                - GROWING vs DECLINING for most indices
+                - SLOWER vs FASTER for Supplier Deliveries
+                - HIGHER vs LOWER for Inventories
+                - TOO HIGH vs TOO LOW for Customers' Inventories
+                - INCREASING vs DECREASING for Prices
+
+                STEP 3: Compare your findings against industry_data to identify errors.
+                Common errors include:
+                - Industries placed in the wrong category (e.g., growing when they should be declining)
+                - Missing industries that were mentioned in the text
+                - Industries appearing in both categories for a single index
+
+                STEP 4: Correct any errors by:
+                - Moving industries to the correct category
+                - Adding missing industries to appropriate categories
+                - Removing industries from incorrect categories
+
+                STEP 5: Return a COMPLETE, CORRECTED copy of the data with your changes implemented.
+
+                IMPORTANT: For each industry, look for EXACT PHRASES in the index summaries that specify its status.
+                Do not make assumptions - only categorize based on explicit statements.
+
+                ESPECIALLY IMPORTANT: Make sure to include all parts of the original extraction (month_year, manufacturing_table,
+                index_summaries, AND the corrected industry_data).
+
+                """,
+                expected_output="A complete dictionary containing the verified data with month_year, manufacturing_table, index_summaries, and corrected industry_data",
+                agent=data_correction_agent
+            )
+
+            # Create verification crew
+            verification_crew = Crew(
+                agents=[data_correction_agent],
+                tasks=[verification_task],
+                verbose=True,
+                process=Process.sequential
+            )
+
+            verified_result = verification_crew.kickoff()
+            logger.info("Verification result received")
+
+            # Safely parse verification result
+            verified_data = safely_parse_agent_output(verified_result)
+
+            # Initialize verified_data if None to avoid reference errors
+            if verified_data is None:
+                verified_data = {}
+                logger.warning("verified_data was None, initializing with empty dict")
+
+            # Ensure we're working with the correct data
+            if verified_data:
+                # Ensure month_year is preserved correctly
+                if 'month_year' in verified_data and verified_data['month_year'] != extraction_data.get('month_year'):
+                    logger.warning(f"Month/year changed from {extraction_data.get('month_year')} to {verified_data['month_year']} - using original")
+                    verified_data['month_year'] = extraction_data.get('month_year')
+
+                # Use the verified data if it was successfully parsed
+                if 'industry_data' in verified_data:
+                    extraction_data = verified_data
+                    logger.info("Successfully verified and corrected data")
+                elif 'corrected_industry_data' in verified_data:
+                    # Use the corrected industry data but preserve the original month_year
+                    extraction_data['industry_data'] = verified_data['corrected_industry_data']
+                    logger.info("Successfully applied corrected industry data")
+                else:
+                    logger.warning("Verification didn't return expected structure, using original data")
+
+                # Use the verified data if it was successfully parsed
+                if 'industry_data' in verified_data:
+                    extraction_data = verified_data
+                    logger.info("Successfully verified and corrected data")
+                elif 'corrected_industry_data' in verified_data:
+                    # Use the corrected industry data
+                    extraction_data['industry_data'] = verified_data['corrected_industry_data']
+                    logger.info("Successfully applied corrected industry data")
+                else:
+                    logger.warning("Verification didn't return expected structure, using original data")
+            else:
+                logger.warning("Verification failed, continuing with unverified data")
+
+            # Execute structuring - ensure we have valid data for structuring
+            logger.info("Starting data structuring...")
+            from tools import SimpleDataStructurerTool
+            structurer_tool = SimpleDataStructurerTool()
+
+            # Ensure extraction_data has required keys before structuring
+            if not isinstance(extraction_data, dict):
+                extraction_data = {}
+
+            # Add missing required keys to prevent downstream errors
+            required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
+            for key in required_keys:
+                if key not in extraction_data:
+                    if key == "month_year":
+                        extraction_data[key] = ""
+                    elif key == "manufacturing_table":
+                        extraction_data[key] = ""
+                    else:
+                        extraction_data[key] = {}
+
+            # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
+            if "corrected_industry_data" in extraction_data and not extraction_data.get("industry_data"):
+                extraction_data["industry_data"] = extraction_data["corrected_industry_data"]
+
+            # Use the verified data if it was successfully parsed
+            structured_data = None  # Initialize to avoid reference errors
+            if verified_data and 'corrected_industry_data' in verified_data:
+                try:
+                    structured_data = structurer_tool._run({
+                        'month_year': verified_data.get('month_year', extraction_data.get('month_year', 'Unknown')),
+                        'manufacturing_table': verified_data.get('manufacturing_table', extraction_data.get('manufacturing_table', '')),
+                        'index_summaries': verified_data.get('index_summaries', extraction_data.get('index_summaries', {})),
+                        'industry_data': verified_data.get('corrected_industry_data', {})
+                    })
+                except Exception as e:
+                    logger.error(f"Error in structuring with verified data: {str(e)}")
+                    # If structuring with verified data fails, try with original extraction_data
+                    try:
+                        structured_data = structurer_tool._run(extraction_data)
+                    except Exception as e2:
+                        logger.error(f"Error in structuring with extraction_data: {str(e2)}")
+                        # Provide fallback structured_data
+                        structured_data = {}
+            else:
                 try:
                     structured_data = structurer_tool._run(extraction_data)
-                except Exception as e2:
-                    logger.error(f"Error in structuring with extraction_data: {str(e2)}")
+                except Exception as e:
+                    logger.error(f"Error in structuring: {str(e)}")
                     # Provide fallback structured_data
                     structured_data = {}
-        else:
-            try:
-                structured_data = structurer_tool._run(extraction_data)
-            except Exception as e:
-                logger.error(f"Error in structuring: {str(e)}")
-                # Provide fallback structured_data
+
+            logger.info("Data structuring completed")
+
+            # Check if structured_data is empty or None and fix if needed
+            if not structured_data:
+                logger.warning("Structured data is empty, using fallback structure")
                 structured_data = {}
+                # Create a minimal structure for each expected index
+                from config import ISM_INDICES, INDEX_CATEGORIES
+                for index in ISM_INDICES:
+                    structured_data[index] = {
+                        "month_year": "",
+                        "categories": {}
+                    }
+                    if index in INDEX_CATEGORIES:
+                        for category in INDEX_CATEGORIES[index]:
+                            structured_data[index]["categories"][category] = []
 
-        logger.info("Data structuring completed")
+            # Execute validation
+            logger.info("Starting data validation...")
+            validation_task = Task(
+                description=f"""
+                Validate the structured ISM Manufacturing Report data for accuracy and completeness.
 
-        # Check if structured_data is empty or None and fix if needed
-        if not structured_data:
-            logger.warning("Structured data is empty, using fallback structure")
-            structured_data = {}
-            # Create a minimal structure for each expected index
-            from config import ISM_INDICES, INDEX_CATEGORIES
-            for index in ISM_INDICES:
-                structured_data[index] = {
-                    "month_year": "",
-                    "categories": {}
-                }
-                if index in INDEX_CATEGORIES:
-                    for category in INDEX_CATEGORIES[index]:
-                        structured_data[index]["categories"][category] = []
+                Check:
+                1. All expected indices are present
+                2. Each index has the appropriate categories
+                3. No missing data or incorrect classifications
+                4. Industries are preserved exactly as listed in the report
 
-        # Execute validation
-        logger.info("Starting data validation...")
-        validation_task = Task(
-            description=f"""
-            Validate the structured ISM Manufacturing Report data for accuracy and completeness.
+                Flag any issues that would require manual review.
 
-            Check:
-            1. All expected indices are present
-            2. Each index has the appropriate categories
-            3. No missing data or incorrect classifications
-            4. Industries are preserved exactly as listed in the report
+                The structured data is: {structured_data}
+                """,
+                expected_output="A dictionary mapping each index name to a boolean indicating validation status",
+                agent=validator_agent
+            )
 
-            Flag any issues that would require manual review.
+            validation_crew = Crew(
+                agents=[validator_agent],
+                tasks=[validation_task],
+                verbose=True,
+                process=Process.sequential
+            )
 
-            The structured data is: {structured_data}
-            """,
-            expected_output="A dictionary mapping each index name to a boolean indicating validation status",
-            agent=validator_agent
-        )
+            validation_results = validation_crew.kickoff()
 
-        validation_crew = Crew(
-            agents=[validator_agent],
-            tasks=[validation_task],
-            verbose=True,
-            process=Process.sequential
-        )
+            # Safely parse validation results
+            validation_dict = safely_parse_agent_output(validation_results)
+            if not validation_dict:
+                logger.error("Failed to parse validation results")
+                # Create default validation dict
+                validation_dict = {}
+                for index in structured_data.keys():
+                    validation_dict[index] = True  # Default to True for all indices
 
-        validation_results = validation_crew.kickoff()
+            # Check if any validations passed
+            if not any(validation_dict.values()):
+                logger.warning(f"All validations failed for {pdf_path}")
+                # Set at least one validation to True to continue processing
+                if validation_dict:
+                    first_key = next(iter(validation_dict))
+                    validation_dict[first_key] = True
+                    logger.info(f"Setting {first_key} validation to True to continue processing")
 
-        # Safely parse validation results
-        validation_dict = safely_parse_agent_output(validation_results)
-        if not validation_dict:
-            logger.error("Failed to parse validation results")
-            # Create default validation dict
-            validation_dict = {}
-            for index in structured_data.keys():
-                validation_dict[index] = True  # Default to True for all indices
+            # Log total industry count for final checking
+            industry_count = count_industries(extraction_data.get('industry_data', {}))
+            logger.info(f"Found {industry_count} industries in structured data")
+            
+            # Ensure PMI data is extracted and included
+            if extraction_data and 'index_summaries' in extraction_data:
+                try:
+                    # Extract numerical PMI values from the summaries if not already available
+                    from pdf_utils import extract_pmi_values_from_summaries
+                    pmi_data = extract_pmi_values_from_summaries(extraction_data['index_summaries'])
+                    
+                    # Add the PMI data to the extraction_data
+                    if 'pmi_data' not in extraction_data:
+                        extraction_data['pmi_data'] = pmi_data
+                        logger.info(f"Added PMI data for {len(pmi_data)} indices")
+                except Exception as e:
+                    logger.error(f"Error extracting PMI values: {str(e)}")
 
-        # Check if any validations passed
-        if not any(validation_dict.values()):
-            logger.warning(f"All validations failed for {pdf_path}")
-            # Set at least one validation to True to continue processing
-            if validation_dict:
-                first_key = next(iter(validation_dict))
-                validation_dict[first_key] = True
-                logger.info(f"Setting {first_key} validation to True to continue processing")
+            # Fix the formatting task to ensure proper data structure
+            from tools import GoogleSheetsFormatterTool
+            formatter_tool = GoogleSheetsFormatterTool()
+            formatting_result = formatter_tool._run({
+                'structured_data': structured_data,
+                'validation_results': validation_dict,
+                'extraction_data': extraction_data,
+                'verification_result': verified_data,  # Add the verification result
+                'visualization_options': visualization_options
+            })
 
-        # Log total industry count for final checking
-        industry_count = count_industries(extraction_data.get('industry_data', {}))
-        logger.info(f"Found {industry_count} industries in structured data")
-        
-        # Ensure PMI data is extracted and included
-        if extraction_data and 'index_summaries' in extraction_data:
-            try:
-                # Extract numerical PMI values from the summaries if not already available
-                from pdf_utils import extract_pmi_values_from_summaries
-                pmi_data = extract_pmi_values_from_summaries(extraction_data['index_summaries'])
-                
-                # Add the PMI data to the extraction_data
-                if 'pmi_data' not in extraction_data:
-                    extraction_data['pmi_data'] = pmi_data
-                    logger.info(f"Added PMI data for {len(pmi_data)} indices")
-            except Exception as e:
-                logger.error(f"Error extracting PMI values: {str(e)}")
-
-        # Fix the formatting task to ensure proper data structure
-        from tools import GoogleSheetsFormatterTool
-        formatter_tool = GoogleSheetsFormatterTool()
-        formatting_result = formatter_tool._run({
-            'structured_data': structured_data,
-            'validation_results': validation_dict,
-            'extraction_data': extraction_data,
-            'verification_result': verified_data,  # Add the verification result
-            'visualization_options': visualization_options
-        })
-
-        logger.info("Google Sheets formatting completed")
-        return formatting_result
+            logger.info("Google Sheets formatting completed")
+            return formatting_result
 
     except Exception as e:
         logger.error(f"Error processing PDF {pdf_path}: {str(e)}")

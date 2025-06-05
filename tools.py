@@ -75,19 +75,26 @@ class SimplePDFExtractionTool(BaseTool):
             # Normalize input to get the PDF path
             normalized_input = self._normalize_input(input_data)
             pdf_path = normalized_input.get('pdf_path')
-            
+            provided_report_type = normalized_input.get('report_type')
+
             if not pdf_path:
                 logger.error("No PDF path provided")
                 return {"month_year": "Unknown", "indices": {}, "industry_data": {}}
+
+        #  Use ‘provided report type if available
+            if provided_report_type:
+                report_type = provided_report_type
+                logger.info(f"Using provided report type: {report_type}")
+            else:
+                try:
+                    from report_handlers import ReportTypeFactory
+                    report_type = ReportTypeFactory.detect_report_type(pdf_path)
+                    logger.info(f"Detected report type: {report_type}")
+                except Exception as e:
+                    logger.warning(f"Error detecting report type: {str(e)}, using default 'Manufacturing'")
+                    report_type = "Manufacturing"
             
-            # Detect report type
-            try:
-                from report_handlers import ReportTypeFactory
-                report_type = ReportTypeFactory.detect_report_type(pdf_path)
-                logger.info(f"Detected report type: {report_type}")
-            except Exception as e:
-                logger.warning(f"Error detecting report type: {str(e)}, using default 'Manufacturing'")
-                report_type = "Manufacturing"
+
             
             # Extract month and year from filename if possible
             month_year = "Unknown"
@@ -153,13 +160,19 @@ class SimplePDFExtractionTool(BaseTool):
                 except Exception as e:
                     logger.warning(f"Failed to extract month_year from text: {str(e)}")
 
-            # Construct the prompt based on report type
+            # Report-type specific variables
             if report_type == "Manufacturing":
                 prompt_title = "Manufacturing"
                 table_name = "Manufacturing at a Glance"
-            else:
+                main_pmi = "Manufacturing PMI"
+                production_index = "Production"
+                inventory_index = "Customers' Inventories"
+            else:  # Services
                 prompt_title = "Services"
                 table_name = "Services at a Glance"
+                main_pmi = "Services PMI"
+                production_index = "Business Activity"
+                inventory_index = "Inventory Sentiment"
             
             # Construct the prompt WITHOUT using nested f-strings
             prompt = f"""
@@ -168,19 +181,18 @@ class SimplePDFExtractionTool(BaseTool):
             PART 1: {table_name} Table
             CRITICAL INSTRUCTION: When extracting values from the "{table_name}" table, you MUST use the "Series Index" column values, NOT the "Percent Point Change" column values. The Series Index column contains the actual index values (like 52.1, 48.7, etc.), while the Percent Point Change column shows the change from the previous month.
 
-            Extract and return these data points using ONLY the Series Index column values:
-            - Month and Year of the report (should be {month_year})
-            - {prompt_title} PMI Series Index value and status (Growing/Contracting) 
-            - New Orders Series Index value and status
-            - {'Business Activity' if report_type == 'Services' else 'Production'} Series Index value and status
-            - Employment Series Index value and status
-            - Supplier Deliveries Series Index value and status
-            - Inventories Series Index value and status
-            - {'Inventory Sentiment' if report_type == 'Services' else "Customers' Inventories"} Series Index value and status
-            - Prices Series Index value and status
-            - Backlog of Orders Series Index value and status
-            - New Export Orders Series Index value and status
-            - Imports Series Index value and status
+            Extract these indices with their Series Index values and directions:
+            - {main_pmi}
+            - New Orders
+            - {production_index}
+            - Employment
+            - Supplier Deliveries
+            - Inventories
+            - {inventory_index}
+            - Prices
+            - Backlog of Orders
+            - New Export Orders
+            - Imports
             - Overall Economy status
             - {prompt_title} Sector status
 
@@ -273,62 +285,51 @@ class SimplePDFExtractionTool(BaseTool):
             
             for retry_count in range(max_retries):
                 try:
-                    # Use openai client
                     client = openai.OpenAI()
                     response = client.chat.completions.create(
-                        model="gpt-4o",  # Using gpt-4o
+                        model="gpt-4o",
                         messages=[
                             {"role": "system", "content": "You are a data extraction specialist that returns only valid JSON."},
                             {"role": "user", "content": prompt}
                         ],
-                        temperature=0.0  # Low temperature for deterministic output
+                        temperature=0.0
                     )
                     
-                    # Get the response text
                     response_text = response.choices[0].message.content
-                    # Removed verbose logging
                     
                     # Try to parse the JSON
                     try:
-                        # Clean up the response to extract just the JSON part
                         json_text = response_text
                         
-                        # If it has markdown code blocks, extract just the JSON
                         if "```json" in response_text:
                             json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
                             if json_match:
                                 json_text = json_match.group(1)
                         elif "```" in response_text:
-                            # Try to extract from any code block
                             json_match = re.search(r'```\n?(.*?)\n?```', response_text, re.DOTALL)
                             if json_match:
                                 json_text = json_match.group(1)
                         
-                        # Try to parse as JSON
                         json_data = json.loads(json_text)
                         
-                        # Validate the required fields exist
+                        # TARGETED FIX 6: Ensure required fields exist
                         if "month_year" not in json_data:
                             json_data["month_year"] = month_year
-                            
                         if "indices" not in json_data:
-                            logger.warning("JSON is missing indices field")
                             json_data["indices"] = {}
-                            
                         if "industry_data" not in json_data:
-                            logger.warning("JSON is missing industry_data field")
                             json_data["industry_data"] = {}
-                            
                         if "index_summaries" not in json_data:
-                            logger.warning("JSON is missing index_summaries field")
                             json_data["index_summaries"] = {}
                         
-                        # Add report_type to the data
                         json_data["report_type"] = report_type
 
-                        # Initialize extraction_data with json_data
                         extraction_data = json_data
                         
+                        # TARGETED FIX 7: Services-specific corrections
+                        if report_type == "Services":
+                            extraction_data = self._fix_services_indices(extraction_data)
+                            
                         # FIXED: Only call _ensure_correct_pmi_index if extraction_data is properly initialized
                         if extraction_data is not None:
                             # Ensure the correct PMI index name is used
@@ -397,8 +398,8 @@ class SimplePDFExtractionTool(BaseTool):
                                 extraction_data['indices'] = extraction_data['manufacturing_table']
                                 logger.info("Copied manufacturing_table to indices field")
 
-                        # Success! Return the parsed JSON
-                        # Removed verbose logging
+                        extraction_data = self._validate_pmi_values(extraction_data, report_type)
+                        
                         return extraction_data
                         
                     except json.JSONDecodeError as e:
@@ -468,6 +469,63 @@ class SimplePDFExtractionTool(BaseTool):
                 "report_type": "Manufacturing"
             }
     
+    def _fix_services_indices(self, extraction_data):
+        """TARGETED FIX: Ensure Services reports have correct index names."""
+        if not extraction_data or 'indices' not in extraction_data:
+            return extraction_data
+            
+        indices = extraction_data['indices']
+        
+        # Services-specific mappings
+        mappings = {
+            "Manufacturing PMI": "Services PMI",
+            "Production": "Business Activity",
+            "Customers' Inventories": "Inventory Sentiment"
+        }
+        
+        # Apply mappings
+        for old_name, new_name in mappings.items():
+            if old_name in indices and new_name not in indices:
+                indices[new_name] = indices.pop(old_name)
+                logger.info(f"Mapped {old_name} to {new_name} for Services report")
+        
+        # Also fix industry_data
+        if 'industry_data' in extraction_data:
+            industry_data = extraction_data['industry_data']
+            for old_name, new_name in mappings.items():
+                if old_name in industry_data and new_name not in industry_data:
+                    industry_data[new_name] = industry_data.pop(old_name)
+        
+        return extraction_data
+
+    def _validate_pmi_values(self, extraction_data, report_type):
+        """TARGETED FIX: Validate PMI values are reasonable."""
+        if not extraction_data or 'indices' not in extraction_data:
+            return extraction_data
+            
+        indices = extraction_data['indices']
+        
+        for index_name, data in indices.items():
+            if isinstance(data, dict):
+                # Check for suspicious values (percent changes instead of index values)
+                current_value = data.get('current', '')
+                if isinstance(current_value, str) and current_value.startswith(('+', '-')):
+                    logger.warning(f"Suspicious value '{current_value}' for {index_name} - might be percent change")
+                    
+                    # Try to use series_index instead
+                    if 'series_index' in data:
+                        series_value = str(data['series_index']).replace('+', '').replace('-', '')
+                        try:
+                            float_val = float(series_value)
+                            if 20 <= float_val <= 80:  # Reasonable PMI range
+                                data['current'] = series_value
+                                data['value'] = series_value
+                                logger.info(f"Corrected {index_name} using series_index: {series_value}")
+                        except ValueError:
+                            pass
+        
+        return extraction_data
+
     def _ensure_correct_pmi_index(self, extracted_data, report_type):
         """
         Ensure the correct PMI index name is used based on report type.
