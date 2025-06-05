@@ -60,6 +60,9 @@ class SimplePDFExtractionTool(BaseTool):
         if openai_api_key:
             openai.api_key = openai_api_key
 
+        # Track report type for this instance
+        self._current_report_type = None
+
     def _run(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract data from ISM Manufacturing Report PDF.
@@ -79,7 +82,7 @@ class SimplePDFExtractionTool(BaseTool):
 
             if not pdf_path:
                 logger.error("No PDF path provided")
-                return {"month_year": "Unknown", "indices": {}, "industry_data": {}}
+                return {"month_year": "Unknown", "indices": {}, "industry_data": {}, "report_type": "Manufacturing"}
 
         #  Use ‘provided report type if available
             if provided_report_type:
@@ -94,7 +97,14 @@ class SimplePDFExtractionTool(BaseTool):
                     logger.warning(f"Error detecting report type: {str(e)}, using default 'Manufacturing'")
                     report_type = "Manufacturing"
             
-
+            # ADDED: Store report type in instance for later use
+            self._current_report_type = report_type
+            
+            # FIXED: Validate report type
+            if report_type not in ['Manufacturing', 'Services']:
+                logger.warning(f"Invalid report type '{report_type}', defaulting to Manufacturing")
+                report_type = 'Manufacturing'
+                self._current_report_type = report_type
             
             # Extract month and year from filename if possible
             month_year = "Unknown"
@@ -312,7 +322,7 @@ class SimplePDFExtractionTool(BaseTool):
                         
                         json_data = json.loads(json_text)
                         
-                        # TARGETED FIX 6: Ensure required fields exist
+                        # Ensure required fields exist
                         if "month_year" not in json_data:
                             json_data["month_year"] = month_year
                         if "indices" not in json_data:
@@ -322,85 +332,44 @@ class SimplePDFExtractionTool(BaseTool):
                         if "index_summaries" not in json_data:
                             json_data["index_summaries"] = {}
                         
+                        # CRITICAL FIX: Always set report_type
                         json_data["report_type"] = report_type
 
                         extraction_data = json_data
                         
-                        # TARGETED FIX 7: Services-specific corrections
+                        # FIXED: Apply Services-specific corrections BEFORE other processing
                         if report_type == "Services":
                             extraction_data = self._fix_services_indices(extraction_data)
-                            
-                        # FIXED: Only call _ensure_correct_pmi_index if extraction_data is properly initialized
-                        if extraction_data is not None:
-                            # Ensure the correct PMI index name is used
+                            logger.info("Applied Services-specific index corrections")
+                        
+                        # FIXED: Ensure correct PMI index names with better error handling
+                        try:
                             extraction_data = self._ensure_correct_pmi_index(extraction_data, report_type)
-                            
-                            # Validate and fix PMI values if needed
+                        except Exception as e:
+                            logger.error(f"Error in _ensure_correct_pmi_index: {str(e)}")
+                            # Continue with processing even if this fails
+                        
+                        # FIXED: Validate PMI values
+                        try:
                             extraction_data = self._validate_and_fix_pmi_values(extraction_data, report_type)
-                            
-                        # Try to extract PMI values from summaries if they're not in indices
-                        if extraction_data["index_summaries"] and not extraction_data["indices"]:
-                            try:
-                                from pdf_utils import extract_pmi_values_from_summaries
-                                pmi_data = extract_pmi_values_from_summaries(extraction_data["index_summaries"])
-                                extraction_data["indices"] = pmi_data
-                                logger.info(f"Extracted PMI values from summaries: {len(pmi_data)} indices")
-                            except Exception as e:
-                                logger.warning(f"Failed to extract PMI values from summaries: {str(e)}")
-                        
-                        # If we still don't have any indices, try using the pdf_utils extractor
-                        if not extraction_data["indices"]:
-                            try:
-                                from pdf_utils import extract_manufacturing_at_a_glance
-                                table_text = extract_manufacturing_at_a_glance(extracted_text)
-                                if table_text:
-                                    # Include the extracted table text
-                                    extraction_data["manufacturing_table"] = table_text
-                                    logger.info(f"Extracted table text: {len(table_text)} chars")
-                                    
-                                    # Try to extract values from the table text
-                                    from pdf_utils import extract_pmi_values_from_summaries
-                                    pmi_data = extract_pmi_values_from_summaries({"Table": table_text})
-                                    if pmi_data:
-                                        extraction_data["indices"] = pmi_data
-                                        logger.info(f"Extracted PMI values from table: {len(pmi_data)} indices")
-                            except Exception as e:
-                                logger.warning(f"Failed to extract table: {str(e)}")
-                        
-                        # If we have extracted industry data but no index summaries, try to extract them
-                        if extraction_data["industry_data"] and not extraction_data["index_summaries"]:
-                            try:
-                                from pdf_utils import extract_index_summaries
-                                index_summaries = extract_index_summaries(extracted_text)
-                                if index_summaries:
-                                    extraction_data["index_summaries"] = index_summaries
-                                    logger.info(f"Extracted index summaries: {len(index_summaries)} indices")
-                            except Exception as e:
-                                logger.warning(f"Failed to extract index summaries: {str(e)}")
-                        
-                        # Standardize the extracted data structure before returning
-                        if 'indices' in extraction_data:
-                            # Ensure Manufacturing PMI is in indices
-                            if 'manufacturing_table' in extraction_data and isinstance(extraction_data['manufacturing_table'], dict):
-                                for key in ['Manufacturing PMI', 'New Orders', 'Production', 'Employment']:
-                                    if key in extraction_data['manufacturing_table'] and key not in extraction_data['indices']:
-                                        extraction_data['indices'][key] = extraction_data['manufacturing_table'][key]
-                                        logger.info(f"Moved {key} from manufacturing_table to indices")
-                        elif 'manufacturing_table' in extraction_data and isinstance(extraction_data['manufacturing_table'], dict):
-                            # If no indices field exists but manufacturing_table does, copy it to indices
-                            has_pmi_data = False
-                            for key in ['Manufacturing PMI', 'New Orders', 'Production']:
-                                if key in extraction_data['manufacturing_table']:
-                                    has_pmi_data = True
-                                    break
-                                    
-                            if has_pmi_data:
-                                extraction_data['indices'] = extraction_data['manufacturing_table']
-                                logger.info("Copied manufacturing_table to indices field")
+                        except Exception as e:
+                            logger.error(f"Error in _validate_and_fix_pmi_values: {str(e)}")
+                            # Continue with processing even if this fails
 
-                        extraction_data = self._validate_pmi_values(extraction_data, report_type)
-                        
                         return extraction_data
+
+                    except Exception as e:
+                        logger.error(f"Error in PDF extraction: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        
+                        # FIXED: Return proper fallback with report type
+                        return {
+                            "month_year": "Unknown", 
+                            "indices": {}, 
+                            "industry_data": {},
+                            "index_summaries": {},
+                            "report_type": self._current_report_type or "Manufacturing"
+                        }
                         
                     except json.JSONDecodeError as e:
                         logger.warning(f"Failed to parse JSON on retry {retry_count}: {str(e)}")
@@ -470,31 +439,49 @@ class SimplePDFExtractionTool(BaseTool):
             }
     
     def _fix_services_indices(self, extraction_data):
-        """TARGETED FIX: Ensure Services reports have correct index names."""
+        """ENHANCED: Fix Services reports with comprehensive index name mapping."""
         if not extraction_data or 'indices' not in extraction_data:
             return extraction_data
             
         indices = extraction_data['indices']
         
-        # Services-specific mappings
+        # ENHANCED: More comprehensive Services-specific mappings
         mappings = {
             "Manufacturing PMI": "Services PMI",
-            "Production": "Business Activity",
+            "Production": "Business Activity", 
             "Customers' Inventories": "Inventory Sentiment"
         }
         
-        # Apply mappings
+        # Apply mappings to indices
+        indices_updated = False
         for old_name, new_name in mappings.items():
             if old_name in indices and new_name not in indices:
                 indices[new_name] = indices.pop(old_name)
+                indices_updated = True
                 logger.info(f"Mapped {old_name} to {new_name} for Services report")
         
-        # Also fix industry_data
+        # ENHANCED: Also fix industry_data
         if 'industry_data' in extraction_data:
             industry_data = extraction_data['industry_data']
+            industry_updated = False
             for old_name, new_name in mappings.items():
                 if old_name in industry_data and new_name not in industry_data:
                     industry_data[new_name] = industry_data.pop(old_name)
+                    industry_updated = True
+                    logger.info(f"Mapped {old_name} to {new_name} in industry_data for Services report")
+        
+        # ENHANCED: Also fix index_summaries
+        if 'index_summaries' in extraction_data:
+            index_summaries = extraction_data['index_summaries']
+            summaries_updated = False
+            for old_name, new_name in mappings.items():
+                if old_name in index_summaries and new_name not in index_summaries:
+                    index_summaries[new_name] = index_summaries.pop(old_name)
+                    summaries_updated = True
+                    logger.info(f"Mapped {old_name} to {new_name} in index_summaries for Services report")
+        
+        if indices_updated or industry_updated or summaries_updated:
+            logger.info("Successfully applied comprehensive Services index corrections")
         
         return extraction_data
 
@@ -527,110 +514,38 @@ class SimplePDFExtractionTool(BaseTool):
         return extraction_data
 
     def _ensure_correct_pmi_index(self, extracted_data, report_type):
-        """
-        Ensure the correct PMI index name is used based on report type.
-        This version preserves all data instead of destructively renaming.
-        
-        Args:
-            extracted_data: The extracted data dictionary
-            report_type: Report type (Manufacturing or Services)
-            
-        Returns:
-            Updated extracted data with correct PMI index name
-        """
+        """SIMPLIFIED: Ensure correct PMI index name with better error handling."""
         try:
-            # Handle case where extracted_data is None or not a dictionary
             if not extracted_data or not isinstance(extracted_data, dict):
-                logger.warning(f"Invalid extracted_data passed to _ensure_correct_pmi_index: {type(extracted_data)}")
+                logger.warning(f"Invalid extracted_data in _ensure_correct_pmi_index")
                 return {"month_year": "Unknown", "indices": {}, "industry_data": {}, "report_type": report_type}
                 
-            # If no indices, nothing to fix
             if 'indices' not in extracted_data or not extracted_data['indices']:
+                logger.warning("No indices found in extracted_data")
                 return extracted_data
                 
             indices = extracted_data['indices']
-            
-            # Ensure indices is a dictionary
             if not isinstance(indices, dict):
                 logger.warning(f"indices is not a dictionary: {type(indices)}")
                 extracted_data['indices'] = {}
                 return extracted_data
             
-            # Create a new indices dict to avoid modifying during iteration
-            new_indices = indices.copy()
-            
-            # For Services report type
+            # SIMPLIFIED: Just ensure the correct PMI name exists
             if report_type == "Services":
-                # Ensure we have Services PMI (rename Manufacturing PMI if needed)
                 if "Manufacturing PMI" in indices and "Services PMI" not in indices:
-                    new_indices["Services PMI"] = indices["Manufacturing PMI"]
-                    # Don't delete Manufacturing PMI yet - preserve it
-                    logger.info("Added Services PMI from Manufacturing PMI for Services report")
-                
-                # Ensure we have Business Activity (rename Production if needed)
-                if "Production" in indices and "Business Activity" not in indices:
-                    new_indices["Business Activity"] = indices["Production"]
-                    logger.info("Added Business Activity from Production for Services report")
-                
-                # Ensure we have Inventory Sentiment (rename Customers' Inventories if needed)
-                if "Customers' Inventories" in indices and "Inventory Sentiment" not in indices:
-                    new_indices["Inventory Sentiment"] = indices["Customers' Inventories"]
-                    logger.info("Added Inventory Sentiment from Customers' Inventories for Services report")
-                
-                # Now remove Manufacturing-specific indices if they were copied
-                indices_to_remove = []
-                if "Services PMI" in new_indices and "Manufacturing PMI" in new_indices:
-                    indices_to_remove.append("Manufacturing PMI")
-                if "Business Activity" in new_indices and "Production" in new_indices:
-                    indices_to_remove.append("Production")
-                if "Inventory Sentiment" in new_indices and "Customers' Inventories" in new_indices:
-                    indices_to_remove.append("Customers' Inventories")
-                
-                for idx in indices_to_remove:
-                    del new_indices[idx]
-                    logger.info(f"Removed {idx} after copying to Services equivalent")
-                    
-            # For Manufacturing report type
-            elif report_type == "Manufacturing":
-                # Ensure we have Manufacturing PMI (rename Services PMI if needed)
+                    indices["Services PMI"] = indices.pop("Manufacturing PMI")
+                    logger.info("Renamed Manufacturing PMI to Services PMI")
+            else:  # Manufacturing
                 if "Services PMI" in indices and "Manufacturing PMI" not in indices:
-                    new_indices["Manufacturing PMI"] = indices["Services PMI"]
-                    logger.info("Added Manufacturing PMI from Services PMI for Manufacturing report")
-                
-                # Ensure we have Production (rename Business Activity if needed)
-                if "Business Activity" in indices and "Production" not in indices:
-                    new_indices["Production"] = indices["Business Activity"]
-                    logger.info("Added Production from Business Activity for Manufacturing report")
-                
-                # Ensure we have Customers' Inventories (rename Inventory Sentiment if needed)
-                if "Inventory Sentiment" in indices and "Customers' Inventories" not in indices:
-                    new_indices["Customers' Inventories"] = indices["Inventory Sentiment"]
-                    logger.info("Added Customers' Inventories from Inventory Sentiment for Manufacturing report")
-                
-                # Now remove Services-specific indices if they were copied
-                indices_to_remove = []
-                if "Manufacturing PMI" in new_indices and "Services PMI" in new_indices:
-                    indices_to_remove.append("Services PMI")
-                if "Production" in new_indices and "Business Activity" in new_indices:
-                    indices_to_remove.append("Business Activity")
-                if "Customers' Inventories" in new_indices and "Inventory Sentiment" in new_indices:
-                    indices_to_remove.append("Inventory Sentiment")
-                
-                for idx in indices_to_remove:
-                    del new_indices[idx]
-                    logger.info(f"Removed {idx} after copying to Manufacturing equivalent")
+                    indices["Manufacturing PMI"] = indices.pop("Services PMI")
+                    logger.info("Renamed Services PMI to Manufacturing PMI")
             
-            # Update the extracted data with new indices
-            extracted_data['indices'] = new_indices
-            
-            # Log final indices for debugging
-            logger.info(f"Final indices after _ensure_correct_pmi_index: {list(new_indices.keys())}")
-            
+            logger.info(f"Final indices after PMI correction: {list(indices.keys())}")
             return extracted_data
+            
         except Exception as e:
             logger.error(f"Error in _ensure_correct_pmi_index: {str(e)}")
-            logger.error(traceback.format_exc())
-            # Return the original data in case of error to avoid further issues
+            # Return original data on error to avoid cascading failures
             return extracted_data
 
     def _extract_data_with_llm(self, pdf_path: str, month_year_context: str, handler: Any, report_type_str: str) -> Dict[str, Any]:
@@ -1101,11 +1016,14 @@ class SimpleDataStructurerTool(BaseTool):
             if not extracted_data:
                 extracted_data = {}
             
+            # FIXED: Ensure report_type is preserved
+            report_type = extracted_data.get('report_type', 'Manufacturing')
+
             # Get month and year
             month_year = extracted_data.get("month_year", "Unknown")
             logger.info(f"Structuring data for {month_year}")
             
-            # Ensure required keys exist to prevent downstream errors
+            # ENHANCED: Better handling of missing data
             required_keys = ["month_year", "manufacturing_table", "index_summaries", "industry_data"]
             for key in required_keys:
                 if key not in extracted_data:
@@ -1116,7 +1034,7 @@ class SimpleDataStructurerTool(BaseTool):
                     else:
                         extracted_data[key] = {}
             
-            # Handle case where 'industry_data' might be missing but 'corrected_industry_data' exists
+            # ENHANCED: Handle corrected industry data properly
             if not extracted_data.get("industry_data") and "corrected_industry_data" in extracted_data:
                 extracted_data["industry_data"] = extracted_data["corrected_industry_data"]
                 logger.info("Using corrected_industry_data as industry_data")
@@ -1164,7 +1082,7 @@ class SimpleDataStructurerTool(BaseTool):
             if not industry_data:
                 industry_data = {}
                 logger.warning("No valid industry data found, using empty dictionary")
-                
+
             # Structure data for each index
             structured_data = {}
             
@@ -1355,43 +1273,51 @@ class GoogleSheetsFormatterTool(BaseTool):
         """
     )
     
+    def __init__(self):
+        super().__init__()
+        # ADDED: Track current report type for this instance
+        self._current_report_type = None
+        self._extraction_data = None
+
     def _run(self, data: Dict[str, Any]) -> bool:
-        """
-        Main entry point for the Google Sheets Formatter Tool.
-        
-        Args:
-            data: Dictionary containing structured_data, validation_results, and visualization_options
-                
-        Returns:
-            Boolean indicating whether the Google Sheets update was successful
-        """
+        """Main entry point for the Google Sheets Formatter Tool."""
         try:
             # Check if required keys exist
             if not isinstance(data, dict):
                 data = {'structured_data': {}, 'validation_results': {}}
                 logger.warning("Data is not a dictionary. Creating an empty structure.")
                 
-            # Get extraction_data first since we'll use it in multiple places
+            # ENHANCED: Get extraction_data and set report type context
             extraction_data = data.get('extraction_data', {})
+            self._extraction_data = extraction_data
+            
+            # FIXED: Properly determine report type
+            report_type = extraction_data.get('report_type', 'Manufacturing')
+            if report_type not in ['Manufacturing', 'Services']:
+                report_type = 'Manufacturing'
+            self._current_report_type = report_type
+            
+            logger.info(f"Processing Google Sheets formatting for report type: {report_type}")
 
             # Ensure month_year is extracted and preserved correctly
             month_year = extraction_data.get('month_year', 'Unknown')
             if 'verification_result' in data and isinstance(data['verification_result'], dict):
-                # If verification_result has a different month_year, use the original
                 if 'month_year' in data['verification_result'] and data['verification_result']['month_year'] != month_year:
                     logger.warning(f"Month/year changed during verification - using original {month_year}")
                     data['verification_result']['month_year'] = month_year
             
-            # Store data in database if extraction_data is available
-            from db_utils import store_report_data_in_db
+            # ENHANCED: Store data in database with proper report type
             try:
                 if extraction_data and 'month_year' in extraction_data:
+                    from db_utils import store_report_data_in_db
                     pdf_path = data.get('pdf_path', 'unknown_path')
-                    report_type = extraction_data.get('report_type', 'Manufacturing')
                     store_result = store_report_data_in_db(extraction_data, pdf_path, report_type)
-                    logger.info(f"Database storage result: {store_result}")
+                    if store_result:
+                        logger.info(f"Successfully stored {report_type} report data in database")
+                    else:
+                        logger.warning(f"Failed to store {report_type} report data in database")
             except Exception as e:
-                logger.error(f"Error storing data in database: {str(e)}")
+                logger.error(f"Error storing {report_type} data in database: {str(e)}")
             
             # Get Google Sheets service
             service = get_google_sheets_service()
@@ -1399,44 +1325,45 @@ class GoogleSheetsFormatterTool(BaseTool):
                 logger.error("Failed to get Google Sheets service")
                 return False
             
-            # Get or create the Google Sheet
-            sheet_id = self._get_or_create_sheet(service, "ISM Manufacturing Report Analysis")
+            # ENHANCED: Create report-type specific sheet name
+            sheet_title = f"ISM {report_type} Report Analysis"
+            sheet_id = self._get_or_create_sheet(service, sheet_title)
             if not sheet_id:
-                logger.error("Failed to get or create Google Sheet")
+                logger.error(f"Failed to get or create Google Sheet for {report_type}")
                 return False
             
             # Get all sheet IDs for tabs
             sheet_ids = self._get_all_sheet_ids(service, sheet_id)
             
-            # ONLY CREATE THE THREE REQUESTED TABS
+            # ENHANCED: Create tabs with report type context
             try:
-                # 1. Update the heatmap tab with values only (no direction)
-                monthly_data = get_pmi_data_by_month(24)  # Get last 24 months
-                heatmap_result = self.update_heatmap_tab(service, sheet_id, monthly_data)
+                # 1. Update the heatmap tab with values only
+                monthly_data = get_pmi_data_by_month(24, report_type)  # Pass report_type
+                heatmap_result = self.update_heatmap_tab(service, sheet_id, monthly_data, report_type)
                 if heatmap_result:
-                    logger.info("Successfully updated heatmap tab with values only")
+                    logger.info(f"Successfully updated {report_type} heatmap tab")
                 else:
-                    logger.warning("Failed to update heatmap tab with values only")
+                    logger.warning(f"Failed to update {report_type} heatmap tab")
                 
-                # 2. Create alphabetical growth tab
-                alpha_result = self.create_alphabetical_growth_tab(service, sheet_id, sheet_ids)
+                # 2. Create alphabetical growth tab with report type
+                alpha_result = self.create_alphabetical_growth_tab(service, sheet_id, sheet_ids, report_type)
                 if alpha_result:
-                    logger.info("Successfully created alphabetical growth tab")
+                    logger.info(f"Successfully created {report_type} alphabetical growth tab")
                 else:
-                    logger.warning("Failed to create alphabetical growth tab")
+                    logger.warning(f"Failed to create {report_type} alphabetical growth tab")
                 
-                # 3. Create numerical growth tab
-                num_result = self.create_numerical_growth_tab(service, sheet_id, sheet_ids)
+                # 3. Create numerical growth tab with report type  
+                num_result = self.create_numerical_growth_tab(service, sheet_id, sheet_ids, report_type)
                 if num_result:
-                    logger.info("Successfully created numerical growth tab")
+                    logger.info(f"Successfully created {report_type} numerical growth tab")
                 else:
-                    logger.warning("Failed to create numerical growth tab")
+                    logger.warning(f"Failed to create {report_type} numerical growth tab")
                 
-                logger.info("Successfully created/updated required tabs")
-                logger.info(f"Successfully updated Google Sheets")
+                logger.info(f"Successfully created/updated required tabs for {report_type}")
                 return True
+                
             except Exception as e:
-                logger.error(f"Error creating required tabs: {str(e)}")
+                logger.error(f"Error creating required tabs for {report_type}: {str(e)}")
                 logger.error(traceback.format_exc())
                 return False
             
@@ -1444,7 +1371,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(f"Error in Google Sheets formatting: {str(e)}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             return False
-    
+
     def _count_industries(self, structured_data):
         """Count the total number of industries in structured data."""
         count = 0
@@ -3520,7 +3447,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.error(traceback.format_exc())
             return None
 
-    def update_heatmap_tab(self, service, sheet_id, monthly_data):
+    def update_heatmap_tab(self, service, sheet_id, monthly_data, report_type=None):
         """
         Update heatmap tab with values only (no direction).
         
@@ -3533,12 +3460,15 @@ class GoogleSheetsFormatterTool(BaseTool):
             Boolean indicating success
         """
         try:
-            # Add null check to prevent NoneType error
+            if not report_type:
+                report_type = self.getCurrentReportType()
+                
+            # ENHANCED: Use report-type specific logic
             if not monthly_data:
-                logger.warning("No monthly data provided for heatmap update")
+                logger.warning(f"No monthly data provided for {report_type} heatmap update")
                 return False
                 
-            tab_name = 'PMI Heatmap Summary'
+            tab_name = f'{report_type} PMI Heatmap Summary'
             tab_id = self._get_all_sheet_ids(service, sheet_id).get(tab_name)
             
             if not tab_id:
@@ -3683,11 +3613,11 @@ class GoogleSheetsFormatterTool(BaseTool):
             
             return result
         except Exception as e:
-            logger.error(f"Error updating heatmap tab: {str(e)}")
+            logger.error(f"Error updating {report_type} heatmap tab: {str(e)}")
             logger.error(traceback.format_exc())
             return False
 
-    def create_alphabetical_growth_tab(self, service, sheet_id, sheet_ids):
+    def create_alphabetical_growth_tab(self, service, sheet_id, sheet_ids, report_type=None):
         """
         Create the alphabetical growth/contraction tab.
         
@@ -3700,11 +3630,17 @@ class GoogleSheetsFormatterTool(BaseTool):
             Boolean indicating success
         """
         try:
-            tab_name = 'Growth Alphabetical'
+            if not report_type:
+                report_type = self.getCurrentReportType()
+                
+            tab_name = f'{report_type} Growth Alphabetical'
+            
+            # Get report type specific indices
+            indices = get_all_indices(report_type=report_type)
         
             # Get the current report type from the most recent request
-            report_type = getCurrentReportType()  # You need to implement this function or pass it from the caller
-            
+            report_type = self.getCurrentReportType()
+
             # Check if tab exists
             tab_id = sheet_ids.get(tab_name)
             if not tab_id:
@@ -3996,11 +3932,11 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.info(f"Successfully created/updated '{tab_name}' tab")
             return True
         except Exception as e:
-            logger.error(f"Error creating alphabetical growth tab: {str(e)}")
+            logger.error(f"Error creating {report_type} alphabetical growth tab: {str(e)}")
             logger.error(traceback.format_exc())
             return False
 
-    def create_numerical_growth_tab(self, service, sheet_id, sheet_ids):
+    def create_numerical_growth_tab(self, service, sheet_id, sheet_ids, report_type=None):
         """
         Create the numerical growth/contraction tab with proper sorting for each month.
         
@@ -4013,7 +3949,14 @@ class GoogleSheetsFormatterTool(BaseTool):
             Boolean indicating success
         """
         try:
-            tab_name = 'Growth Numerical'
+            if not report_type:
+                report_type = self.getCurrentReportType()
+                
+            tab_name = f'{report_type} Growth Numerical'
+            
+            # ENHANCED: Use report type specific logic
+            main_pmi_index = f"{report_type} PMI"
+            indices = [idx for idx in get_all_indices(report_type=report_type) if idx != main_pmi_index]
             
             # Get the current report type
             report_type = getCurrentReportType() 
@@ -4464,7 +4407,7 @@ class GoogleSheetsFormatterTool(BaseTool):
             logger.info(f"Successfully created/updated '{tab_name}' tab")
             return True
         except Exception as e:
-            logger.error(f"Error creating numerical growth tab: {str(e)}")
+            logger.error(f"Error creating {report_type} numerical growth tab: {str(e)}")
             logger.error(traceback.format_exc())
             return False
 
@@ -4565,17 +4508,12 @@ class GoogleSheetsFormatterTool(BaseTool):
             return False
 
     def getCurrentReportType(self):
-        """Get the current report type from the request context or data."""
-        # Try to get from the instance's data if available
-        if hasattr(self, '_current_report_type'):
+        """Get the current report type with proper fallback."""
+        if self._current_report_type:
             return self._current_report_type
-        
-        # Try to get from the extraction data if available
-        if hasattr(self, '_extraction_data') and self._extraction_data:
-            return self._extraction_data.get('report_type', 'Manufacturing')
-        
-        # Default to Manufacturing
-        return "Manufacturing"
+        if self._extraction_data and 'report_type' in self._extraction_data:
+            return self._extraction_data['report_type']
+        return "Manufacturing"  # Safe fallback
 
 class PDFOrchestratorTool(BaseTool):
     name: str = Field(default="orchestrate_processing")

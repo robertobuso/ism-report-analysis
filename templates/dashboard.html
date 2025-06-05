@@ -1626,6 +1626,24 @@
        
         // Main initialization function
         document.addEventListener('DOMContentLoaded', function() {
+
+            console.log('Initializing dashboard...');
+
+            // GLOBAL STATE MANAGEMENT - Replace the existing report type logic
+            let currentReportTypeGlobal = 'Manufacturing'; // Global state variable
+    
+            // Initialize report type state first
+            const initialReportType = initializeReportType();
+
+            // Set up report type button listeners
+            document.querySelectorAll('.report-type-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const reportType = this.getAttribute('data-report-type');
+                    updateReportType(reportType);
+                    refreshAllData(reportType);
+                });
+            });
+
             // Update KPI cards
             updateKpiCards();
 
@@ -1804,122 +1822,60 @@
         }
 
         // KPI Cards Functions
-        function updateKpiCards(reportType = "Manufacturing") {
+        function updateKpiCards(reportType = null) {
+            if (!reportType) {
+                reportType = getCurrentReportType();
+            }
+            
             try {
+                console.log(`Updating KPI cards for report type: ${reportType}`);
+                
                 // Define the index names based on report type
                 const pmiKey = reportType === "Services" ? "Services PMI" : "Manufacturing PMI";
                 const productionKey = reportType === "Services" ? "Business Activity" : "Production";
                 
-                // Fetch fresh data for the selected report type
-                // This is critical - we need to get data specific to the report type
-                fetch(`/api/heatmap_data/6?report_type=${reportType}`)
-                    .then(response => response.json())
+                // Fetch fresh data for the selected report type with explicit cache busting
+                const cacheParam = Date.now();
+                fetch(`/api/heatmap_data/6?report_type=${reportType}&_=${cacheParam}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
                     .then(freshData => {
+                        console.log(`Received KPI data for ${reportType}:`, freshData);
+                        
                         // Update global heatmap_data with the fetched data
                         window.heatmap_data = freshData;
                         
                         // Check if heatmap_data exists and has at least one record
-                        if (!window.heatmap_data || !window.heatmap_data.length) {
+                        if (!freshData || !freshData.length) {
                             console.warn(`No heatmap data available for ${reportType} KPI cards`);
                             clearKpiCards();
                             return;
                         }
                         
                         // Update the title text for the KPI cards to reflect report type
-                        const mainPmiTitle = document.querySelector('#mainPmiValue').closest('.kpi-card').querySelector('.kpi-title');
-                        if (mainPmiTitle) {
-                            // Update just the text node, preserving the info icon
-                            const textNode = mainPmiTitle.childNodes[0];
-                            if (textNode) {
-                                textNode.nodeValue = `${pmiKey} `;
-                            } else {
-                                mainPmiTitle.prepend(document.createTextNode(`${pmiKey} `));
-                            }
-                        }
-                        
-                        const productionTitle = document.querySelector('#productionValue').closest('.kpi-card').querySelector('.kpi-title');
-                        if (productionTitle) {
-                            const textNode = productionTitle.childNodes[0];
-                            if (textNode) {
-                                textNode.nodeValue = `${productionKey} `;
-                            } else {
-                                productionTitle.prepend(document.createTextNode(`${productionKey} `));
-                            }
-                        }
+                        updateKpiTitle('mainPmiValue', pmiKey);
+                        updateKpiTitle('productionValue', productionKey);
                         
                         // Get the most recent month's data
-                        const latestData = window.heatmap_data[0];
+                        const latestData = freshData[0];
                         
                         // Update Main PMI (Manufacturing or Services)
                         if (latestData.indices && latestData.indices[pmiKey]) {
-                            const pmiData = latestData.indices[pmiKey];
-                            const pmiValue = pmiData.value;
-                            const pmiDirection = pmiData.direction;
-                            
-                            const mainPmiValueElem = document.getElementById('mainPmiValue');
-                            if (mainPmiValueElem) mainPmiValueElem.textContent = pmiValue;
-                            
-                            const directionElem = document.getElementById('mainPmiDirection');
-                            if (directionElem) {
-                                directionElem.textContent = pmiDirection;
-                                
-                                if (pmiDirection === 'Growing') {
-                                    directionElem.className = 'kpi-direction text-growing';
-                                } else if (pmiDirection === 'Contracting') {
-                                    directionElem.className = 'kpi-direction text-contracting';
-                                } else {
-                                    directionElem.className = 'kpi-direction text-muted';
-                                }
-                            }
-                            
-                            // Add change if available in data
-                            if (window.heatmap_data.length > 1) {
-                                const prevData = window.heatmap_data[1];
-                                if (prevData.indices && prevData.indices[pmiKey]) {
-                                    const prevValue = parseFloat(prevData.indices[pmiKey].value);
-                                    const currentValue = parseFloat(pmiValue);
-                                    
-                                    if (!isNaN(prevValue) && !isNaN(currentValue)) {
-                                        const change = (currentValue - prevValue).toFixed(1);
-                                        const changeElem = document.getElementById('mainPmiChange');
-                                        
-                                        if (changeElem) {
-                                            if (parseFloat(change) > 0) {
-                                                changeElem.textContent = `+${change} from previous`;
-                                                changeElem.className = 'badge rounded-pill bg-success';
-                                            } else if (parseFloat(change) < 0) {
-                                                changeElem.textContent = `${change} from previous`;
-                                                changeElem.className = 'badge rounded-pill bg-danger';
-                                            } else {
-                                                changeElem.textContent = 'No change';
-                                                changeElem.className = 'badge rounded-pill bg-secondary';
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            updateSingleKpiElement(pmiKey, 'mainPmiValue', 'mainPmiDirection', 'mainPmiChange', latestData, freshData);
                         } else {
-                            // Clear the PMI data if not available
-                            const mainPmiValueElem = document.getElementById('mainPmiValue');
-                            if (mainPmiValueElem) mainPmiValueElem.textContent = '--';
-                            
-                            const directionElem = document.getElementById('mainPmiDirection');
-                            if (directionElem) {
-                                directionElem.textContent = '--';
-                                directionElem.className = 'kpi-direction text-muted';
-                            }
-                            
-                            const changeElem = document.getElementById('mainPmiChange');
-                            if (changeElem) {
-                                changeElem.textContent = '';
-                                changeElem.className = 'badge rounded-pill';
-                            }
+                            clearSingleKpi('mainPmiValue', 'mainPmiDirection', 'mainPmiChange');
                         }
                         
-                        // Update other KPIs - using correct productionKey
-                        updateSingleKpi('New Orders', 'newOrdersValue', 'newOrdersDirection', 'newOrdersChange', latestData);
-                        updateSingleKpi(productionKey, 'productionValue', 'productionDirection', 'productionChange', latestData);
-                        updateSingleKpi('Employment', 'employmentValue', 'employmentDirection', 'employmentChange', latestData);
+                        // Update other KPIs
+                        updateSingleKpiElement('New Orders', 'newOrdersValue', 'newOrdersDirection', 'newOrdersChange', latestData, freshData);
+                        updateSingleKpiElement(productionKey, 'productionValue', 'productionDirection', 'productionChange', latestData, freshData);
+                        updateSingleKpiElement('Employment', 'employmentValue', 'employmentDirection', 'employmentChange', latestData, freshData);
+                        
+                        console.log(`Successfully updated KPI cards for ${reportType}`);
                     })
                     .catch(error => {
                         console.error(`Error fetching KPI data for ${reportType}:`, error);
@@ -1928,6 +1884,19 @@
             } catch (error) {
                 console.error(`Error updating ${reportType} KPI cards:`, error);
                 clearKpiCards();
+            }
+        }
+
+        function updateKpiTitle(kpiValueId, newTitle) {
+            const kpiCard = document.getElementById(kpiValueId)?.closest('.kpi-card');
+            const titleElement = kpiCard?.querySelector('.kpi-title');
+            if (titleElement) {
+                // Preserve the info icon if it exists
+                const infoIcon = titleElement.querySelector('i');
+                titleElement.textContent = newTitle + ' ';
+                if (infoIcon) {
+                    titleElement.appendChild(infoIcon);
+                }
             }
         }
 
@@ -1958,23 +1927,41 @@
             });
         }
 
-        function updateSingleKpi(indexName, valueId, directionId, changeId, latestData) {
+        function clearSingleKpi(valueId, directionId, changeId) {
             const valueElem = document.getElementById(valueId);
             const directionElem = document.getElementById(directionId);
             const changeElem = document.getElementById(changeId);
             
-            if (!valueElem || !directionElem) return; // Guard clause if elements don't exist
+            if (valueElem) valueElem.textContent = '--';
+            if (directionElem) {
+                directionElem.textContent = '--';
+                directionElem.className = 'kpi-direction text-muted';
+            }
+            if (changeElem) {
+                changeElem.textContent = '';
+                changeElem.className = 'badge rounded-pill';
+            }
+        }
+
+        function updateSingleKpiElement(indexName, valueId, directionId, changeId, latestData, allData) {
+            const valueElem = document.getElementById(valueId);
+            const directionElem = document.getElementById(directionId);
+            const changeElem = document.getElementById(changeId);
+            
+            if (!valueElem || !directionElem) {
+                console.warn(`KPI elements not found for ${indexName}`);
+                return;
+            }
             
             if (latestData.indices && latestData.indices[indexName]) {
                 const data = latestData.indices[indexName];
                 const value = data.value;
                 const direction = data.direction;
                 
-                valueElem.textContent = value;
+                valueElem.textContent = value || '--';
+                directionElem.textContent = direction || '--';
                 
-                directionElem.textContent = direction;
-                
-                // Expanded status mapping to handle all possible statuses
+                // Enhanced status mapping
                 const positiveStatuses = ['Growing', 'Increasing', 'Higher', 'Too High', 'Slowing', 'Slower'];
                 const negativeStatuses = ['Contracting', 'Decreasing', 'Lower', 'Too Low', 'Faster'];
                 
@@ -1986,9 +1973,9 @@
                     directionElem.className = 'kpi-direction text-muted';
                 }
                 
-                // Update change pill
-                if (changeElem && heatmap_data.length > 1) {
-                    const prevData = heatmap_data[1];
+                // Update change pill with better error handling
+                if (changeElem && allData.length > 1) {
+                    const prevData = allData[1];
                     if (prevData.indices && prevData.indices[indexName]) {
                         const prevValue = parseFloat(prevData.indices[indexName].value);
                         const currentValue = parseFloat(value);
@@ -2006,22 +1993,20 @@
                                 changeElem.textContent = 'No change';
                                 changeElem.className = 'badge rounded-pill bg-secondary';
                             }
+                        } else {
+                            changeElem.textContent = '';
+                            changeElem.className = 'badge rounded-pill';
                         }
+                    } else {
+                        changeElem.textContent = '';
+                        changeElem.className = 'badge rounded-pill';
                     }
                 }
             } else {
-                // Clear the data if not available
-                valueElem.textContent = '--';
-                directionElem.textContent = '--';
-                directionElem.className = 'kpi-direction text-muted';
-                
-                if (changeElem) {
-                    changeElem.textContent = '';
-                    changeElem.className = 'badge rounded-pill';
-                }
+                clearSingleKpi(valueId, directionId, changeId);
             }
         }
-                
+
         // Heatmap Functions
         async function loadHeatmapData(reportType = getCurrentReportType()) {
             const heatmapContainer = document.querySelector('.heatmap-container');
@@ -3169,14 +3154,30 @@
             .catch(error => console.error('Error updating chart:', error));
         }
 
-        function getCurrentReportType() {
-            // Prioritize the active button's data attribute
-            const activeButton = document.querySelector('.report-type-btn.active');
-            if (activeButton) {
-                return activeButton.getAttribute('data-report-type');
+        // Initialize from URL parameter or localStorage on page load
+        function initializeReportType() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlReportType = urlParams.get('report_type');
+            const storedReportType = localStorage.getItem('preferredReportType');
+            
+            // Priority: URL > localStorage > default
+            if (urlReportType && ['Manufacturing', 'Services'].includes(urlReportType)) {
+                currentReportTypeGlobal = urlReportType;
+            } else if (storedReportType && ['Manufacturing', 'Services'].includes(storedReportType)) {
+                currentReportTypeGlobal = storedReportType;
+            } else {
+                currentReportTypeGlobal = 'Manufacturing';
             }
-            // Fallback to the global variable if no button is active (should not happen with proper init)
-            return window.currentReportType || 'Manufacturing';
+            
+            // Update UI to match the state
+            updateReportTypeUI(currentReportTypeGlobal);
+            
+            return currentReportTypeGlobal;
+        }
+
+        // FIXED: Simplified getCurrentReportType function
+        function getCurrentReportType() {
+            return currentReportTypeGlobal;
         }
 
         function getCorrectIndexValue(latestData, reportType, indexName) {
@@ -3379,49 +3380,55 @@
         });
         
         function updateReportType(reportType) {
-            // Update button states
-            reportTypeBtns.forEach(btn => {
-            if (btn.getAttribute('data-report-type') === reportType) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
+            console.log(`Switching to report type: ${reportType}`);
+
+            // Update global state first
+            currentReportTypeGlobal = reportType;
+
+            // Update UI
+            updateReportTypeUI(reportType);
+
+            // Store preference
+            localStorage.setItem('preferredReportType', reportType);
+
+            // Update URL for bookmarking
+            updateUrlParameter('report_type', reportType);
             }
+
+        function updateReportTypeUI(reportType) {
+            // Update button states
+            document.querySelectorAll('.report-type-btn').forEach(btn => {
+                if (btn.getAttribute('data-report-type') === reportType) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
             });
 
-        // Update trends title
-        const trendsTitle = document.getElementById('trendsTitle');
-        if (trendsTitle) {
-            if (reportType === 'Services') {
-                trendsTitle.textContent = 'Services PMI Trends';
-            } else {
-                trendsTitle.textContent = 'Manufacturing PMI Trends';
+            // Update titles and badges
+            const trendsTitle = document.getElementById('trendsTitle');
+            const heatmapTitle = document.getElementById('heatmapTitle');
+            const currentReportBadge = document.getElementById('currentReportBadge');
+            
+            if (trendsTitle) {
+                trendsTitle.textContent = `${reportType} PMI Trends`;
             }
-        }
             
-            // Update indicator badge
-            currentReportBadge.textContent = reportType + ' Report';
-            currentReportBadge.className = 'report-type-indicator report-type-' + reportType.toLowerCase();
+            if (heatmapTitle) {
+                heatmapTitle.textContent = `${reportType} PMI Heatmap Summary`;
+            }
             
-            // Add appropriate icon
-            const iconClass = reportType === 'Manufacturing' ? 'bi-gear-fill' : 'bi-people-fill';
-            currentReportBadge.innerHTML = `<i class="bi ${iconClass} me-1"></i>${reportType} Report`;
+            if (currentReportBadge) {
+                const iconClass = reportType === 'Manufacturing' ? 'bi-gear-fill' : 'bi-people-fill';
+                currentReportBadge.textContent = `${reportType} Report`;
+                currentReportBadge.className = `report-type-indicator report-type-${reportType.toLowerCase()}`;
+                currentReportBadge.innerHTML = `<i class="bi ${iconClass} me-1"></i>${reportType} Report`;
+            }
             
             // Update page title
             document.title = `${reportType} Report Dashboard - ISM Analysis`;
-
-            const heatmapTitle = document.getElementById('heatmapTitle');
-                if (heatmapTitle) {
-                    if (reportType === 'Services') {
-                        heatmapTitle.textContent = 'Services PMI Heatmap Summary';
-                    } else {
-                        heatmapTitle.textContent = 'Manufacturing PMI Heatmap Summary';
-                    }
-                }
-            
-            // Update current report type variable
-            currentReportType = reportType;
         }
-        
+            
         function updateUrlParameter(key, value) {
             const url = new URL(window.location.href);
             url.searchParams.set(key, value);
@@ -3429,157 +3436,209 @@
         }
         
         function refreshAllData(reportType) {
-            // Trigger data refresh for active tab
-            const activeTab = document.querySelector('.nav-link.tab-level.active');
-            if (activeTab) {
-                const tabId = activeTab.id;
-                
-                if (tabId === 'heatmap-tab') {
-                    loadHeatmapData(reportType);
-                } else if (tabId === 'growth-alpha-tab') {
-                    const indexSelect = document.getElementById('alphaIndexSelect');
-                    if (indexSelect) {
-                        loadGrowthTable('alpha', indexSelect.value, reportType);
-                    }
-                } else if (tabId === 'growth-num-tab') {
-                    const numIndexSelect = document.getElementById('numIndexSelect');
-                    if (numIndexSelect) {
-                        loadNumericalGrowthTable(numIndexSelect.value, reportType);
-                    }
-                } else if (tabId === 'trends-tab') {
-                    updateChart(reportType);
-                } else if (tabId === 'comparison-tab') {
-                    loadComparisonView();
-                }
-            }
+            console.log(`Refreshing all data for report type: ${reportType}`);
+            
+            // Update global state
+            currentReportTypeGlobal = reportType;
+            
+            // Update KPI cards first
+            updateKpiCards(reportType);
             
             // Update available indices for the selected report type
-            loadAvailableIndices(reportType);
-            
-            // Update KPI cards with the new report type data
-            updateKpiCards(reportType);
+            loadAvailableIndices(reportType).then(() => {
+                // After indices are loaded, refresh the active tab
+                const activeTab = document.querySelector('.nav-link.tab-level.active');
+                if (activeTab) {
+                    const tabId = activeTab.id;
+                    
+                    // Add a small delay to ensure indices are fully loaded
+                    setTimeout(() => {
+                        if (tabId === 'heatmap-tab') {
+                            loadHeatmapData(reportType);
+                        } else if (tabId === 'growth-alpha-tab') {
+                            const indexSelect = document.getElementById('alphaIndexSelect');
+                            if (indexSelect && indexSelect.value) {
+                                loadGrowthTable('alpha', indexSelect.value, reportType);
+                            }
+                        } else if (tabId === 'growth-num-tab') {
+                            const numIndexSelect = document.getElementById('numIndexSelect');
+                            if (numIndexSelect) {
+                                loadNumericalGrowthTable(numIndexSelect.value, reportType);
+                            }
+                        } else if (tabId === 'trends-tab') {
+                            updateChart();
+                        } else if (tabId === 'comparison-tab') {
+                            loadComparisonView();
+                        }
+                    }, 100);
+                }
+            });
         }
 
         function loadAvailableIndices(reportType) {
-            // Fetch indices specific to the report type
-            fetch(`/api/all_indices?report_type=${reportType}`)
-            .then(response => response.json())
-            .then(indices => {
-                // Update dropdown options in both views
-                updateIndexDropdowns(indices);
-            })
-            .catch(error => {
-                console.error("Error fetching indices:", error);
-            });
+            // Return a Promise to allow proper chaining
+            return fetch(`/api/all_indices?report_type=${reportType}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(indices => {
+                    console.log(`Loaded indices for ${reportType}:`, indices);
+                    updateIndexDropdowns(indices);
+                    return indices; // Return for further chaining if needed
+                })
+                .catch(error => {
+                    console.error("Error fetching indices:", error);
+                    
+                    // Use fallback indices on error
+                    const fallbackIndices = reportType === 'Services' ? [
+                        'Services PMI', 'Business Activity', 'New Orders', 'Employment', 'Supplier Deliveries',
+                        'Inventories', 'Inventory Sentiment', 'Prices', 'Backlog of Orders',
+                        'New Export Orders', 'Imports'
+                    ] : [
+                        'Manufacturing PMI', 'New Orders', 'Production', 'Employment', 'Supplier Deliveries',
+                        'Inventories', 'Customers\' Inventories', 'Prices', 'Backlog of Orders',
+                        'New Export Orders', 'Imports'
+                    ];
+                    
+                    updateIndexDropdowns(fallbackIndices);
+                    return fallbackIndices;
+                });
         }
-        
+       
         function updateIndexDropdowns(indices) {
-            // Update Alpha tab dropdown
-            const alphaIndexSelect = document.getElementById('alphaIndexSelect');
-            if (alphaIndexSelect) {
-            const selectedValue = alphaIndexSelect.value;
-            
-            // Clear existing options
-            alphaIndexSelect.innerHTML = '';
-            
-            // Add new options
-            indices.forEach(index => {
-                if (index !== 'Manufacturing PMI' && index !== 'Services PMI') {
-                const option = document.createElement('option');
-                option.value = index;
-                option.text = index;
-                alphaIndexSelect.appendChild(option);
+            try {
+                // Update Alpha tab dropdown
+                const alphaIndexSelect = document.getElementById('alphaIndexSelect');
+                if (alphaIndexSelect) {
+                    const selectedValue = alphaIndexSelect.value;
+                    
+                    // Clear existing options
+                    alphaIndexSelect.innerHTML = '';
+                    
+                    // Add new options (excluding PMI variants)
+                    indices.forEach(index => {
+                        if (index !== 'Manufacturing PMI' && index !== 'Services PMI') {
+                            const option = document.createElement('option');
+                            option.value = index;
+                            option.text = index;
+                            alphaIndexSelect.appendChild(option);
+                        }
+                    });
+                    
+                    // Try to restore previously selected value
+                    if (indices.includes(selectedValue)) {
+                        alphaIndexSelect.value = selectedValue;
+                    } else if (alphaIndexSelect.options.length > 0) {
+                        // Default to first option
+                        alphaIndexSelect.selectedIndex = 0;
+                    }
+                    
+                    // Update the current index display
+                    const currentIndexElement = document.getElementById('currentIndexName');
+                    if (currentIndexElement && alphaIndexSelect.selectedIndex >= 0) {
+                        currentIndexElement.textContent = alphaIndexSelect.options[alphaIndexSelect.selectedIndex].text;
+                    }
                 }
-            });
-            
-            // Try to restore previously selected value
-            if (indices.includes(selectedValue)) {
-                alphaIndexSelect.value = selectedValue;
-            } else {
-                // Default to first option
-                alphaIndexSelect.selectedIndex = 0;
+                
+                // Update Numerical tab dropdown
+                const numIndexSelect = document.getElementById('numIndexSelect');
+                if (numIndexSelect) {
+                    const selectedValue = numIndexSelect.value;
+                    
+                    // Clear existing options
+                    numIndexSelect.innerHTML = '';
+                    
+                    // Add "All" option
+                    const allOption = document.createElement('option');
+                    allOption.value = "All";
+                    allOption.text = "All Indices";
+                    numIndexSelect.appendChild(allOption);
+                    
+                    // Add new options
+                    indices.forEach(index => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.text = index;
+                        numIndexSelect.appendChild(option);
+                    });
+                    
+                    // Try to restore previously selected value
+                    if (selectedValue === "All" || indices.includes(selectedValue)) {
+                        numIndexSelect.value = selectedValue;
+                    } else {
+                        // Default to "All"
+                        numIndexSelect.value = "All";
+                    }
+                }
+                
+                // Update trends checkboxes
+                updateTrendsCheckboxes(indices);
+                
+                console.log('Successfully updated index dropdowns');
+            } catch (error) {
+                console.error('Error updating index dropdowns:', error);
             }
-            }
-            
-            // Update Numerical tab dropdown
-            const numIndexSelect = document.getElementById('numIndexSelect');
-            if (numIndexSelect) {
-            const selectedValue = numIndexSelect.value;
-            
-            // Clear existing options
-            numIndexSelect.innerHTML = '';
-            
-            // Add "All" option
-            const allOption = document.createElement('option');
-            allOption.value = "All";
-            allOption.text = "All Indices";
-            numIndexSelect.appendChild(allOption);
-            
-            // Add new options
-            indices.forEach(index => {
-                const option = document.createElement('option');
-                option.value = index;
-                option.text = index;
-                numIndexSelect.appendChild(option);
-            });
-            
-            // Try to restore previously selected value
-            if (selectedValue === "All" || indices.includes(selectedValue)) {
-                numIndexSelect.value = selectedValue;
-            } else {
-                // Default to "All"
-                numIndexSelect.value = "All";
-            }
-            }
-            
-            // Update trends checkboxes
+        }
+
+        function updateTrendsCheckboxes(indices) {
             const indexCheckboxes = document.getElementById('indexCheckboxes');
-            if (indexCheckboxes) {
-            // Save currently checked boxes
-            const checkedIndices = Array.from(
-                document.querySelectorAll('.index-checkbox:checked')
-            ).map(cb => cb.value);
+            if (!indexCheckboxes) return;
             
-            // Clear existing checkboxes
-            indexCheckboxes.innerHTML = '';
-            
-            // Always include main PMI
-            const pmiName = currentReportType === 'Manufacturing' ? 'Manufacturing PMI' : 'Services PMI';
-            const pmiDiv = document.createElement('div');
-            pmiDiv.className = 'form-check me-3 mb-2';
-            pmiDiv.innerHTML = `
-                <input class="form-check-input index-checkbox" type="checkbox" 
-                id="check_${pmiName.replace(' ', '_')}" 
-                value="${pmiName}" 
-                ${checkedIndices.includes(pmiName) || checkedIndices.length === 0 ? 'checked' : ''}>
-                <label class="form-check-label" for="check_${pmiName.replace(' ', '_')}">
-                ${pmiName}
-                </label>
-            `;
-            indexCheckboxes.appendChild(pmiDiv);
-            
-            // Add other indices
-            indices.forEach(index => {
-                if (index !== pmiName) {
-                const div = document.createElement('div');
-                div.className = 'form-check me-3 mb-2';
-                div.innerHTML = `
+            try {
+                // Save currently checked boxes
+                const checkedIndices = Array.from(
+                    document.querySelectorAll('.index-checkbox:checked')
+                ).map(cb => cb.value);
+                
+                // Clear existing checkboxes
+                indexCheckboxes.innerHTML = '';
+                
+                // Always include main PMI
+                const reportType = getCurrentReportType();
+                const pmiName = reportType === 'Manufacturing' ? 'Manufacturing PMI' : 'Services PMI';
+                
+                const pmiDiv = document.createElement('div');
+                pmiDiv.className = 'form-check me-3 mb-2';
+                pmiDiv.innerHTML = `
                     <input class="form-check-input index-checkbox" type="checkbox" 
-                    id="check_${index.replace(' ', '_')}" 
-                    value="${index}"
-                    ${checkedIndices.includes(index) ? 'checked' : ''}>
-                    <label class="form-check-label" for="check_${index.replace(' ', '_')}">
-                    ${index}
+                        id="check_${pmiName.replace(/ /g, '_')}" 
+                        value="${pmiName}" 
+                        ${checkedIndices.includes(pmiName) || checkedIndices.length === 0 ? 'checked' : ''}>
+                    <label class="form-check-label" for="check_${pmiName.replace(/ /g, '_')}">
+                        ${pmiName}
                     </label>
                 `;
-                indexCheckboxes.appendChild(div);
-                }
-            });
-            
-            // Re-attach event listeners
-            document.querySelectorAll('.index-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('change', () => updateChart(currentReportType));
-            });
+                indexCheckboxes.appendChild(pmiDiv);
+                
+                // Add other indices
+                indices.forEach(index => {
+                    if (index !== pmiName) {
+                        const div = document.createElement('div');
+                        div.className = 'form-check me-3 mb-2';
+                        div.innerHTML = `
+                            <input class="form-check-input index-checkbox" type="checkbox" 
+                                id="check_${index.replace(/ /g, '_')}" 
+                                value="${index}"
+                                ${checkedIndices.includes(index) ? 'checked' : ''}>
+                            <label class="form-check-label" for="check_${index.replace(/ /g, '_')}">
+                                ${index}
+                            </label>
+                        `;
+                        indexCheckboxes.appendChild(div);
+                    }
+                });
+                
+                // Re-attach event listeners
+                document.querySelectorAll('.index-checkbox').forEach(checkbox => {
+                    checkbox.addEventListener('change', () => updateChart());
+                });
+                
+                console.log('Successfully updated trends checkboxes');
+            } catch (error) {
+                console.error('Error updating trends checkboxes:', error);
             }
         }
 

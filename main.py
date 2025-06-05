@@ -717,41 +717,41 @@ def process_single_pdf(pdf_path, visualization_options=None, report_type=None):
         if 'report_type' not in extraction_data:
             extraction_data['report_type'] = report_type
 
-            try:
-                store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data.get('report_type', report_type))
-                if store_result:
-                    logger.info(f"Successfully stored data from {pdf_path} in database")
-                else:
-                    logger.warning(f"Failed to store data from {pdf_path} in database")
-            except Exception as e:
-                logger.error(f"Error storing data in database: {str(e)}")
+        try:
+            store_result = store_report_data_in_db(extraction_data, pdf_path, extraction_data.get('report_type', report_type))
+            if store_result:
+                logger.info(f"Successfully stored data from {pdf_path} in database")
+            else:
+                logger.warning(f"Failed to store data from {pdf_path} in database")
+        except Exception as e:
+            logger.error(f"Error storing data in database: {str(e)}")
 
-            # Prepare for JSON serialization - handle ellipsis and other non-serializable types
-            try:
-                import copy
-                sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
-                
-                # Function to recursively replace problematic values
-                def sanitize_for_json(obj):
-                    if obj is ...:  # Handle ellipsis
-                        return None
-                    elif isinstance(obj, dict):
-                        return {k: sanitize_for_json(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [sanitize_for_json(item) for item in obj]
-                    elif isinstance(obj, (int, float, str, bool, type(None))):
-                        return obj
-                    else:
-                        # Convert other types to string
-                        return str(obj)
-                
-                sanitized_data = sanitize_for_json(sanitized_data)
-                json_data = json.dumps(sanitized_data)
-                
-            except TypeError as e:
-                logger.warning(f"JSON serialization issue: {str(e)}")
-                # Create a minimal serializable structure
-                json_data = "{}"
+        # Prepare for JSON serialization - handle ellipsis and other non-serializable types
+        try:
+            import copy
+            sanitized_data = copy.deepcopy(extraction_data.get('industry_data', {}))
+            
+            # Function to recursively replace problematic values
+            def sanitize_for_json(obj):
+                if obj is ...:  # Handle ellipsis
+                    return None
+                elif isinstance(obj, dict):
+                    return {k: sanitize_for_json(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [sanitize_for_json(item) for item in obj]
+                elif isinstance(obj, (int, float, str, bool, type(None))):
+                    return obj
+                else:
+                    # Convert other types to string
+                    return str(obj)
+            
+            sanitized_data = sanitize_for_json(sanitized_data)
+            json_data = json.dumps(sanitized_data)
+            
+        except TypeError as e:
+            logger.warning(f"JSON serialization issue: {str(e)}")
+            # Create a minimal serializable structure
+            json_data = "{}"
 
             # Create the verification task
             verification_task = Task(

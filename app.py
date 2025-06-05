@@ -164,9 +164,6 @@ def upload_view():
 def upload_file():
     # Check if Google auth is set up
     if not os.path.exists('token.pickle'):
-        # Return a more specific error to the client if it's an AJAX request,
-        # or flash and redirect for traditional form submission.
-        # For now, sticking to flash and redirect.
         flash('Please set up Google Authentication first.', 'danger')
         return redirect(url_for('upload_view'))
 
@@ -179,27 +176,24 @@ def upload_file():
         flash('No file selected.', 'warning')
         return redirect(url_for('upload_view'))
 
-    # Visualization options are removed from UI, so use defaults or remove
+    # Visualization options are removed from UI, so use defaults
     visualization_options = {
         'basic': True, 'heatmap': True, 'timeseries': True, 'industry': True
     }
 
     results = {}
-    saved_files_paths = []
     processed_successfully_count = 0
-    first_processed_report_type = None # To store the report type for redirect
+    first_processed_report_type = None
 
+    # SIMPLIFIED: Process each file individually, even if multiple files
     for file_idx, file in enumerate(files):
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
-            # Use a unique name for each uploaded file to prevent overwrites if multiple users upload
-            # or if the same filename is uploaded again before cleanup.
             unique_filename = f"{uuid.uuid4()}_{filename}"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
             
             try:
                 file.save(filepath)
-                saved_files_paths.append(filepath)
                 logger.info(f"File {filename} saved to {filepath}")
 
                 # Determine report type for the redirect (use the first file's type)
@@ -210,113 +204,45 @@ def upload_file():
                         logger.info(f"Detected report type for {filename} as {first_processed_report_type}")
                     except Exception as e:
                         logger.error(f"Could not detect report type for {filename}: {e}")
-                        # Default if detection fails, or handle error appropriately
                         first_processed_report_type = "Manufacturing" 
 
-                # Process single file immediately (if only one)
-                if len(files) == 1:
-                    logger.info(f"Processing single file: {filename} of type {first_processed_report_type}")
-                    process_result = process_single_pdf(filepath, visualization_options) # process_single_pdf now determines type internally
-                    if process_result:
-                        results[filename] = "Success"
-                        processed_successfully_count += 1
-                    else:
-                        results[filename] = "Failed"
-                else:
-                    # Mark for batch processing (actual processing happens later for batch)
-                    results[filename] = "Pending Batch" # This status will be updated after batch processing
-
-            except Exception as e:
-                logger.error(f"Failed to save or initially process {filename}: {e}")
-                results[filename] = f"Error: Save/Initial processing failed"
-                # Do not flash here, accumulate results and flash once
-
-        elif file.filename: # If a file was selected but disallowed
-            results[file.filename] = "File type not allowed"
-
-
-    # If multiple files were uploaded, process them as a batch
-    if len(files) > 1:
-        logger.info(f"Processing batch of {len(saved_files_paths)} files.")
-        # For batch, we'll make a temporary directory containing only successfully saved files
-        valid_files_for_batch_processing = [p for p in saved_files_paths if os.path.exists(p)]
-
-        if valid_files_for_batch_processing:
-            temp_dir_for_batch = None
-            try:
-                # Create a temporary directory to copy files to for batch processing
-                temp_dir_for_batch = tempfile.mkdtemp(prefix='ism_batch_')
-                for original_path in valid_files_for_batch_processing:
-                    fname = os.path.basename(original_path).split('_', 1)[-1] # Get original filename
-                    temp_path = os.path.join(temp_dir_for_batch, fname)
-                    with open(original_path, 'rb') as src, open(temp_path, 'wb') as dst:
-                        dst.write(src.read())
+                # Process each file individually
+                logger.info(f"Processing file: {filename} of type {first_processed_report_type}")
+                process_result = process_single_pdf(filepath, visualization_options)
                 
-                # Process the batch from the temporary directory
-                batch_result_data = process_multiple_pdfs(temp_dir_for_batch) # process_multiple_pdfs will handle types internally
-                logger.info(f"Batch processing function returned: {batch_result_data}")
-
-                if isinstance(batch_result_data, dict) and batch_result_data.get('success'):
-                    batch_file_results = batch_result_data.get('results', {})
-                    for fname, status_obj in batch_file_results.items(): # Assuming status_obj might be more complex
-                        # The key in batch_file_results should match the original filename
-                        original_fname_key = next((k for k in results if fname in k), fname) # find original key
-                        
-                        # Extract boolean success from status_obj if it's complex, or use directly
-                        # Let's assume process_multiple_pdfs returns a simple True/False for now per file.
-                        # If it's a dict like {'status': True, 'report_type': 'Manufacturing'}, adapt here.
-                        is_success = status_obj # Adjust if status_obj is more complex
-
-                        if is_success:
-                            results[original_fname_key] = "Success"
-                            processed_successfully_count += 1
-                            # If first_processed_report_type wasn't set by a single file, try to get it from batch
-                            if first_processed_report_type is None and isinstance(status_obj, dict) and status_obj.get('report_type'):
-                                first_processed_report_type = status_obj['report_type']
-                        else:
-                            results[original_fname_key] = "Failed in Batch"
-                    
-                    # Update any remaining "Pending Batch" to "Success" if the overall batch was a success
-                    # This might need finer-grained status from process_multiple_pdfs
-                    # For now, let's assume individual statuses are accurate.
-
+                if process_result:
+                    results[filename] = "Success"
+                    processed_successfully_count += 1
+                    logger.info(f"Successfully processed {filename}")
                 else:
-                    logger.warning("Batch processing failed or returned unexpected data.")
-                    for original_path in valid_files_for_batch_processing:
-                        fname = os.path.basename(original_path).split('_', 1)[-1]
-                        original_fname_key = next((k for k in results if fname in k), fname)
-                        results[original_fname_key] = "Failed in Batch"
-            
+                    results[filename] = "Failed"
+                    logger.error(f"Failed to process {filename}")
+
+                # Clean up the uploaded file immediately after processing
+                try:
+                    os.remove(filepath)
+                    logger.info(f"Removed uploaded file: {filepath}")
+                except OSError as e:
+                    logger.warning(f"Could not delete uploaded file {filepath}: {e}")
+
             except Exception as e:
-                logger.error(f"Error during batch processing: {e}")
-                logger.error(traceback.format_exc())
-                for original_path in valid_files_for_batch_processing:
-                    fname = os.path.basename(original_path).split('_', 1)[-1]
-                    original_fname_key = next((k for k in results if fname in k), fname)
-                    results[original_fname_key] = "Error: Batch failed"
-            finally:
-                if temp_dir_for_batch and os.path.exists(temp_dir_for_batch):
-                    try:
-                        import shutil
-                        shutil.rmtree(temp_dir_for_batch)
-                        logger.info(f"Cleaned up temp batch directory {temp_dir_for_batch}")
-                    except Exception as e:
-                        logger.error(f"Failed to cleanup temp batch directory {temp_dir_for_batch}: {e}")
-        else:
-            logger.info("No valid files to process in batch.")
+                logger.error(f"Error processing {filename}: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                results[filename] = f"Error: {str(e)}"
+                
+                # Try to clean up on error
+                try:
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                except:
+                    pass
 
-
-    # Clean up uploaded files from the app's UPLOAD_FOLDER
-    for path in saved_files_paths:
-        try:
-            os.remove(path)
-            logger.info(f"Removed uploaded file: {path}")
-        except OSError as e:
-            logger.warning(f"Could not delete uploaded file {path}: {e}")
+        elif file.filename:
+            results[file.filename] = "File type not allowed"
 
     # Flash messages for overall status
     total_files = len(results)
-    if total_files > 0 :
+    if total_files > 0:
         if processed_successfully_count == total_files:
             flash("All files processed successfully!", "success")
         elif processed_successfully_count > 0:
@@ -327,14 +253,13 @@ def upload_file():
         flash("No valid files were processed.", "info")
         
     # Redirect to dashboard
-    # If a report type was determined, use it for the redirect. Otherwise, redirect without it.
     if first_processed_report_type:
         logger.info(f"Redirecting to dashboard with report_type: {first_processed_report_type}")
         return redirect(url_for('dashboard', report_type=first_processed_report_type))
     else:
         logger.info("Redirecting to dashboard without specific report_type.")
         return redirect(url_for('dashboard'))
-    
+
 @app.route('/setup-google')
 def setup_google():
     try:
@@ -392,10 +317,14 @@ def dashboard():
     try:
         # Get report_type from query parameter, default to Manufacturing
         report_type = request.args.get('report_type', 'Manufacturing')
-
-        # If report_type is not provided in the URL, redirect to include it
-        if 'report_type' not in request.args:
-            return redirect(url_for('dashboard', report_type=report_type))
+        
+        # Validate report_type
+        valid_report_types = ['Manufacturing', 'Services']
+        if report_type not in valid_report_types:
+            report_type = 'Manufacturing'
+        
+        # REMOVED: Don't auto-redirect if report_type not in args - this causes issues
+        # Instead, just use the default and let the frontend handle the state
         
         # Get PMI heatmap data from database for the specified report type
         heatmap_data = get_pmi_data_by_month(24, report_type)  # Get last 24 months of data
@@ -406,13 +335,16 @@ def dashboard():
         # Get all report dates for this report type
         report_dates = get_all_report_dates(report_type)
         
+        # Get available report types for the template
+        available_report_types = get_report_types()
+        
         # Include report_type in template context
         return render_template('dashboard.html', 
                            heatmap_data=heatmap_data,
                            indices=indices,
                            report_dates=report_dates,
                            report_type=report_type,
-                           available_report_types=get_report_types())
+                           available_report_types=available_report_types)
     except Exception as e:
         logger.error(f"Error loading dashboard: {str(e)}")
         logger.error(traceback.format_exc())
@@ -559,6 +491,11 @@ def api_heatmap_data(months=None):
         # Get report_type from query params (optional)
         report_type = request.args.get('report_type')
         
+        # Validate report_type
+        if report_type and report_type not in ['Manufacturing', 'Services']:
+            logger.warning(f"Invalid report_type: {report_type}, defaulting to Manufacturing")
+            report_type = 'Manufacturing'
+        
         if months == 'all':
             months = None
         
@@ -566,20 +503,52 @@ def api_heatmap_data(months=None):
         if isinstance(months, str) and months.isdigit():
             months = int(months)
             
+        logger.info(f"Fetching heatmap data for report_type: {report_type}, months: {months}")
         heatmap_data = get_pmi_data_by_month(months, report_type)
+        
+        if not heatmap_data:
+            logger.warning(f"No heatmap data found for report_type: {report_type}")
+            return jsonify([])  # Return empty array instead of null
+            
         return jsonify(heatmap_data)
     except Exception as e:
         logger.error(f"Error getting heatmap data: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
     
+
 @app.route('/api/all_indices')
 def get_indices_list():
     try:
         # Get optional report_type parameter
         report_type = request.args.get('report_type')
         
+        # Validate report_type
+        if report_type and report_type not in ['Manufacturing', 'Services']:
+            logger.warning(f"Invalid report_type: {report_type}, defaulting to Manufacturing")
+            report_type = 'Manufacturing'
+        
+        logger.info(f"Fetching indices for report_type: {report_type}")
+        
         # Get list of indices directly from database
         indices = get_all_indices(report_type)
+        
+        if not indices:
+            logger.warning(f"No indices found for report_type: {report_type}, using fallback")
+            # Return at least a fallback list
+            if report_type == 'Services':
+                indices = [
+                    'Services PMI', 'Business Activity', 'New Orders', 'Employment', 'Supplier Deliveries',
+                    'Inventories', 'Inventory Sentiment', 'Prices', 'Backlog of Orders',
+                    'New Export Orders', 'Imports'
+                ]
+            else:
+                indices = [
+                    'Manufacturing PMI', 'New Orders', 'Production', 'Employment', 'Supplier Deliveries',
+                    'Inventories', 'Customers\' Inventories', 'Prices', 'Backlog of Orders',
+                    'New Export Orders', 'Imports'
+                ]
+        
         return jsonify(indices)
     except Exception as e:
         logger.error(f"Error getting indices list: {str(e)}")
