@@ -812,6 +812,11 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             # Use the properly extracted indices data
             indices_data = indices_data_source 
             logger.info(f"Using indices data from extraction - found {len(indices_data)} indices")
+
+        if indices_data_source and isinstance(indices_data_source, dict):
+            # Use the properly extracted indices data
+            indices_data = indices_data_source 
+            logger.info(f"Using indices data from extraction - found {len(indices_data)} indices")
         
         # Only fall back to extracting from summaries if we have NO indices data at all
         elif 'index_summaries' in extracted_data and extracted_data['index_summaries']:

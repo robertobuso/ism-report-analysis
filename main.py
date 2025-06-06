@@ -532,10 +532,12 @@ def process_single_pdf(pdf_path, visualization_options=None, report_type=None):
 
             {{
                 'month_year': 'Month Year',
-                'manufacturing_table': 'table content',
+                'manufacturing_table': {{extracted indices data here}},
                 'index_summaries': {{...}},
                 'industry_data': {{...}}
             }}
+
+            IMPORTANT: Replace 'manufacturing_table' with the actual indices data you extracted from the tool, not the literal string 'table content'.
 
             Ensure all data is correctly identified and structured for further processing.
             """,

@@ -1626,7 +1626,7 @@
             console.log('Initializing dashboard...');
 
             // GLOBAL STATE MANAGEMENT - Replace the existing report type logic
-            let currentReportTypeGlobal = 'Manufacturing'; // Global state variable
+            currentReportTypeGlobal = 'Manufacturing'; // Global state variable
     
             // Initialize report type state first
             const initialReportType = initializeReportType();
@@ -1642,6 +1642,9 @@
 
             // Update KPI cards
             updateKpiCards();
+
+            // Load available indices for the current report type
+            loadAvailableIndices(currentReportTypeGlobal);
 
             // Initialize the dropdown for the Alpha Growth tab
             initAlphaIndexSelect();
@@ -1850,23 +1853,55 @@
                 if (alphaIndexSelect) {
                     alphaIndexSelect.addEventListener('change', function() {
                         // Update the current index display
-                        document.getElementById('currentIndexName').textContent = this.options[this.selectedIndex].text;
+                        const currentIndexElement = document.getElementById('currentIndexName');
+                        if (currentIndexElement && this.selectedIndex >= 0 && this.options[this.selectedIndex]) {
+                            currentIndexElement.textContent = this.options[this.selectedIndex].text;
+                        }
                         // Load data for the selected index
                         loadGrowthTable('alpha', this.value);
                     });
                 }
 
             const alphaTab = document.getElementById('growth-alpha-tab');
+                console.log('Setting up alpha tab listener, element found:', !!alphaTab);
                 if (alphaTab) {
                     alphaTab.addEventListener('shown.bs.tab', function() {
-                        // Get the selected index from the dropdown
+                        console.log('Alpha tab shown event triggered');
                         const indexSelect = document.getElementById('alphaIndexSelect');
+                        console.log('Alpha index select found:', !!indexSelect, 'options count:', indexSelect?.options.length, 'selectedIndex:', indexSelect?.selectedIndex);
+                        
                         if (indexSelect) {
-                            const selectedIndex = indexSelect.value;
-                            // Update the current index display
-                            document.getElementById('currentIndexName').textContent = indexSelect.options[indexSelect.selectedIndex].text;
-                            // Load data for this index
-                            loadGrowthTable('alpha', selectedIndex, getCurrentReportType());
+                            // If dropdown is empty, load indices first
+                            if (indexSelect.options.length === 0) {
+                                console.log('Loading indices for alphabetical tab');
+                                loadAvailableIndices(getCurrentReportType()).then(() => {
+                                    console.log('Indices loaded, now loading table data');
+                                    if (indexSelect.options.length > 0) {
+                                        // Set first option as selected if none selected
+                                        if (indexSelect.selectedIndex < 0) {
+                                            indexSelect.selectedIndex = 0;
+                                        }
+                                        const selectedIndex = indexSelect.value;
+                                        const currentIndexElement = document.getElementById('currentIndexName');
+                                        if (currentIndexElement) {
+                                            currentIndexElement.textContent = indexSelect.options[indexSelect.selectedIndex].text;
+                                        }
+                                        loadGrowthTable('alpha', selectedIndex, getCurrentReportType());
+                                    }
+                                });
+                            } else if (indexSelect.options.length > 0) {
+                                console.log('Using existing indices, loading table data');
+                                // Set first option as selected if none selected
+                                if (indexSelect.selectedIndex < 0) {
+                                    indexSelect.selectedIndex = 0;
+                                }
+                                const selectedIndex = indexSelect.value;
+                                const currentIndexElement = document.getElementById('currentIndexName');
+                                if (currentIndexElement) {
+                                    currentIndexElement.textContent = indexSelect.options[indexSelect.selectedIndex].text;
+                                }
+                                loadGrowthTable('alpha', selectedIndex, getCurrentReportType());
+                            }
                         }
                     });
                 }
@@ -1915,7 +1950,7 @@
                     return;
                 }
 
-                fetch(`/api/heatmap_data/6?report_type=${reportType}&_=${cacheParam}`)
+                fetch(`/api/heatmap_data/24?report_type=${reportType}&_=${cacheParam}`)
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
