@@ -491,6 +491,9 @@ def api_heatmap_data(months=None):
         # Get report_type from query params (optional)
         report_type = request.args.get('report_type')
         
+        # DEBUG: Log what we're looking for
+        logger.info(f"API heatmap_data called with report_type: {report_type}, months: {months}")
+        
         # Validate report_type
         if report_type and report_type not in ['Manufacturing', 'Services']:
             logger.warning(f"Invalid report_type: {report_type}, defaulting to Manufacturing")
@@ -503,8 +506,28 @@ def api_heatmap_data(months=None):
         if isinstance(months, str) and months.isdigit():
             months = int(months)
             
+        # DEBUG: Check what's actually in the database
+        from db_utils import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check all reports in database
+        cursor.execute("SELECT report_date, month_year, report_type FROM reports ORDER BY report_date DESC LIMIT 10")
+        all_reports = cursor.fetchall()
+        logger.info(f"All reports in DB: {[dict(row) for row in all_reports]}")
+        
+        # Check specific report type
+        if report_type:
+            cursor.execute("SELECT COUNT(*) as count FROM reports WHERE report_type = ?", (report_type,))
+            count_result = cursor.fetchone()
+            logger.info(f"Count of {report_type} reports: {count_result['count']}")
+        
+        conn.close()
+            
         logger.info(f"Fetching heatmap data for report_type: {report_type}, months: {months}")
         heatmap_data = get_pmi_data_by_month(months, report_type)
+        
+        logger.info(f"Retrieved {len(heatmap_data) if heatmap_data else 0} records from get_pmi_data_by_month")
         
         if not heatmap_data:
             logger.warning(f"No heatmap data found for report_type: {report_type}")

@@ -340,6 +340,14 @@ def get_all_report_dates(report_type=None):
 
 def get_pmi_data_by_month(months=None, report_type=None):
     try:
+         # DEBUG: Log the exact parameters we received
+        logger.info(f"get_pmi_data_by_month called with months={months}, report_type='{report_type}'")
+        
+        # FIXED: Ensure report_type is properly validated
+        if not report_type or report_type not in ['Manufacturing', 'Services']:
+            logger.warning(f"Invalid or missing report_type '{report_type}', defaulting to 'Manufacturing'")
+            report_type = 'Manufacturing'
+        
         # Initialize database if needed
         initialize_database()
         
@@ -357,10 +365,10 @@ def get_pmi_data_by_month(months=None, report_type=None):
         params = []
         where_clauses = []
         
-        # Add report_type filter if provided
-        if report_type:
-            where_clauses.append("r.report_type = ?")
-            params.append(report_type)
+        # FIXED: Always add report_type filter (don't make it optional)
+        where_clauses.append("r.report_type = ?")
+        params.append(report_type)
+        logger.info(f"Adding report_type filter: {report_type}")
         
         # Add date range filter if months is provided
         if months is not None and months > 0:
@@ -771,8 +779,7 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
             )
         )
         
-        # Process pmi_indices data
-        # Get indices data directly from the extracted data if available
+        # FIXED: Process pmi_indices data with proper type checking
         indices_data = {}
 
         logger.info(f"extracted_data in store_report_data_in_db: {extracted_data}.")
@@ -782,28 +789,33 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
 
         # Condition 1: Check for 'indices'
         condition1_met = False
-        if 'indices' in extracted_data and extracted_data['indices']:
+        if 'indices' in extracted_data and extracted_data['indices'] and isinstance(extracted_data['indices'], dict):
             indices_data_source = extracted_data['indices']
             logger.info(f"Condition 1 met: Using 'indices' data from extraction - found {len(indices_data_source)} items.")
             condition1_met = True
 
+        # FIXED: Only use manufacturing_table if it's a dictionary, not a string
         condition2_met = False
         if 'manufacturing_table' in extracted_data and extracted_data['manufacturing_table']:
-            if not condition1_met:
-                indices_data_source = extracted_data['manufacturing_table']
+            manufacturing_table = extracted_data['manufacturing_table']
+            # Only use if it's a dictionary and has the expected structure
+            if not condition1_met and isinstance(manufacturing_table, dict):
+                indices_data_source = manufacturing_table
                 condition2_met = True
                 logger.info(f"Condition 2 met (and Condition 1 not): Using 'manufacturing_table' data - found {len(indices_data_source)} items.")
             elif condition1_met:
                 logger.info(f"Condition 2 met ('manufacturing_table' present), but 'indices' data already prioritized.")
+            else:
+                logger.warning(f"manufacturing_table is not a dictionary (type: {type(manufacturing_table)}), skipping")
 
-        if indices_data_source:
+        if indices_data_source and isinstance(indices_data_source, dict):
             # Use the properly extracted indices data
             indices_data = indices_data_source 
             logger.info(f"Using indices data from extraction - found {len(indices_data)} indices")
         
         # Only fall back to extracting from summaries if we have NO indices data at all
         elif 'index_summaries' in extracted_data and extracted_data['index_summaries']:
-            logger.warning("No indices data found, attempting to extract from summaries as fallback")
+            logger.warning("No valid indices data found, attempting to extract from summaries as fallback")
             index_summaries = extracted_data['index_summaries']
             
             for index_name, summary in index_summaries.items():
@@ -872,25 +884,16 @@ def store_report_data_in_db(extracted_data, pdf_path, report_type="Manufacturing
                 except Exception as e:
                     logger.warning(f"Error extracting index data for {index_name}: {str(e)}")
         
-        # If we still don't have indices data, check if it's in other fields
-        if not indices_data:
-            # Check for indices in manufacturing_table or services_table
-            possible_table_keys = ['manufacturing_table', 'services_table', 'table_data', 'at_a_glance']
-            
-            for key in possible_table_keys:
-                if key in extracted_data and isinstance(extracted_data[key], dict):
-                    # Check if this contains index data
-                    if any(idx in extracted_data[key] for idx in ['PMI', 'New Orders', 'Production', 'Business Activity']):
-                        indices_data = extracted_data[key]
-                        logger.info(f"Using indices data from {key}")
-                        break
+        # FIXED: Ensure indices_data is always a dictionary before proceeding
+        if not isinstance(indices_data, dict):
+            logger.error(f"indices_data is not a dictionary (type: {type(indices_data)}), cannot process")
+            return False
         
-        logger.info(f"Final indices_data before DB insertion: {indices_data}")
+        logger.info(f"Final indices_data before DB insertion: {list(indices_data.keys()) if indices_data else 'No indices'}")
         
         # Insert indices data with improved extraction logic
         for index_name, data in indices_data.items():
             try:
-                # REMOVED THE FILTERING LOGIC - Store all indices including special ones
                 logger.info(f"Processing index: {index_name}")
 
                 # IMPROVED INDEX VALUE EXTRACTION LOGIC
