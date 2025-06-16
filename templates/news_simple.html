@@ -209,7 +209,7 @@
             document.getElementById('company').focus();
         }
 
-        // Form validation and loading state
+        // Enhanced form validation and loading state with progress tracking
         document.getElementById('analysisForm').addEventListener('submit', function(e) {
             const form = this;
             
@@ -217,28 +217,93 @@
                 e.preventDefault();
                 e.stopPropagation();
             } else {
-                // Show loading state
+                // Show comprehensive loading state
                 const button = form.querySelector('button[type="submit"]');
                 const normalText = button.querySelector('.normal-text');
                 const loadingSpinner = button.querySelector('.loading-spinner');
                 
+                // Update UI to loading state
                 normalText.style.display = 'none';
                 loadingSpinner.style.display = 'inline';
                 button.disabled = true;
                 
-                // Add timeout protection (30 seconds)
+                // Disable form inputs
+                const inputs = form.querySelectorAll('input, select');
+                inputs.forEach(input => input.disabled = true);
+                
+                // Show progress overlay
+                showProgressOverlay();
+                
+                // Add timeout protection (60 seconds for institutional analysis)
                 setTimeout(() => {
                     if (button.disabled) {
+                        hideProgressOverlay();
                         normalText.style.display = 'inline';
                         loadingSpinner.style.display = 'none';
                         button.disabled = false;
-                        alert('Analysis is taking longer than expected. Please try again.');
+                        inputs.forEach(input => input.disabled = false);
+                        alert('Analysis is taking longer than expected. Please try again or contact support.');
                     }
-                }, 30000);
+                }, 60000);
             }
             
             form.classList.add('was-validated');
         });
+
+        // Progress overlay functions
+        function showProgressOverlay() {
+            const overlay = document.createElement('div');
+            overlay.id = 'analysisOverlay';
+            overlay.innerHTML = `
+                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                           background: rgba(0,0,0,0.8); z-index: 9999; display: flex; 
+                           align-items: center; justify-content: center;">
+                    <div style="background: white; padding: 30px; border-radius: 15px; 
+                               text-align: center; max-width: 400px; margin: 20px;">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <h5>Generating Institutional Analysis</h5>
+                        <div id="progressText">Searching premium financial sources...</div>
+                        <div class="progress mt-3" style="height: 8px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" style="width: 0%" id="progressBar"></div>
+                        </div>
+                        <small class="text-muted mt-2 d-block">This may take 30-60 seconds for comprehensive analysis</small>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            // Simulate progress updates
+            let progress = 0;
+            const progressSteps = [
+                {progress: 20, text: "Fetching Bloomberg, Reuters, WSJ articles..."},
+                {progress: 40, text: "Scoring articles by financial relevance..."},
+                {progress: 60, text: "Generating institutional-grade insights..."},
+                {progress: 80, text: "Quantifying financial impacts..."},
+                {progress: 95, text: "Finalizing analysis report..."}
+            ];
+            
+            let stepIndex = 0;
+            const progressInterval = setInterval(() => {
+                if (stepIndex < progressSteps.length) {
+                    const step = progressSteps[stepIndex];
+                    document.getElementById('progressBar').style.width = step.progress + '%';
+                    document.getElementById('progressText').textContent = step.text;
+                    stepIndex++;
+                } else {
+                    clearInterval(progressInterval);
+                }
+            }, 8000); // Update every 8 seconds
+        }
+        
+        function hideProgressOverlay() {
+            const overlay = document.getElementById('analysisOverlay');
+            if (overlay) {
+                overlay.remove();
+            }
+        }
 
         // Auto-focus on company input
         document.addEventListener('DOMContentLoaded', function() {

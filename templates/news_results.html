@@ -99,18 +99,20 @@
                         <span class="text-muted">
                             <i class="fas fa-newspaper"></i> {{ article_count }} articles
                         </span>
-                        {% if premium_coverage is defined %}
-                        <span class="text-muted">
-                            <i class="fas fa-star"></i> {{ premium_coverage }}% premium sources
+                        {% if alphavantage_coverage is defined and alphavantage_coverage > 0 %}
+                        <span class="text-success">
+                            <i class="fas fa-crown"></i> {{ alphavantage_coverage }}% full content
                         </span>
                         {% endif %}
                     </div>
-                    {% if analysis_quality == 'Institutional' %}
-                    <small class="text-success"><i class="fas fa-check-circle"></i> Goldman Sachs-grade analysis with quantified impacts</small>
+                    {% if analysis_quality == 'Premium+' %}
+                    <small class="text-success"><i class="fas fa-crown"></i> Premium+ analysis with AlphaVantage full content + sentiment data</small>
+                    {% elif analysis_quality == 'Institutional' %}
+                    <small class="text-success"><i class="fas fa-check-circle"></i> Institutional-grade analysis with quantified impacts</small>
                     {% elif analysis_quality == 'Professional' %}
-                    <small class="text-primary"><i class="fas fa-info-circle"></i> Professional-grade analysis with financial context</small>
+                    <small class="text-primary"><i class="fas fa-info-circle"></i> Professional-grade analysis with enhanced content</small>
                     {% elif analysis_quality == 'Limited' %}
-                    <small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Limited premium sources - comprehensive analysis of available data</small>
+                    <small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Limited sources - comprehensive analysis of available data</small>
                     {% endif %}
                 </div>
 
@@ -186,9 +188,12 @@
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
                             <i class="fas fa-newspaper"></i> Source Articles
-                            <span class="badge bg-secondary ms-2">{{ articles|length }}</span>
+                            <span class="badge bg-secondary ms-2">{{ articles_displayed|default(articles|length) }} shown</span>
+                            {% if articles_analyzed and articles_analyzed != articles_displayed %}
+                            <small class="text-muted">({{ articles_analyzed }} analyzed total)</small>
+                            {% endif %}
                         </h5>
-                        <small class="text-muted">Top articles used in analysis (ranked by relevance)</small>
+                        <small class="text-muted">Top articles used in analysis (ranked by relevance and source quality)</small>
                     </div>
                     <div class="card-body">
                         {% for article in articles %}
@@ -220,13 +225,15 @@
 
                 <!-- Enhanced Analysis Disclaimer -->
                 <div class="alert alert-info mt-4">
-                    <h6><i class="fas fa-info-circle"></i> Analysis Methodology</h6>
+                    <h6><i class="fas fa-info-circle"></i> Premium Analysis Methodology</h6>
                     <ul class="mb-0 small">
-                        <li><strong>Source Coverage:</strong> {{ high_quality_sources|default(0) }} premium financial sources from {{ article_count }} total articles ({{ premium_coverage|default(0) }}% premium coverage)</li>
-                        <li><strong>Analysis Grade:</strong> {{ analysis_quality }} - {% if analysis_quality == 'Institutional' %}Includes quantified financial impacts, trading context, and analyst-grade insights{% elif analysis_quality == 'Professional' %}Professional-grade analysis with business context and financial implications{% else %}Comprehensive analysis of available information with maximum value extraction{% endif %}</li>
-                        <li><strong>Time Period:</strong> {{ date_range }} with multi-strategy search across financial and business sources</li>
-                        <li><strong>Methodology:</strong> Articles scored by source quality, financial relevance, and content depth. Analysis includes quantified impacts when available.</li>
-                        <li><strong>Disclaimer:</strong> For informational purposes only. Not investment advice. Always consult latest SEC filings and qualified financial advisors.</li>
+                        <li><strong>Data Sources:</strong> AlphaVantage Premium API ({{ alphavantage_articles|default(0) }} articles with full content + sentiment) + Google Search ({{ article_count - alphavantage_articles|default(article_count) }} articles)</li>
+                        <li><strong>Content Quality:</strong> {{ alphavantage_coverage|default(0) }}% full article content, {{ premium_coverage|default(0) }}% premium financial sources</li>
+                        <li><strong>Analysis Features:</strong> {% if alphavantage_articles > 0 %}Sentiment analysis, relevance scoring, full content analysis{% else %}Headline and snippet analysis{% endif %}</li>
+                        <li><strong>Articles Processed:</strong> {{ articles_analyzed|default(article_count) }} analyzed for insights, {{ articles_displayed|default(8) }} top articles displayed</li>
+                        <li><strong>Analysis Grade:</strong> {{ analysis_quality }} - {% if analysis_quality == 'Premium+' %}Full content + sentiment analysis from AlphaVantage{% elif analysis_quality == 'Institutional' %}Premium sources with quantified impacts{% elif analysis_quality == 'Professional' %}Enhanced analysis with business context{% else %}Comprehensive analysis of available data{% endif %}</li>
+                        <li><strong>Limitations:</strong> Premium paywalled content (Bloomberg, WSJ, FT) limited to excerpts unless available via AlphaVantage</li>
+                        <li><strong>Disclaimer:</strong> For informational purposes only. Not investment advice. Consult latest SEC filings and qualified financial advisors.</li>
                     </ul>
                 </div>
 
