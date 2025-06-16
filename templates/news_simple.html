@@ -216,36 +216,41 @@
             if (!form.checkValidity()) {
                 e.preventDefault();
                 e.stopPropagation();
-            } else {
-                // Show comprehensive loading state
-                const button = form.querySelector('button[type="submit"]');
-                const normalText = button.querySelector('.normal-text');
-                const loadingSpinner = button.querySelector('.loading-spinner');
-                
-                // Update UI to loading state
-                normalText.style.display = 'none';
-                loadingSpinner.style.display = 'inline';
-                button.disabled = true;
-                
-                // Disable form inputs
+                form.classList.add('was-validated');
+                return;
+            }
+            
+            // Valid form - show loading state but let natural submission happen
+            const button = form.querySelector('button[type="submit"]');
+            const normalText = button.querySelector('.normal-text');
+            const loadingSpinner = button.querySelector('.loading-spinner');
+            
+            // Update UI to loading state
+            normalText.style.display = 'none';
+            loadingSpinner.style.display = 'inline';
+            button.disabled = true;
+            
+            // DON'T disable inputs immediately - wait a bit for form to submit
+            setTimeout(() => {
                 const inputs = form.querySelectorAll('input, select');
                 inputs.forEach(input => input.disabled = true);
-                
-                // Show progress overlay
-                showProgressOverlay();
-                
-                // Add timeout protection (60 seconds for institutional analysis)
-                setTimeout(() => {
-                    if (button.disabled) {
-                        hideProgressOverlay();
-                        normalText.style.display = 'inline';
-                        loadingSpinner.style.display = 'none';
-                        button.disabled = false;
-                        inputs.forEach(input => input.disabled = false);
-                        alert('Analysis is taking longer than expected. Please try again or contact support.');
-                    }
-                }, 60000);
-            }
+            }, 100); // Small delay lets form submit first
+            
+            // Show progress overlay
+            showProgressOverlay();
+            
+            // Add timeout protection
+            setTimeout(() => {
+                if (button.disabled) {
+                    hideProgressOverlay();
+                    normalText.style.display = 'inline';
+                    loadingSpinner.style.display = 'none';
+                    button.disabled = false;
+                    const inputs = form.querySelectorAll('input, select');
+                    inputs.forEach(input => input.disabled = false);
+                    alert('Analysis is taking longer than expected. Please try again.');
+                }
+            }, 60000);
             
             form.classList.add('was-validated');
         });
