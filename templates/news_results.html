@@ -1,59 +1,297 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>{{ company }} News Summary</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ company }} - Financial News Analysis</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .analysis-section {
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+            margin-bottom: 1.5rem;
+        }
+        .executive-section { border-left-color: #28a745; }
+        .investor-section { border-left-color: #007bff; }
+        .catalysts-section { border-left-color: #dc3545; }
+        
+        .quality-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .source-link {
+            color: #6c757d;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        
+        .source-link:hover {
+            color: #007bff;
+            text-decoration: underline;
+        }
+        
+        .article-item {
+            border-bottom: 1px solid #dee2e6;
+            padding: 0.75rem 0;
+        }
+        
+        .article-item:last-child {
+            border-bottom: none;
+        }
+        
+        .premium-source {
+            color: #28a745;
+            font-weight: 600;
+        }
+        
+        .standard-source {
+            color: #6c757d;
+        }
+        
+        .insight-bullet {
+            margin-bottom: 0.75rem;
+            line-height: 1.5;
+        }
+        
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+        
+        @media (max-width: 768px) {
+            .back-button {
+                position: relative;
+                top: 0;
+                left: 0;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="container mt-5">
-    <h3>News Summary for {{ company }}</h3>
+    <div class="container-fluid">
+        <!-- Back Button -->
+        <a href="/news" class="btn btn-outline-secondary back-button">
+            <i class="fas fa-arrow-left"></i> New Analysis
+        </a>
+        
+        <div class="row justify-content-center">
+            <div class="col-lg-10 col-xl-8">
+                <!-- Header -->
+                <div class="text-center mb-4 mt-4">
+                    <h2 class="mb-2">
+                        <i class="fas fa-chart-line text-primary"></i>
+                        Institutional Analysis: {{ company }}
+                    </h2>
+                    <div class="d-flex justify-content-center align-items-center gap-3 flex-wrap">
+                        <span class="badge bg-secondary">{{ date_range }}</span>
+                        <span class="badge quality-badge 
+                            {% if analysis_quality == 'Institutional' %}bg-success
+                            {% elif analysis_quality == 'Professional' %}bg-primary
+                            {% elif analysis_quality == 'Standard' %}bg-warning
+                            {% else %}bg-secondary{% endif %}">
+                            {{ analysis_quality }} Grade
+                        </span>
+                        <span class="text-muted">
+                            <i class="fas fa-newspaper"></i> {{ article_count }} articles
+                        </span>
+                        {% if premium_coverage is defined %}
+                        <span class="text-muted">
+                            <i class="fas fa-star"></i> {{ premium_coverage }}% premium sources
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if analysis_quality == 'Institutional' %}
+                    <small class="text-success"><i class="fas fa-check-circle"></i> Goldman Sachs-grade analysis with quantified impacts</small>
+                    {% elif analysis_quality == 'Professional' %}
+                    <small class="text-primary"><i class="fas fa-info-circle"></i> Professional-grade analysis with financial context</small>
+                    {% elif analysis_quality == 'Limited' %}
+                    <small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Limited premium sources - comprehensive analysis of available data</small>
+                    {% endif %}
+                </div>
 
-    <p class="text-muted">
-    Showing news summaries for the past 30 days: <strong>{{ date_range }}</strong>
-    </p>
+                <!-- Executive Summary -->
+                <div class="card analysis-section executive-section">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-briefcase"></i> Executive Summary
+                        </h5>
+                        <small>Material business developments and strategic changes</small>
+                    </div>
+                    <div class="card-body">
+                        {% if summaries.executive %}
+                            {% for bullet in summaries.executive %}
+                            <div class="insight-bullet">
+                                <i class="fas fa-chevron-right text-success me-2"></i>
+                                {{ bullet|safe }}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted mb-0">No significant executive developments identified.</p>
+                        {% endif %}
+                    </div>
+                </div>
 
-    <div class="mt-4">
-      <h5>Executive Summary</h5>
-      <ul>
-        {% for bullet in summaries.executive %}
-        <li>{{ bullet|safe }}</li>
-        {% endfor %}
-      </ul>
+                <!-- Investor Insights -->
+                <div class="card analysis-section investor-section">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-bar"></i> Investor Insights
+                        </h5>
+                        <small>Earnings implications and valuation drivers</small>
+                    </div>
+                    <div class="card-body">
+                        {% if summaries.investor %}
+                            {% for bullet in summaries.investor %}
+                            <div class="insight-bullet">
+                                <i class="fas fa-chevron-right text-primary me-2"></i>
+                                {{ bullet|safe }}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted mb-0">No significant investor developments identified.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Catalysts & Risks -->
+                <div class="card analysis-section catalysts-section">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-exclamation-triangle"></i> Catalysts & Risks
+                        </h5>
+                        <small>Near-term drivers and risk factors</small>
+                    </div>
+                    <div class="card-body">
+                        {% if summaries.catalysts %}
+                            {% for bullet in summaries.catalysts %}
+                            <div class="insight-bullet">
+                                <i class="fas fa-chevron-right text-danger me-2"></i>
+                                {{ bullet|safe }}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted mb-0">No significant catalysts or risks identified.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Source Articles -->
+                {% if articles %}
+                <div class="card mt-4">
+                    <div class="card-header bg-light">
+                        <h5 class="mb-0">
+                            <i class="fas fa-newspaper"></i> Source Articles
+                            <span class="badge bg-secondary ms-2">{{ articles|length }}</span>
+                        </h5>
+                        <small class="text-muted">Top articles used in analysis (ranked by relevance)</small>
+                    </div>
+                    <div class="card-body">
+                        {% for article in articles %}
+                        <div class="article-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        <a href="{{ article.link }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                                            {{ article.title }}
+                                            <i class="fas fa-external-link-alt ms-1" style="font-size: 0.7rem;"></i>
+                                        </a>
+                                    </h6>
+                                    <p class="mb-2 text-muted small">{{ article.snippet }}</p>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="{% if article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}premium-source{% else %}standard-source{% endif %}">
+                                            <i class="fas fa-globe me-1"></i>{{ article.source }}
+                                        </span>
+                                        {% if article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}
+                                        <span class="badge bg-success badge-sm">Premium</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Enhanced Analysis Disclaimer -->
+                <div class="alert alert-info mt-4">
+                    <h6><i class="fas fa-info-circle"></i> Analysis Methodology</h6>
+                    <ul class="mb-0 small">
+                        <li><strong>Source Coverage:</strong> {{ high_quality_sources|default(0) }} premium financial sources from {{ article_count }} total articles ({{ premium_coverage|default(0) }}% premium coverage)</li>
+                        <li><strong>Analysis Grade:</strong> {{ analysis_quality }} - {% if analysis_quality == 'Institutional' %}Includes quantified financial impacts, trading context, and analyst-grade insights{% elif analysis_quality == 'Professional' %}Professional-grade analysis with business context and financial implications{% else %}Comprehensive analysis of available information with maximum value extraction{% endif %}</li>
+                        <li><strong>Time Period:</strong> {{ date_range }} with multi-strategy search across financial and business sources</li>
+                        <li><strong>Methodology:</strong> Articles scored by source quality, financial relevance, and content depth. Analysis includes quantified impacts when available.</li>
+                        <li><strong>Disclaimer:</strong> For informational purposes only. Not investment advice. Always consult latest SEC filings and qualified financial advisors.</li>
+                    </ul>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="text-center mt-4 mb-5">
+                    <a href="/news" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Analyze Another Company
+                    </a>
+                    <button onclick="window.print()" class="btn btn-outline-secondary">
+                        <i class="fas fa-print"></i> Print Analysis
+                    </button>
+                    <button onclick="exportAnalysis()" class="btn btn-outline-info">
+                        <i class="fas fa-download"></i> Export Summary
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="mt-4">
-      <h5>Investor Insights</h5>
-      <ul>
-        {% for bullet in summaries.investor %}
-        <li>{{ bullet|safe }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-
-    <div class="mt-4">
-      <h5>Catalysts & Drivers</h5>
-        <ul>
-        {% for bullet in summaries.catalysts %}
-        <li>{{ bullet|safe }}</li>
-        {% endfor %}
-        </ul>
-    </div>
-
-    <div class="mt-5">
-        <h5>All Articles Retrieved</h5>
-        <ul>
-            {% for article in articles %}
-            <li>
-                <a href="{{ article.link }}" target="_blank">
-                {{ article.title }}
-                </a> <span class="text-muted">({{ article.source }})</span>
-            </li>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function exportAnalysis() {
+            // Simple text export functionality
+            const company = "{{ company }}";
+            const dateRange = "{{ date_range }}";
+            let text = `Financial Analysis: ${company}\n`;
+            text += `Date Range: ${dateRange}\n`;
+            text += `Generated: ${new Date().toLocaleString()}\n\n`;
+            
+            // Add summaries
+            text += "EXECUTIVE SUMMARY:\n";
+            {% for bullet in summaries.executive %}
+            text += "• {{ bullet|striptags }}\n";
             {% endfor %}
-        </ul>
-    </div>
-
-
-    <a href="/news" class="btn btn-secondary mt-4">Back</a>
-  </div>
+            
+            text += "\nINVESTOR INSIGHTS:\n";
+            {% for bullet in summaries.investor %}
+            text += "• {{ bullet|striptags }}\n";
+            {% endfor %}
+            
+            text += "\nCATALYSTS & RISKS:\n";
+            {% for bullet in summaries.catalysts %}
+            text += "• {{ bullet|striptags }}\n";
+            {% endfor %}
+            
+            // Create download
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${company.replace(/\s+/g, '_')}_analysis_${new Date().toISOString().split('T')[0]}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+        
+        // Print styles
+        window.addEventListener('beforeprint', function() {
+            document.querySelector('.back-button').style.display = 'none';
+        });
+        
+        window.addEventListener('afterprint', function() {
+            document.querySelector('.back-button').style.display = 'block';
+        });
+    </script>
 </body>
 </html>

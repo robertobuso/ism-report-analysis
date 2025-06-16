@@ -8,7 +8,7 @@ import uuid
 import threading
 from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
 from config_loader import config_loader 
-from typing import List, Optional
+from typing import List, Dict, Optional, Tuple
 
 
 # Create necessary directories first
@@ -22,6 +22,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
 from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
+from news_utils import fetch_google_news, generate_financial_summary, convert_markdown_to_html
 
 from openai import OpenAI
 from datetime import datetime, timedelta
@@ -154,134 +155,116 @@ def index():
         # On error, fall back to the upload page
         return redirect(url_for('upload_view'))
     
+# News Summarizer Code
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/news")
 @login_required
 def news_form():
+    """Display the news analysis form."""
     return render_template("news_simple.html")
 
 @app.route("/news/summary", methods=["POST"])
 @login_required
 def get_news_summary():
+    """Generate professional financial news summary."""
     try:
         company = request.form.get("company", "").strip()
-        print(f"[DEBUG] Received company: '{company}'")
+        days_back = int(request.form.get("days_back", 7))  # Allow user to specify date range
+        
+        logger.info(f"Processing news analysis request for: {company}")
 
         if not company:
-            return render_template("news_simple.html", error="Please enter a company name")
+            return render_template("news_simple.html", 
+                                 error="Please enter a company name or ticker symbol")
 
-        # Step 1: Fetch articles
-        articles = fetch_google_news(company)
-        print(f"[DEBUG] Found {len(articles)} articles")
+        # Validate days_back parameter
+        if days_back < 1 or days_back > 30:
+            days_back = 7
+            
+        # Step 1: Fetch articles with enhanced filtering
+        articles = fetch_google_news(company, days_back)
+        logger.info(f"Fetched {len(articles)} articles for {company}")
 
-        # Step 2: Summarize articles
-        summaries_raw = generate_summaries(company, articles)
+        if not articles:
+            # No articles found - render with helpful message
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days_back)
+            date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
+            
+            return render_template(
+                "news_results.html",
+                company=company,
+                summaries={
+                    "executive": ["No recent financial news found. Try expanding the date range or checking the ticker symbol."],
+                    "investor": ["Consider checking major financial news sources directly for breaking developments."],
+                    "catalysts": ["No material catalysts identified in recent coverage."]
+                },
+                articles=[],
+                date_range=date_range,
+                article_count=0,
+                analysis_quality="No articles available"
+            )
+
+        # Step 2: Generate professional financial analysis
+        summaries_raw = generate_financial_summary(company, articles)
+        
+        # Step 3: Convert markdown to HTML for proper display
         summaries = {
-            key: [convert_markdown_bullet(b) for b in bullets]
+            key: [convert_markdown_to_html(bullet) for bullet in bullets]
             for key, bullets in summaries_raw.items()
         }
 
-        # ✅ Step 3: Date range to display in UI
+        # Step 4: Prepare metadata for display
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=1)
+        start_date = end_date - timedelta(days=days_back)
         date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
+        
+        # Add source quality information
+        high_quality_sources = sum(1 for article in articles 
+                                 if article.get('source', '') in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'])
+        
+        analysis_quality = "Premium" if high_quality_sources >= 3 else "Standard" if high_quality_sources >= 1 else "Limited"
 
-        # Step 4: Render results
+        logger.info(f"Generated analysis for {company}: {len(articles)} articles, {analysis_quality} quality")
+
+        # Step 5: Render results with enhanced metadata
         return render_template(
             "news_results.html",
             company=company,
             summaries=summaries,
-            articles=articles,
-            date_range=date_range
+            articles=articles[:8],  # Show top 8 articles only
+            date_range=date_range,
+            article_count=len(articles),
+            analysis_quality=analysis_quality,
+            high_quality_sources=high_quality_sources
         )
 
     except Exception as e:
-        print(f"[ERROR] Failed in get_news_summary: {e}")
+        logger.error(f"Error in news summary generation: {str(e)}")
+        import traceback
         traceback.print_exc()
-        return render_template("news_simple.html", error="Something went wrong.")
+        
+        return render_template("news_simple.html", 
+                             error="Analysis temporarily unavailable. Please try again.")
 
-def fetch_google_news(company):
+@app.route("/api/news/<company>")
+@login_required
+def api_news_summary(company):
+    """API endpoint for news summary (for future AJAX integration)."""
     try:
-        one_day_ago = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        query = f"{company} news after:{one_day_ago}"
-        url = "https://www.googleapis.com/customsearch/v1"
-        params = {
-            "key": os.getenv("GOOGLE_CUSTOM_SEARCH_API_KEY"),
-            "cx": os.getenv("GOOGLE_SEARCH_ENGINE_ID"),
-            "q": query,
-            "sort": "date",
-            "num": 10
-        }
-        res = requests.get(url, params=params)
-        res.raise_for_status()
-        return [{"title": i["title"], "snippet": i["snippet"], "link": i["link"]} for i in res.json().get("items", [])]
+        days_back = request.args.get('days', 7, type=int)
+        articles = fetch_google_news(company, days_back)
+        summaries = generate_financial_summary(company, articles)
+        
+        return jsonify({
+            "company": company,
+            "summaries": summaries,
+            "article_count": len(articles),
+            "date_range": f"{(datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')} to {datetime.now().strftime('%Y-%m-%d')}"
+        })
     except Exception as e:
-        print(f"Error fetching news: {e}")
-        return []
-
-def generate_summaries(company, articles):
-    if not articles:
-        return {
-            "executive": ["No recent articles found."],
-            "investor": ["No recent articles found."],
-            "catalysts": ["No recent articles found."]
-        }
-    try:
-        article_text = "\n".join(f"- {a['title']}: {a['snippet']} ({a['link']})" for a in articles)
-        prompt = (
-            f"You are a financial analyst reviewing the following news about {company}.\n\n"
-            f"Summarize the content in three distinct sections:\n"
-            f"1. Executive Summary – Key business events, leadership changes, M&A, partnerships.\n"
-            f"2. Investor Insights – Market impact, stock performance, financial outlooks.\n"
-            f"3. Catalysts & Drivers – Legal, reputational, labor, macro, or social factors that might affect performance.\n\n"
-            f"{article_text}\n\n"
-            f"Use 2–3 bullet points per section. Include source links where possible."
-        )
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You summarize financial news for different investor audiences."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7
-        )
-        return parse_summaries(response.choices[0].message.content)
-    except Exception as e:
-        print(f"Error generating summaries: {e}")
-        return {
-            "executive": ["Error generating summary."],
-            "investor": ["Error generating summary."],
-            "catalysts": ["Error generating summary."]
-        }
-
-def parse_summaries(text):
-    sections = {"executive": [], "investor": [], "catalysts": []}
-    current = None
-
-    section_map = {
-        "executive": re.compile(r"(1\.)?\s*executive\s+summary", re.IGNORECASE),
-        "investor": re.compile(r"(2\.)?\s*investor\s+insights", re.IGNORECASE),
-        "catalysts": re.compile(r"(3\.)?\s*(catalysts|drivers)", re.IGNORECASE)
-    }
-
-    for line in text.strip().splitlines():
-        line = line.strip()
-
-        if section_map["executive"].search(line):
-            current = "executive"
-            continue
-        elif section_map["investor"].search(line):
-            current = "investor"
-            continue
-        elif section_map["catalysts"].search(line):
-            current = "catalysts"
-            continue
-        elif line.startswith("-") and current:
-            sections[current].append(line.lstrip("- ").strip())
-
-    return sections
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/upload', methods=['GET'])
 @login_required

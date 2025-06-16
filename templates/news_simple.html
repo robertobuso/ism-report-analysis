@@ -1,20 +1,257 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>News Analysis MVP</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial News Analysis</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .analysis-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 1.5rem;
+        }
+        
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        .btn-analyze {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            padding: 12px 30px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-analyze:hover {
+            background: linear-gradient(45deg, #5a6fd8, #6a4190);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .example-ticker {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: 0.85rem;
+            margin: 2px;
+            display: inline-block;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .example-ticker:hover {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
+        .loading-spinner {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-  <div class="container mt-5">
-    <h2>Company News Analysis</h2>
-    {% if error %}
-    <div class="alert alert-danger">{{ error }}</div>
-    {% endif %}
-    <form action="/news/summary" method="POST" class="p-4">
-      <label for="company" class="form-label">Enter a Company Name or Ticker</label>
-      <input type="text" class="form-control mb-3" name="company" required>
-      <button type="submit" class="btn btn-primary">Generate Summary</button>
-    </form>
-  </div>
+    <div class="container">
+        <div class="row justify-content-center min-vh-100 align-items-center">
+            <div class="col-lg-8 col-xl-6">
+                <div class="analysis-card p-5">
+                    <!-- Header -->
+                    <div class="text-center mb-4">
+                        <div class="feature-icon bg-primary text-white mb-3">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h2 class="mb-3">Institutional Financial Analysis</h2>
+                        <p class="text-muted">Goldman Sachs-grade insights with quantified impacts and trading context</p>
+                    </div>
+
+                    <!-- Error Alert -->
+                    {% if error %}
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        {{ error }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endif %}
+
+                    <!-- Analysis Form -->
+                    <form action="/news/summary" method="POST" class="needs-validation" novalidate id="analysisForm">
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label for="company" class="form-label fw-semibold">
+                                    <i class="fas fa-building me-2"></i>Company Name or Ticker
+                                </label>
+                                <input 
+                                    type="text" 
+                                    class="form-control form-control-lg" 
+                                    id="company"
+                                    name="company" 
+                                    placeholder="e.g., Apple, AAPL, Tesla, TSLA"
+                                    required
+                                    autocomplete="off"
+                                >
+                                <div class="invalid-feedback">
+                                    Please enter a company name or ticker symbol.
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4 mb-3">
+                                <label for="days_back" class="form-label fw-semibold">
+                                    <i class="fas fa-calendar me-2"></i>Date Range
+                                </label>
+                                <select class="form-select form-select-lg" id="days_back" name="days_back">
+                                    <option value="3">Last 3 days</option>
+                                    <option value="7" selected>Last week</option>
+                                    <option value="14">Last 2 weeks</option>
+                                    <option value="30">Last 30 days</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Example Tickers -->
+                        <div class="mb-4">
+                            <label class="form-label text-muted small">Popular examples:</label>
+                            <div>
+                                <span class="example-ticker" onclick="setCompany('AAPL')">AAPL</span>
+                                <span class="example-ticker" onclick="setCompany('TSLA')">TSLA</span>
+                                <span class="example-ticker" onclick="setCompany('MSFT')">MSFT</span>
+                                <span class="example-ticker" onclick="setCompany('GOOGL')">GOOGL</span>
+                                <span class="example-ticker" onclick="setCompany('AMZN')">AMZN</span>
+                                <span class="example-ticker" onclick="setCompany('NVDA')">NVDA</span>
+                                <span class="example-ticker" onclick="setCompany('JPM')">JPM</span>
+                                <span class="example-ticker" onclick="setCompany('JNJ')">JNJ</span>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg btn-analyze">
+                                <span class="normal-text">
+                                    <i class="fas fa-search me-2"></i>
+                                    Generate Analysis
+                                </span>
+                                <span class="loading-spinner">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                    Analyzing...
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Enhanced Features -->
+                    <div class="row mt-5 pt-4 border-top">
+                        <div class="col-md-4 text-center mb-3">
+                            <div class="feature-icon bg-success text-white">
+                                <i class="fas fa-chart-bar"></i>
+                            </div>
+                            <h6>Quantified Impact</h6>
+                            <small class="text-muted">Revenue estimates, price targets, and financial metrics included</small>
+                        </div>
+                        <div class="col-md-4 text-center mb-3">
+                            <div class="feature-icon bg-primary text-white">
+                                <i class="fas fa-university"></i>
+                            </div>
+                            <h6>Premium Sources</h6>
+                            <small class="text-muted">Bloomberg, Reuters, WSJ prioritized for credible analysis</small>
+                        </div>
+                        <div class="col-md-4 text-center mb-3">
+                            <div class="feature-icon bg-warning text-white">
+                                <i class="fas fa-crosshairs"></i>
+                            </div>
+                            <h6>Trading Context</h6>
+                            <small class="text-muted">Support/resistance levels and analyst price targets</small>
+                        </div>
+                    </div>
+
+                    <!-- Enhanced Disclaimer -->
+                    <div class="alert alert-light mt-4">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Institutional-grade analysis with quantified financial impacts and trading context. 
+                            Sources include Bloomberg, Reuters, WSJ when available. Not investment advice - 
+                            consult qualified financial advisors and latest SEC filings.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Set company name from example tickers
+        function setCompany(ticker) {
+            document.getElementById('company').value = ticker;
+            document.getElementById('company').focus();
+        }
+
+        // Form validation and loading state
+        document.getElementById('analysisForm').addEventListener('submit', function(e) {
+            const form = this;
+            
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                e.stopPropagation();
+            } else {
+                // Show loading state
+                const button = form.querySelector('button[type="submit"]');
+                const normalText = button.querySelector('.normal-text');
+                const loadingSpinner = button.querySelector('.loading-spinner');
+                
+                normalText.style.display = 'none';
+                loadingSpinner.style.display = 'inline';
+                button.disabled = true;
+                
+                // Add timeout protection (30 seconds)
+                setTimeout(() => {
+                    if (button.disabled) {
+                        normalText.style.display = 'inline';
+                        loadingSpinner.style.display = 'none';
+                        button.disabled = false;
+                        alert('Analysis is taking longer than expected. Please try again.');
+                    }
+                }, 30000);
+            }
+            
+            form.classList.add('was-validated');
+        });
+
+        // Auto-focus on company input
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('company').focus();
+        });
+
+        // Enter key handling for better UX
+        document.getElementById('company').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('analysisForm').submit();
+            }
+        });
+    </script>
 </body>
 </html>
