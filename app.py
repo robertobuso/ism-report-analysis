@@ -28,7 +28,9 @@ from news_utils import (
     score_articles_with_alphavantage, 
     generate_premium_analysis,
     convert_markdown_to_html,
-    create_source_url_mapping
+    create_source_url_mapping,
+    fetch_comprehensive_news_enhanced,
+    fetch_comprehensive_news_parallel
 )
 
 from openai import OpenAI
@@ -195,8 +197,8 @@ def get_news_summary():
         logger.info(f"Processing premium analysis request: {company} ({days_back} days)")
         
         # Call the main orchestration function from news_utils
-        from news_utils import fetch_comprehensive_news
-        results = fetch_comprehensive_news(company, days_back)
+        from news_utils import fetch_comprehensive_news_parallel
+        results = fetch_comprehensive_news_parallel(company, days_back)
         
         # Handle case where no articles found
         if not results['success']:
@@ -208,22 +210,24 @@ def get_news_summary():
             return render_template(
                 "news_results.html",
                 company=company,
-                summaries=results['summaries'],
-                articles=[],
+                summaries=summaries,
+                articles=articles[:max_display_articles],
+                all_articles=articles,   
                 date_range=date_range,
                 analysis_timestamp=analysis_timestamp,
-                article_count=0,
-                analysis_quality="No Coverage",
-                high_quality_sources=0,
-                premium_coverage=0,
-                alphavantage_articles=0,
-                articles_analyzed=0,
-                articles_displayed=0,
-                alphavantage_coverage=0,
-                premium_sources_count=0,
-                nyt_articles=0,
-                rss_articles=0,
-                source_performance=results['source_performance']
+                article_count=metrics.get('total_articles', 0),
+                articles_analyzed=min(15, metrics.get('total_articles', 0)),  
+                articles_displayed=min(max_display_articles, metrics.get('total_articles', 0)), 
+                analysis_quality=metrics.get('analysis_quality', 'Limited'),
+                high_quality_sources=metrics.get('high_quality_sources', 0),
+                premium_coverage=metrics.get('premium_coverage', 0),
+                alphavantage_articles=metrics.get('alphavantage_articles', 0),
+                alphavantage_coverage=metrics.get('alphavantage_coverage', 0),
+                premium_sources_count=metrics.get('premium_sources_count', 0),
+                premium_sources_coverage=metrics.get('premium_sources_coverage', 0),
+                nyt_articles=metrics.get('nyt_articles', 0),  # Safe get
+                rss_articles=metrics.get('rss_articles', 0),  # Safe get
+                source_performance=results.get('source_performance', {})
             )
         
         # Process successful results for rendering
@@ -253,19 +257,19 @@ def get_news_summary():
             all_articles=articles,   
             date_range=date_range,
             analysis_timestamp=analysis_timestamp,
-            article_count=metrics['total_articles'],
-            articles_analyzed=min(15, metrics['total_articles']),  
-            articles_displayed=min(max_display_articles, metrics['total_articles']), 
-            analysis_quality=metrics['analysis_quality'],
-            high_quality_sources=metrics['high_quality_sources'],
-            premium_coverage=metrics['premium_coverage'],
-            alphavantage_articles=metrics['alphavantage_articles'],
-            alphavantage_coverage=metrics['alphavantage_coverage'],
-            premium_sources_count=metrics['premium_sources_count'],
-            premium_sources_coverage=metrics['premium_sources_coverage'],
-            nyt_articles=metrics['nyt_articles'],
-            rss_articles=metrics['rss_articles'],
-            source_performance=results['source_performance']
+            article_count=metrics.get('total_articles', 0),
+            articles_analyzed=min(15, metrics.get('total_articles', 0)),  
+            articles_displayed=min(max_display_articles, metrics.get('total_articles', 0)), 
+            analysis_quality=metrics.get('analysis_quality', 'Limited'),
+            high_quality_sources=metrics.get('high_quality_sources', 0),
+            premium_coverage=metrics.get('premium_coverage', 0),
+            alphavantage_articles=metrics.get('alphavantage_articles', 0),
+            alphavantage_coverage=metrics.get('alphavantage_coverage', 0),
+            premium_sources_count=metrics.get('premium_sources_count', 0),
+            premium_sources_coverage=metrics.get('premium_sources_coverage', 0),
+            nyt_articles=metrics.get('nyt_articles', 0),  # Safe get
+            rss_articles=metrics.get('rss_articles', 0),  # Safe get
+            source_performance=results.get('source_performance', {})
         )
 
     except Exception as e:
@@ -291,8 +295,8 @@ def api_news_summary(company):
         logger.info(f"API request: {company} ({days_back} days)")
         
         # Use the main orchestration function
-        from news_utils import fetch_comprehensive_news
-        results = fetch_comprehensive_news(company, days_back)
+        from news_utils import fetch_comprehensive_news_parallel
+        results = fetch_comprehensive_news_parallel(company, days_back)
         
         # Format for API response
         response_data = {
