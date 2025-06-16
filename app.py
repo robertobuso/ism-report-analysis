@@ -35,6 +35,10 @@ from openai import OpenAI
 from datetime import datetime, timedelta
 import requests
 import re
+import feedparser
+import time
+from urllib.parse import urlparse, urljoin
+import json
 
 
 # Configure logging
@@ -174,13 +178,12 @@ def news_form():
 @app.route("/news/summary", methods=["POST"])
 @login_required
 def get_news_summary():
-    """Generate institutional-grade financial news analysis with AlphaVantage."""
+    """Generate institutional-grade financial news analysis with premium sources integration."""
     try:
+        # Parse and validate input
         company = request.form.get("company", "").strip()
         days_back = int(request.form.get("days_back", 7))
         
-        logger.info(f"Processing AlphaVantage + Google news analysis for: {company}")
-
         if not company:
             return render_template("news_simple.html", 
                                  error="Please enter a company name or ticker symbol")
@@ -188,37 +191,27 @@ def get_news_summary():
         # Validate days_back parameter
         if days_back < 1 or days_back > 30:
             days_back = 7
-            
-        # Step 1: Fetch from AlphaVantage Premium + Google Search
-        alphavantage_articles = fetch_alphavantage_news(company, days_back)
-        google_articles = fetch_google_news(company, days_back)
         
-        # Combine and deduplicate articles
-        all_articles = alphavantage_articles.copy()
-        seen_urls = {article.get('link', '') for article in alphavantage_articles}
+        logger.info(f"Processing premium analysis request: {company} ({days_back} days)")
         
-        for article in google_articles:
-            if article.get('link', '') not in seen_urls:
-                all_articles.append(article)
+        # Call the main orchestration function from news_utils
+        from news_utils import fetch_comprehensive_news
+        results = fetch_comprehensive_news(company, days_back)
         
-        logger.info(f"Combined {len(alphavantage_articles)} AlphaVantage + {len(google_articles)} Google = {len(all_articles)} total articles")
-
-        if not all_articles:
-            # No articles found - provide helpful guidance
+        # Handle case where no articles found
+        if not results['success']:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days_back)
             date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
+            analysis_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
             
             return render_template(
                 "news_results.html",
                 company=company,
-                summaries={
-                    "executive": ["**[NO DATA]** No recent financial news found using AlphaVantage + Google. Try expanding date range or checking ticker symbol *(Source: comprehensive search)*"],
-                    "investor": ["**[RECOMMENDATION]** Verify company ticker for AlphaVantage API or try major stock symbols like AAPL, TSLA, MSFT *(Source: search optimization)*"],
-                    "catalysts": ["**[TIMING]** Check earnings calendar or major product announcements for analysis opportunities *(Source: typical coverage patterns)*"]
-                },
+                summaries=results['summaries'],
                 articles=[],
                 date_range=date_range,
+                analysis_timestamp=analysis_timestamp,
                 article_count=0,
                 analysis_quality="No Coverage",
                 high_quality_sources=0,
@@ -226,126 +219,121 @@ def get_news_summary():
                 alphavantage_articles=0,
                 articles_analyzed=0,
                 articles_displayed=0,
-                alphavantage_coverage=0
+                alphavantage_coverage=0,
+                premium_sources_count=0,
+                nyt_articles=0,
+                rss_articles=0,
+                source_performance=results['source_performance']
             )
-
-        # Step 2: Generate premium analysis using both sources
-        summaries_raw = generate_premium_analysis(company, all_articles)
         
-        # Step 3: Create source mapping and convert to HTML
-        source_mapping = create_source_url_mapping(all_articles)
+        # Process successful results for rendering
+        articles = results['articles']
+        metrics = results['metrics']
+        
+        # Create source mapping and convert summaries to HTML
+        source_mapping = create_source_url_mapping(articles)
         summaries = {
             key: [convert_markdown_to_html(bullet, source_mapping) for bullet in bullets]
-            for key, bullets in summaries_raw.items()
+            for key, bullets in results['summaries'].items()
         }
-
-        # Step 4: Calculate quality metrics
+        
+        # Calculate date range for display
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
         date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
+        analysis_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
         
-        # Premium source analysis
-        premium_source_domains = ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 'cnbc.com', 'marketwatch.com', 'barrons.com']
-        high_quality_sources = sum(1 for article in all_articles 
-                                 if article.get('source', '') in premium_source_domains)
-        
-        # Count AlphaVantage articles (these have full content)
-        alphavantage_count = len(alphavantage_articles)
-        
-        # Calculate coverage percentages
-        total_articles = len(all_articles)
-        if total_articles > 0:
-            premium_coverage = (high_quality_sources / total_articles * 100)
-            alphavantage_coverage = (alphavantage_count / total_articles * 100)
-        else:
-            premium_coverage = 0
-            alphavantage_coverage = 0
-        
-        # Determine analysis quality
-        if alphavantage_coverage >= 30:  # 30%+ full content articles
-            analysis_quality = "Premium+"
-        elif premium_coverage >= 40:
-            analysis_quality = "Institutional"
-        elif premium_coverage >= 20 or alphavantage_count >= 3:
-            analysis_quality = "Professional" 
-        elif high_quality_sources >= 2 or alphavantage_count >= 1:
-            analysis_quality = "Standard"
-        else:
-            analysis_quality = "Limited"
-
-        # Enhanced logging
-        logger.info(f"Analysis complete: {total_articles} articles, {alphavantage_count} AlphaVantage, {high_quality_sources} premium sources, Quality: {analysis_quality}")
-
-        # Step 5: Render results
-        max_articles = 15
+        # Render results
+        max_display_articles = 12
         return render_template(
             "news_results.html",
             company=company,
             summaries=summaries,
-            articles=all_articles[:12],  # Display top 12 articles
-            all_articles=all_articles,   
+            articles=articles[:max_display_articles],
+            all_articles=articles,   
             date_range=date_range,
-            article_count=total_articles,
-            articles_analyzed=min(max_articles, total_articles),  
-            articles_displayed=min(12, total_articles), 
-            analysis_quality=analysis_quality,
-            high_quality_sources=high_quality_sources,
-            premium_coverage=round(premium_coverage, 1),
-            alphavantage_articles=alphavantage_count,
-            alphavantage_coverage=round(alphavantage_coverage, 1)
+            analysis_timestamp=analysis_timestamp,
+            article_count=metrics['total_articles'],
+            articles_analyzed=min(15, metrics['total_articles']),  
+            articles_displayed=min(max_display_articles, metrics['total_articles']), 
+            analysis_quality=metrics['analysis_quality'],
+            high_quality_sources=metrics['high_quality_sources'],
+            premium_coverage=metrics['premium_coverage'],
+            alphavantage_articles=metrics['alphavantage_articles'],
+            alphavantage_coverage=metrics['alphavantage_coverage'],
+            premium_sources_count=metrics['premium_sources_count'],
+            premium_sources_coverage=metrics['premium_sources_coverage'],
+            nyt_articles=metrics['nyt_articles'],
+            rss_articles=metrics['rss_articles'],
+            source_performance=results['source_performance']
         )
 
     except Exception as e:
-        logger.error(f"Error in AlphaVantage news analysis: {str(e)}")
+        logger.error(f"Error in premium news analysis: {str(e)}")
         import traceback
-        traceback.print_exc()
+        logger.error(f"Traceback: {traceback.format_exc()}")
         
         return render_template("news_simple.html", 
-                             error="Analysis temporarily unavailable. Please try again.")
+                             error="Premium analysis temporarily unavailable. Please try again.")
 
-# Enhanced API endpoint 
+# Enhanced API endpoint
 @app.route("/api/news/<company>")
 @login_required  
 def api_news_summary(company):
-    """API endpoint for AlphaVantage + Google news analysis."""
+    """API endpoint for premium sources news analysis."""
     try:
         days_back = request.args.get('days', 7, type=int)
         
-        # Fetch from both sources
-        alphavantage_articles = fetch_alphavantage_news(company, days_back)
-        google_articles = fetch_google_news(company, days_back)
+        # Validate input
+        if days_back < 1 or days_back > 30:
+            days_back = 7
         
-        # Combine articles
-        all_articles = alphavantage_articles + google_articles
-        summaries = generate_premium_analysis(company, all_articles)
+        logger.info(f"API request: {company} ({days_back} days)")
         
-        # Calculate quality metrics
-        premium_count = sum(1 for article in all_articles 
-                          if article.get('source', '') in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'])
+        # Use the main orchestration function
+        from news_utils import fetch_comprehensive_news
+        results = fetch_comprehensive_news(company, days_back)
         
+        # Format for API response
         response_data = {
             "company": company,
-            "summaries": summaries,
+            "summaries": results['summaries'],
             "metadata": {
-                "total_articles": len(all_articles),
-                "alphavantage_articles": len(alphavantage_articles),
-                "google_articles": len(google_articles),
-                "premium_sources": premium_count,
-                "coverage_quality": "Premium+" if len(alphavantage_articles) >= 3 else "Standard",
+                "total_articles": results['metrics']['total_articles'],
+                "alphavantage_articles": results['metrics']['alphavantage_articles'],
+                "nyt_articles": results['metrics']['nyt_articles'],
+                "rss_articles": results['metrics']['rss_articles'],
+                "google_articles": results['metrics']['google_articles'],
+                "premium_sources_count": results['metrics']['premium_sources_count'],
+                "high_quality_sources": results['metrics']['high_quality_sources'],
+                "premium_coverage": results['metrics']['premium_coverage'],
+                "analysis_quality": results['metrics']['analysis_quality'],
+                "response_time_seconds": results['metrics']['response_time'],
                 "date_range": f"{(datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')} to {datetime.now().strftime('%Y-%m-%d')}",
-                "analysis_timestamp": datetime.now().isoformat()
+                "analysis_timestamp": datetime.now().isoformat(),
+                "source_performance": results['source_performance'],
+                "success": results['success']
             }
         }
+        
+        # Include articles if requested
+        include_articles = request.args.get('include_articles', 'false').lower() == 'true'
+        if include_articles:
+            response_data["articles"] = results['articles'][:20]  # Limit for API response
         
         return jsonify(response_data)
         
     except Exception as e:
+        logger.error(f"API error for {company}: {str(e)}")
         return jsonify({
             "error": str(e),
             "company": company,
-            "metadata": {"analysis_timestamp": datetime.now().isoformat()}
+            "metadata": {
+                "analysis_timestamp": datetime.now().isoformat(),
+                "success": False
+            }
         }), 500
-
+    
 @app.route('/upload', methods=['GET'])
 @login_required
 def upload_view():
@@ -879,6 +867,19 @@ def get_report_types():
         logger.error(f"Error getting report types: {str(e)}")
         return jsonify(["Manufacturing", "Services"]), 500  # Default fallback
     
+@app.route('/admin/monitoring')
+@login_required
+def monitoring_dashboard():
+    from monitoring import get_performance_dashboard
+    dashboard_data = get_performance_dashboard()
+    return render_template('monitoring_dashboard.html', data=dashboard_data)
+
+@app.route('/api/monitoring/performance')
+@login_required
+def api_monitoring_performance():
+    from monitoring import get_performance_dashboard
+    return jsonify(get_performance_dashboard())
+
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy"})

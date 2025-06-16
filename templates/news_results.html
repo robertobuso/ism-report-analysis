@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ company }} - Financial News Analysis</title>
+    <title>{{ company }} - Premium Financial Analysis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -46,6 +46,21 @@
             font-weight: 600;
         }
         
+        .alphavantage-source {
+            color: #6f42c1;
+            font-weight: 600;
+        }
+        
+        .nyt-source {
+            color: #fd7e14;
+            font-weight: 600;
+        }
+        
+        .rss-source {
+            color: #20c997;
+            font-weight: 600;
+        }
+        
         .standard-source {
             color: #6c757d;
         }
@@ -60,6 +75,26 @@
             top: 20px;
             left: 20px;
             z-index: 1000;
+        }
+        
+        .source-breakdown {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .progress-thin {
+            height: 6px;
         }
         
         @media (max-width: 768px) {
@@ -81,17 +116,18 @@
         
         <div class="row justify-content-center">
             <div class="col-lg-10 col-xl-8">
-                <!-- Header -->
+                <!-- Enhanced Header with Premium Metrics -->
                 <div class="text-center mb-4 mt-4">
                     <h2 class="mb-2">
                         <i class="fas fa-chart-line text-primary"></i>
-                        Institutional Analysis: {{ company }}
+                        Premium Financial Analysis: {{ company }}
                     </h2>
                     <div class="d-flex justify-content-center align-items-center gap-3 flex-wrap">
                         <span class="badge bg-secondary">{{ date_range }}</span>
                         <span class="badge quality-badge 
-                            {% if analysis_quality == 'Institutional' %}bg-success
-                            {% elif analysis_quality == 'Professional' %}bg-primary
+                            {% if analysis_quality == 'Premium+' %}bg-success
+                            {% elif analysis_quality == 'Institutional' %}bg-primary
+                            {% elif analysis_quality == 'Professional' %}bg-info
                             {% elif analysis_quality == 'Standard' %}bg-warning
                             {% else %}bg-secondary{% endif %}">
                             {{ analysis_quality }} Grade
@@ -99,21 +135,96 @@
                         <span class="text-muted">
                             <i class="fas fa-newspaper"></i> {{ article_count }} articles
                         </span>
-                        {% if alphavantage_coverage is defined and alphavantage_coverage > 0 %}
-                        <span class="text-success">
-                            <i class="fas fa-crown"></i> {{ alphavantage_coverage }}% full content
-                        </span>
-                        {% endif %}
                     </div>
+                    
+                    <!-- Enhanced Analysis Quality Description -->
                     {% if analysis_quality == 'Premium+' %}
-                    <small class="text-success"><i class="fas fa-crown"></i> Premium+ analysis with AlphaVantage full content + sentiment data</small>
+                    <small class="text-success d-block mt-2">
+                        <i class="fas fa-crown"></i> Premium+ analysis with AlphaVantage sentiment data + NYT full abstracts + premium RSS feeds
+                    </small>
                     {% elif analysis_quality == 'Institutional' %}
-                    <small class="text-success"><i class="fas fa-check-circle"></i> Institutional-grade analysis with quantified impacts</small>
+                    <small class="text-primary d-block mt-2">
+                        <i class="fas fa-university"></i> Institutional-grade analysis with quantified impacts and multiple premium sources
+                    </small>
                     {% elif analysis_quality == 'Professional' %}
-                    <small class="text-primary"><i class="fas fa-info-circle"></i> Professional-grade analysis with enhanced content</small>
-                    {% elif analysis_quality == 'Limited' %}
-                    <small class="text-warning"><i class="fas fa-exclamation-triangle"></i> Limited sources - comprehensive analysis of available data</small>
+                    <small class="text-info d-block mt-2">
+                        <i class="fas fa-briefcase"></i> Professional-grade analysis with enhanced content and business context
+                    </small>
+                    {% elif analysis_quality == 'Standard' %}
+                    <small class="text-warning d-block mt-2">
+                        <i class="fas fa-info-circle"></i> Standard analysis with premium source coverage
+                    </small>
+                    {% else %}
+                    <small class="text-muted d-block mt-2">
+                        <i class="fas fa-exclamation-triangle"></i> Limited sources - comprehensive analysis of available data
+                    </small>
                     {% endif %}
+                </div>
+
+                <!-- Enhanced Source Breakdown -->
+                <div class="source-breakdown">
+                    <div class="row text-center">
+                        <div class="col-12 mb-3">
+                            <h5 class="mb-0"><i class="fas fa-database"></i> Premium Sources Breakdown</h5>
+                            <small>Multi-source institutional analysis powered by APIs and premium feeds</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        {% if alphavantage_articles > 0 %}
+                        <div class="col-md-3 col-6">
+                            <div class="metric-card text-center">
+                                <div class="h4 text-purple mb-1">{{ alphavantage_articles }}</div>
+                                <small><i class="fas fa-brain"></i> AlphaVantage</small>
+                                <div class="small text-muted">Sentiment + Full Content</div>
+                                <div class="progress progress-thin mt-2">
+                                    <div class="progress-bar bg-purple" style="width: {{ alphavantage_coverage }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ alphavantage_coverage }}%</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if nyt_articles is defined and nyt_articles > 0 %}
+                        <div class="col-md-3 col-6">
+                            <div class="metric-card text-center">
+                                <div class="h4 text-warning mb-1">{{ nyt_articles }}</div>
+                                <small><i class="fas fa-newspaper"></i> NYT API</small>
+                                <div class="small text-muted">Full Abstracts</div>
+                                <div class="progress progress-thin mt-2">
+                                    <div class="progress-bar bg-warning" style="width: {{ (nyt_articles / article_count * 100) | round }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ (nyt_articles / article_count * 100) | round }}%</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if rss_articles is defined and rss_articles > 0 %}
+                        <div class="col-md-3 col-6">
+                            <div class="metric-card text-center">
+                                <div class="h4 text-info mb-1">{{ rss_articles }}</div>
+                                <small><i class="fas fa-rss"></i> RSS Feeds</small>
+                                <div class="small text-muted">Premium Feeds</div>
+                                <div class="progress progress-thin mt-2">
+                                    <div class="progress-bar bg-info" style="width: {{ (rss_articles / article_count * 100) | round }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ (rss_articles / article_count * 100) | round }}%</small>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="col-md-3 col-6">
+                            <div class="metric-card text-center">
+                                <div class="h4 text-success mb-1">{{ high_quality_sources }}</div>
+                                <small><i class="fas fa-star"></i> Premium</small>
+                                <div class="small text-muted">Bloomberg, Reuters, WSJ</div>
+                                <div class="progress progress-thin mt-2">
+                                    <div class="progress-bar bg-success" style="width: {{ premium_coverage }}%"></div>
+                                </div>
+                                <small class="text-muted">{{ premium_coverage }}%</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Executive Summary -->
@@ -122,7 +233,7 @@
                         <h5 class="mb-0">
                             <i class="fas fa-briefcase"></i> Executive Summary
                         </h5>
-                        <small>Material business developments and strategic changes</small>
+                        <small>Strategic developments and fundamental business outlook</small>
                     </div>
                     <div class="card-body">
                         {% if summaries.executive %}
@@ -144,7 +255,7 @@
                         <h5 class="mb-0">
                             <i class="fas fa-chart-bar"></i> Investor Insights
                         </h5>
-                        <small>Earnings implications and valuation drivers</small>
+                        <small>Valuation drivers, analyst actions, and market sentiment</small>
                     </div>
                     <div class="card-body">
                         {% if summaries.investor %}
@@ -166,7 +277,7 @@
                         <h5 class="mb-0">
                             <i class="fas fa-exclamation-triangle"></i> Catalysts & Risks
                         </h5>
-                        <small>Near-term drivers and risk factors</small>
+                        <small>Near-term trading catalysts and risk factors</small>
                     </div>
                     <div class="card-body">
                         {% if summaries.catalysts %}
@@ -182,7 +293,7 @@
                     </div>
                 </div>
 
-                <!-- Source Articles -->
+                <!-- Enhanced Source Articles with Type Indicators -->
                 {% if articles %}
                 <div class="card mt-4">
                     <div class="card-header bg-light">
@@ -193,7 +304,7 @@
                             <small class="text-muted">({{ articles_analyzed }} analyzed total)</small>
                             {% endif %}
                         </h5>
-                        <small class="text-muted">Top articles used in analysis (ranked by relevance and source quality)</small>
+                        <small class="text-muted">Premium articles ranked by relevance, source quality, and content depth</small>
                     </div>
                     <div class="card-body">
                         {% for article in articles %}
@@ -207,12 +318,60 @@
                                         </a>
                                     </h6>
                                     <p class="mb-2 text-muted small">{{ article.snippet }}</p>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="{% if article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}premium-source{% else %}standard-source{% endif %}">
+                                    
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <!-- Enhanced Source Type Indicators -->
+                                        {% if article.source_type == 'alphavantage_premium' %}
+                                        <span class="alphavantage-source">
+                                            <i class="fas fa-brain me-1"></i>{{ article.source }}
+                                        </span>
+                                        <span class="badge bg-purple badge-sm">Full Content + Sentiment</span>
+                                        {% if article.sentiment_label %}
+                                        <span class="badge 
+                                            {% if article.sentiment_label == 'Bullish' %}bg-success
+                                            {% elif article.sentiment_label == 'Bearish' %}bg-danger
+                                            {% else %}bg-secondary{% endif %} badge-sm">
+                                            {{ article.sentiment_label }}
+                                            {% if article.sentiment_score %}({{ "%.2f"|format(article.sentiment_score) }}){% endif %}
+                                        </span>
+                                        {% endif %}
+                                        
+                                        {% elif article.source_type == 'nyt_api' %}
+                                        <span class="nyt-source">
+                                            <i class="fas fa-newspaper me-1"></i>{{ article.source }}
+                                        </span>
+                                        <span class="badge bg-warning badge-sm">NYT API + Full Abstract</span>
+                                        
+                                        {% elif article.source_type == 'rss_feed' %}
+                                        <span class="rss-source">
+                                            <i class="fas fa-rss me-1"></i>{{ article.source }}
+                                        </span>
+                                        <span class="badge bg-info badge-sm">RSS Premium Feed</span>
+                                        
+                                        {% elif article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}
+                                        <span class="premium-source">
+                                            <i class="fas fa-crown me-1"></i>{{ article.source }}
+                                        </span>
+                                        <span class="badge bg-success badge-sm">Premium Source</span>
+                                        
+                                        {% else %}
+                                        <span class="standard-source">
                                             <i class="fas fa-globe me-1"></i>{{ article.source }}
                                         </span>
-                                        {% if article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}
-                                        <span class="badge bg-success badge-sm">Premium</span>
+                                        {% endif %}
+                                        
+                                        <!-- Content Quality Indicator -->
+                                        {% if article.get('full_content') and (article.get('full_content')|length > 200) %}
+                                        <span class="badge bg-light text-dark badge-sm">
+                                            <i class="fas fa-file-text"></i> Full Content
+                                        </span>
+                                        {% endif %}
+                                        
+                                        <!-- Relevance Score for AlphaVantage -->
+                                        {% if article.source_type == 'alphavantage_premium' and article.get('relevance_score') %}
+                                        <span class="badge bg-light text-dark badge-sm">
+                                            Relevance: {{ "%.2f"|format(article.relevance_score) }}
+                                        </span>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -223,21 +382,53 @@
                 </div>
                 {% endif %}
 
-                <!-- Enhanced Analysis Disclaimer -->
+                <!-- Enhanced Analysis Methodology -->
                 <div class="alert alert-info mt-4">
                     <h6><i class="fas fa-info-circle"></i> Premium Analysis Methodology</h6>
-                    <ul class="mb-0 small">
-                        <li><strong>Data Sources:</strong> AlphaVantage Premium API ({{ alphavantage_articles|default(0) }} articles with full content + sentiment) + Google Search ({{ article_count - alphavantage_articles|default(article_count) }} articles)</li>
-                        <li><strong>Content Quality:</strong> {{ alphavantage_coverage|default(0) }}% full article content, {{ premium_coverage|default(0) }}% premium financial sources</li>
-                        <li><strong>Analysis Features:</strong> {% if alphavantage_articles > 0 %}Sentiment analysis, relevance scoring, full content analysis{% else %}Headline and snippet analysis{% endif %}</li>
-                        <li><strong>Articles Processed:</strong> {{ articles_analyzed|default(article_count) }} analyzed for insights, {{ articles_displayed|default(8) }} top articles displayed</li>
-                        <li><strong>Analysis Grade:</strong> {{ analysis_quality }} - {% if analysis_quality == 'Premium+' %}Full content + sentiment analysis from AlphaVantage{% elif analysis_quality == 'Institutional' %}Premium sources with quantified impacts{% elif analysis_quality == 'Professional' %}Enhanced analysis with business context{% else %}Comprehensive analysis of available data{% endif %}</li>
-                        <li><strong>Limitations:</strong> Premium paywalled content (Bloomberg, WSJ, FT) limited to excerpts unless available via AlphaVantage</li>
-                        <li><strong>Disclaimer:</strong> For informational purposes only. Not investment advice. Consult latest SEC filings and qualified financial advisors.</li>
-                    </ul>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="mb-0 small">
+                                <li><strong>Data Sources:</strong> 
+                                    {% if alphavantage_articles > 0 %}AlphaVantage API ({{ alphavantage_articles }} with sentiment), {% endif %}
+                                    {% if nyt_articles is defined and nyt_articles > 0 %}NYT API ({{ nyt_articles }} abstracts), {% endif %}
+                                    {% if rss_articles is defined and rss_articles > 0 %}Premium RSS ({{ rss_articles }} feeds), {% endif %}
+                                    Google Search fallback
+                                </li>
+                                <li><strong>Content Quality:</strong> {{ alphavantage_coverage|default(0) }}% full content, {{ premium_coverage|default(0) }}% premium sources</li>
+                                <li><strong>Analysis Features:</strong> 
+                                    {% if alphavantage_articles > 0 %}Sentiment analysis, relevance scoring, {% endif %}
+                                    quantified financial impacts, trading context
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="mb-0 small">
+                                <li><strong>Processing:</strong> {{ articles_analyzed|default(article_count) }} articles analyzed, {{ articles_displayed|default(8) }} top articles displayed</li>
+                                <li><strong>Quality Grade:</strong> {{ analysis_quality }} - 
+                                    {% if analysis_quality == 'Premium+' %}Multi-source with sentiment analysis
+                                    {% elif analysis_quality == 'Institutional' %}Premium sources with quantified impacts
+                                    {% elif analysis_quality == 'Professional' %}Enhanced analysis with business context
+                                    {% else %}Comprehensive analysis of available data{% endif %}
+                                </li>
+                                <li><strong>Source Diversity:</strong> {{ (source_performance.values() | list | length) if source_performance else "Multiple" }} premium data sources integrated</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-3">
+                    <div class="row">
+                        <div class="col-12">
+                            <small class="text-muted">
+                                <strong>Limitations:</strong> Premium paywalled content limited to excerpts unless available via APIs. 
+                                <strong>Disclaimer:</strong> For informational purposes only. Not investment advice. 
+                                Consult latest SEC filings and qualified financial advisors.
+                                <strong>Data Freshness:</strong> Analysis generated on {{ analysis_timestamp or "recent request" }}.
+                            </small>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Action Buttons -->
+                <!-- Enhanced Action Buttons -->
                 <div class="text-center mt-4 mb-5">
                     <a href="/news" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Analyze Another Company
@@ -248,6 +439,11 @@
                     <button onclick="exportAnalysis()" class="btn btn-outline-info">
                         <i class="fas fa-download"></i> Export Summary
                     </button>
+                    {% if article_count > 15 %}
+                    <button onclick="showAllArticles()" class="btn btn-outline-warning" id="showAllBtn">
+                        <i class="fas fa-eye"></i> Show All {{ article_count }} Articles
+                    </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -256,12 +452,28 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function exportAnalysis() {
-            // Simple text export functionality
             const company = "{{ company }}";
             const dateRange = "{{ date_range }}";
-            let text = `Financial Analysis: ${company}\n`;
+            const analysisQuality = "{{ analysis_quality }}";
+            const sourceBreakdown = {
+                total: {{ article_count }},
+                alphavantage: {{ alphavantage_articles|default(0) }},
+                nyt: {{ nyt_articles|default(0) }},
+                rss: {{ rss_articles|default(0) }},
+                premium: {{ high_quality_sources }}
+            };
+            
+            let text = `PREMIUM FINANCIAL ANALYSIS: ${company}\n`;
+            text += `Analysis Quality: ${analysisQuality}\n`;
             text += `Date Range: ${dateRange}\n`;
             text += `Generated: ${new Date().toLocaleString()}\n\n`;
+            
+            text += `SOURCE BREAKDOWN:\n`;
+            text += `• Total Articles: ${sourceBreakdown.total}\n`;
+            if (sourceBreakdown.alphavantage > 0) text += `• AlphaVantage (Full Content + Sentiment): ${sourceBreakdown.alphavantage}\n`;
+            if (sourceBreakdown.nyt > 0) text += `• NYT API (Full Abstracts): ${sourceBreakdown.nyt}\n`;
+            if (sourceBreakdown.rss > 0) text += `• Premium RSS Feeds: ${sourceBreakdown.rss}\n`;
+            text += `• Premium Sources Total: ${sourceBreakdown.premium}\n\n`;
             
             // Add summaries
             text += "EXECUTIVE SUMMARY:\n";
@@ -279,25 +491,51 @@
             text += "• {{ bullet|striptags }}\n";
             {% endfor %}
             
+            text += "\n" + "=".repeat(50) + "\n";
+            text += "Analysis powered by premium financial data sources\n";
+            text += "Generated by institutional-grade news analysis system\n";
+            
             // Create download
             const blob = new Blob([text], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${company.replace(/\s+/g, '_')}_analysis_${new Date().toISOString().split('T')[0]}.txt`;
+            a.download = `${company.replace(/\s+/g, '_')}_premium_analysis_${new Date().toISOString().split('T')[0]}.txt`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
         }
         
+        function showAllArticles() {
+            // This would require additional backend support or AJAX call
+            // For now, just scroll to top and suggest refresh with more articles
+            window.scrollTo({top: 0, behavior: 'smooth'});
+            alert('To view all articles, please refresh the analysis or contact support for expanded view.');
+        }
+        
         // Print styles
         window.addEventListener('beforeprint', function() {
             document.querySelector('.back-button').style.display = 'none';
+            document.querySelector('.source-breakdown').style.background = '#f8f9fa';
+            document.querySelector('.source-breakdown').style.color = '#000';
         });
         
         window.addEventListener('afterprint', function() {
             document.querySelector('.back-button').style.display = 'block';
+            document.querySelector('.source-breakdown').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            document.querySelector('.source-breakdown').style.color = 'white';
+        });
+        
+        // Add purple color for AlphaVantage branding
+        document.addEventListener('DOMContentLoaded', function() {
+            const style = document.createElement('style');
+            style.textContent = `
+                .bg-purple { background-color: #6f42c1 !important; }
+                .text-purple { color: #6f42c1 !important; }
+                .badge.bg-purple { background-color: #6f42c1 !important; }
+            `;
+            document.head.appendChild(style);
         });
     </script>
 </body>

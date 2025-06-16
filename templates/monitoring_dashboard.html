@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Analysis System Monitoring</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .health-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .health-healthy { background-color: #28a745; }
+        .health-warning { background-color: #ffc107; }
+        .health-error { background-color: #dc3545; }
+        
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .anomaly-item {
+            border-left: 4px solid #dc3545;
+            background: #f8d7da;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0 5px 5px 0;
+        }
+        
+        .anomaly-medium { border-left-color: #ffc107; background: #fff3cd; }
+        .anomaly-low { border-left-color: #17a2b8; background: #d1ecf1; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3">
+                    <h2><i class="fas fa-chart-bar text-primary"></i> News Analysis System Monitoring</h2>
+                    <div>
+                        <span class="health-indicator health-{{ data.health_status }}"></span>
+                        <span class="text-muted">System Status: 
+                            {% if data.health_status == 'healthy' %}
+                                <span class="text-success">Healthy</span>
+                            {% elif data.health_status == 'issues_detected' %}
+                                <span class="text-warning">Issues Detected</span>
+                            {% else %}
+                                <span class="text-danger">Error</span>
+                            {% endif %}
+                        </span>
+                        <a href="/news" class="btn btn-outline-primary ms-3">
+                            <i class="fas fa-arrow-left"></i> Back to Analysis
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Metrics -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="metric-card text-center">
+                    <h3 class="mb-1">{{ data.real_time_metrics.recent_requests_count or 0 }}</h3>
+                    <small>Recent Requests</small>
+                    <div class="mt-2">
+                        <i class="fas fa-clock"></i> Last {{ data.real_time_metrics.recent_requests_count or 0 }} analyses
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card text-center">
+                    <h3 class="mb-1">{{ data.real_time_metrics.avg_articles or 0 }}</h3>
+                    <small>Avg Articles per Analysis</small>
+                    <div class="mt-2">
+                        <i class="fas fa-newspaper"></i> Article quality
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card text-center">
+                    <h3 class="mb-1">{{ data.real_time_metrics.avg_response_time or 0 }}s</h3>
+                    <small>Avg Response Time</small>
+                    <div class="mt-2">
+                        <i class="fas fa-tachometer-alt"></i> Performance
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="metric-card text-center">
+                    <h3 class="mb-1">{{ data.anomalies|length }}</h3>
+                    <small>Active Issues</small>
+                    <div class="mt-2">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        {% if data.anomalies|length == 0 %}All Good{% else %}Needs Attention{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row">
+            <!-- Source Performance Chart -->
+            <div class="col-md-6">
+                <div class="chart-container">
+                    <h5><i class="fas fa-database"></i> Source Performance (7 Days)</h5>
+                    <canvas id="sourcePerformanceChart" height="300"></canvas>
+                </div>
+            </div>
+
+            <!-- Quality Trends Chart -->
+            <div class="col-md-6">
+                <div class="chart-container">
+                    <h5><i class="fas fa-star"></i> Analysis Quality Distribution</h5>
+                    <canvas id="qualityDistributionChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Metrics -->
+        <div class="row">
+            <!-- Weekly Summary -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="fas fa-calendar-week"></i> Weekly Summary</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if data.weekly_summary %}
+                        <ul class="list-unstyled mb-0">
+                            <li><strong>Total Analyses:</strong> {{ data.weekly_summary.total_analyses or 0 }}</li>
+                            <li><strong>Avg Articles:</strong> {{ data.weekly_summary.avg_articles_per_analysis or 0 }}</li>
+                            <li><strong>Premium Coverage:</strong> {{ data.weekly_summary.avg_premium_percentage or 0 }}%</li>
+                            <li><strong>Avg Response Time:</strong> {{ data.weekly_summary.avg_response_time_seconds or 0 }}s</li>
+                        </ul>
+                        {% else %}
+                        <p class="text-muted">No weekly data available</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Performance -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0"><i class="fas fa-plug"></i> API Performance</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if data.weekly_summary and data.weekly_summary.api_performance %}
+                        {% for api, metrics in data.weekly_summary.api_performance.items() %}
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between">
+                                <span><strong>{{ api.title() }}:</strong></span>
+                                <span class="{% if metrics.success_rate >= 90 %}text-success{% elif metrics.success_rate >= 70 %}text-warning{% else %}text-danger{% endif %}">
+                                    {{ metrics.success_rate|round(1) }}%
+                                </span>
+                            </div>
+                            <small class="text-muted">{{ metrics.total_calls }} calls, {{ metrics.avg_response_time_ms|round }}ms avg</small>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <p class="text-muted">No API performance data available</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header {% if data.anomalies|length == 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
+                        <h6 class="mb-0"><i class="fas fa-heartbeat"></i> System Health</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if data.anomalies %}
+                        {% for anomaly in data.anomalies %}
+                        <div class="anomaly-item anomaly-{{ anomaly.severity }}">
+                            <strong>{{ anomaly.type.replace('_', ' ').title() }}</strong>
+                            <p class="mb-1 small">{{ anomaly.message }}</p>
+                            <small class="text-muted">{{ anomaly.recommendation }}</small>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-success">
+                            <i class="fas fa-check-circle"></i> All systems operating normally
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export and Actions -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="fas fa-download"></i> Export & Actions</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group" role="group">
+                            <a href="/api/monitoring/export?days=7" class="btn btn-outline-primary">
+                                <i class="fas fa-download"></i> Export 7 Days
+                            </a>
+                            <a href="/api/monitoring/export?days=30" class="btn btn-outline-primary">
+                                <i class="fas fa-download"></i> Export 30 Days
+                            </a>
+                            <button onclick="refreshDashboard()" class="btn btn-outline-success">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button onclick="checkAnomalies()" class="btn btn-outline-warning">
+                                <i class="fas fa-search"></i> Check Issues
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Source Performance Chart
+        const sourceCtx = document.getElementById('sourcePerformanceChart').getContext('2d');
+        const sourceData = {{ data.real_time_metrics.source_totals|tojson if data.real_time_metrics.source_totals else '{}' }};
+        
+        new Chart(sourceCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(sourceData),
+                datasets: [{
+                    data: Object.values(sourceData),
+                    backgroundColor: [
+                        '#6f42c1', // AlphaVantage - Purple
+                        '#fd7e14', // NYT - Orange  
+                        '#20c997', // RSS - Teal
+                        '#dc3545'  // Google - Red
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        // Quality Distribution Chart
+        const qualityCtx = document.getElementById('qualityDistributionChart').getContext('2d');
+        const qualityData = {{ data.real_time_metrics.quality_distribution|tojson if data.real_time_metrics.quality_distribution else '{}' }};
+        
+        new Chart(qualityCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(qualityData),
+                datasets: [{
+                    label: 'Analyses',
+                    data: Object.values(qualityData),
+                    backgroundColor: [
+                        '#28a745', // Premium+ - Green
+                        '#007bff', // Institutional - Blue
+                        '#17a2b8', // Professional - Cyan
+                        '#ffc107', // Standard - Yellow
+                        '#6c757d'  // Limited - Gray
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Dashboard functions
+        function refreshDashboard() {
+            window.location.reload();
+        }
+
+        function checkAnomalies() {
+            fetch('/api/monitoring/anomalies')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.count === 0) {
+                        alert('✅ No anomalies detected. System is running normally.');
+                    } else {
+                        alert(`⚠️ Found ${data.count} issues. Check the System Health panel for details.`);
+                    }
+                })
+                .catch(error => {
+                    alert('❌ Error checking anomalies: ' + error.message);
+                });
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(function() {
+            console.log('Auto-refreshing dashboard...');
+            window.location.reload();
+        }, 5 * 60 * 1000);
+    </script>
+</body>
+</html>
