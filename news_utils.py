@@ -1254,8 +1254,7 @@ def fetch_google_news(company: str, days_back: int = 7) -> List[Dict]:
 
 def fetch_alphavantage_news(company: str, days_back: int = 7) -> List[Dict]:
     """
-    Fetch comprehensive news using AlphaVantage News Sentiment API.
-    (This is the existing function - maintained for backward compatibility)
+    Enhanced AlphaVantage News Sentiment API with better filtering.
     """
     try:
         api_key = os.getenv("ALPHAVANTAGE_API_KEY")
@@ -1269,13 +1268,13 @@ def fetch_alphavantage_news(company: str, days_back: int = 7) -> List[Dict]:
         
         rate_limiter.wait_if_needed('alphavantage', 12.0)  # AlphaVantage rate limit
         
-        # AlphaVantage News Sentiment API
+        # AlphaVantage News Sentiment API - increased limit
         url = "https://www.alphavantage.co/query"
         params = {
             "function": "NEWS_SENTIMENT",
             "tickers": ticker,
             "apikey": api_key,
-            "limit": 50,
+            "limit": 200,  # Increased from 50 to 200 for better coverage
             "sort": "LATEST"
         }
         
@@ -1309,6 +1308,7 @@ def fetch_alphavantage_news(company: str, days_back: int = 7) -> List[Dict]:
         
         # Filter articles by date
         cutoff_date = datetime.now() - timedelta(days=days_back)
+        relevance_scores_found = []  # Track scores for debugging
         
         for item in feed_data:
             try:
@@ -1340,18 +1340,28 @@ def fetch_alphavantage_news(company: str, days_back: int = 7) -> List[Dict]:
                     except (ValueError, TypeError):
                         relevance_score = 0.0
                 
+                relevance_scores_found.append(relevance_score)  # Track for debugging
+                
                 sentiment_raw = item.get("overall_sentiment_score", "0")
                 try:
                     sentiment_score = float(sentiment_raw) if sentiment_raw else 0.0
                 except (ValueError, TypeError):
                     sentiment_score = 0.0
                 
+                # Get article content
+                title = item.get("title", "").strip()
+                summary = item.get("summary", "").strip()
+                url = item.get("url", "").strip()
+                
+                if not title or not url:
+                    continue
+                
                 article = {
-                    "title": item.get("title", ""),
-                    "snippet": item.get("summary", "")[:300],
-                    "full_content": item.get("summary", ""),
-                    "link": item.get("url", ""),
-                    "source": extract_domain(item.get("url", "")),
+                    "title": title,
+                    "snippet": summary[:300],
+                    "full_content": summary,
+                    "link": url,
+                    "source": extract_domain(url),
                     "published": time_published,
                     "sentiment_score": sentiment_score,
                     "sentiment_label": item.get("overall_sentiment_label", "Neutral"),
@@ -1359,15 +1369,59 @@ def fetch_alphavantage_news(company: str, days_back: int = 7) -> List[Dict]:
                     "source_type": "alphavantage_premium"
                 }
                 
-                if relevance_score > 0.1:
+                # ENHANCED FILTERING LOGIC
+                include_article = False
+                
+                # Method 1: Relevance score (lowered threshold significantly)
+                if relevance_score > 0.01:  # Much lower threshold (was 0.1)
+                    include_article = True
+                
+                # Method 2: Company/ticker mention in title or summary
+                content_lower = (title + " " + summary).lower()
+                company_lower = company.lower()
+                ticker_lower = ticker.lower()
+                
+                if (company_lower in content_lower or 
+                    ticker_lower in content_lower or
+                    # Also check for common variations
+                    any(var in content_lower for var in [
+                        company_lower.replace(' ', ''),
+                        company_lower.replace('.', ''),
+                        company_lower.replace(',', '')
+                    ])):
+                    include_article = True
+                
+                # Method 3: Strong sentiment indicates relevance
+                if abs(sentiment_score) > 0.3:  # Strong positive or negative sentiment
+                    include_article = True
+                
+                # Method 4: Business/financial keywords + company mention
+                financial_keywords = ['earnings', 'revenue', 'profit', 'stock', 'shares', 'analyst', 'upgrade', 'downgrade']
+                has_financial_context = any(keyword in content_lower for keyword in financial_keywords)
+                has_company_mention = company_lower in content_lower or ticker_lower in content_lower
+                
+                if has_financial_context and has_company_mention:
+                    include_article = True
+                
+                if include_article:
                     articles.append(article)
                     
             except Exception as item_error:
                 logger.warning(f"Error processing AlphaVantage article: {item_error}")
                 continue
         
-        logger.info(f"AlphaVantage returned {len(articles)} articles for {ticker}")
-        return articles
+        # Enhanced logging for debugging
+        if relevance_scores_found:
+            avg_relevance = sum(relevance_scores_found) / len(relevance_scores_found)
+            max_relevance = max(relevance_scores_found)
+            min_relevance = min(relevance_scores_found)
+            logger.info(f"AlphaVantage relevance scores - Avg: {avg_relevance:.4f}, Max: {max_relevance:.4f}, Min: {min_relevance:.4f}")
+        
+        # Sort by relevance score + sentiment strength for quality ranking
+        articles.sort(key=lambda x: (x.get('relevance_score', 0) + abs(x.get('sentiment_score', 0))), reverse=True)
+        
+        logger.info(f"AlphaVantage returned {len(articles)} articles for {ticker} (from {len(feed_data)} total)")
+        return articles[:50]  # Return top 50 most relevant
         
     except Exception as e:
         logger.error(f"Error fetching AlphaVantage news for '{company}': {str(e)}")
@@ -1641,9 +1695,9 @@ def fetch_comprehensive_news_enhanced(company: str, days_back: int = 7, enable_m
         'success': total_articles > 0
     }
 
-def generate_premium_analysis(company: str, articles: List[Dict], max_articles: int = 20) -> Dict[str, List[str]]:
+def generate_premium_analysis(company: str, articles: List[Dict], max_articles: int = 30) -> Dict[str, List[str]]:
     """
-    Main function that generates institutional-grade analysis using combined premium sources.
+    Enhanced analysis function - increased from 20 to 30 articles for better diversity.
     """
     if not articles:
         return {
@@ -1655,7 +1709,7 @@ def generate_premium_analysis(company: str, articles: List[Dict], max_articles: 
     try:
         # Score and filter articles
         scored_articles = score_articles_fixed(articles, company)
-        top_articles = [article for article, score in scored_articles[:max_articles]]
+        top_articles = [article for article, score in scored_articles[:max_articles]]  # Increased to 30
         
         # Calculate source quality metrics
         source_type_counts = {}
@@ -1679,7 +1733,7 @@ def generate_premium_analysis(company: str, articles: List[Dict], max_articles: 
                 relevance_score = article.get('relevance_score', 0)
                 
                 article_text += f"\n{i}. [{content_quality}] {article['title']}\n"
-                article_text += f"   Source: {article['source']} | Sentiment: {sentiment_label} ({sentiment_score:.2f}) | Relevance: {relevance_score:.2f}\n"
+                article_text += f"   Source: {article['source']} | Sentiment: {sentiment_label} ({sentiment_score:.2f}) | Relevance: {relevance_score:.3f}\n"
                 article_text += f"   Full Content: {content}\n"
                 
             elif source_type == 'nyt_api':
@@ -1704,7 +1758,7 @@ def generate_premium_analysis(company: str, articles: List[Dict], max_articles: 
             
             article_text += f"   Link: {article['link']}\n"
         
-        # Enhanced analysis prompt
+        # Enhanced analysis prompt for 30 articles
         prompt = f"""You are a senior equity research analyst at Goldman Sachs with access to premium financial data sources for {company}.
 
 ENHANCED DATA SOURCES ({total_articles} articles from multiple premium APIs and feeds):
@@ -1722,7 +1776,7 @@ REQUIREMENTS FOR EACH BULLET:
 3. Add market context and trading implications
 4. Reference sentiment analysis where available
 
-REQUIRED SECTIONS (2-3 substantive bullets each):
+REQUIRED SECTIONS (3-4 substantive bullets each due to increased article count):
 
 **EXECUTIVE SUMMARY**
 Focus: Strategic developments affecting fundamental business outlook
@@ -1753,7 +1807,8 @@ CRITICAL REQUIREMENTS:
 - Extract specific numbers: price targets, earnings estimates, revenue forecasts
 - Add trading context and technical analysis when mentioned
 - Quantify everything possible: timelines, financial impacts, probability estimates
-- Reference premium source advantages: "According to full NYT analysis..." or "Enhanced RSS content reveals..."
+- Reference premium source advantages: "According to full AlphaVantage analysis..." or "Enhanced NYT content reveals..."
+- Generate 3-4 bullets per section due to increased article diversity
 
 Format each insight with quantified impact and cite sources appropriately."""
 
@@ -1770,7 +1825,7 @@ Format each insight with quantified impact and cite sources appropriately."""
                 }
             ],
             temperature=0.05,
-            max_tokens=2000
+            max_tokens=2500  # Increased for more detailed analysis
         )
         
         analysis_text = response.choices[0].message.content
@@ -1780,7 +1835,7 @@ Format each insight with quantified impact and cite sources appropriately."""
         nyt_count = source_type_counts.get('nyt_api', 0)
         rss_count = source_type_counts.get('rss_feed', 0)
         
-        logger.info(f"Premium analysis for {company}: {len(analysis_text)} chars from {total_articles} articles "
+        logger.info(f"Enhanced premium analysis for {company}: {len(analysis_text)} chars from {total_articles} articles "
                    f"(AV:{alphavantage_count}, NYT:{nyt_count}, RSS:{rss_count}, Premium:{premium_count})")
         
         return parse_financial_summaries(analysis_text)
@@ -1792,7 +1847,7 @@ Format each insight with quantified impact and cite sources appropriately."""
             "investor": ["Premium analysis unavailable due to processing error."],
             "catalysts": ["Unable to identify catalysts at this time."]
         }
-
+    
 def parse_financial_summaries(text: str) -> Dict[str, List[str]]:
     """Parse the LLM response into structured summaries."""
     sections = {"executive": [], "investor": [], "catalysts": []}
@@ -1975,7 +2030,7 @@ def fetch_rss_simple(company: str, days_back: int = 7) -> List[Dict]:
 # Main integration function
 def fetch_comprehensive_news_parallel(company: str, days_back: int = 7) -> Dict[str, Any]:
     """
-    Main function using parallel fetching and fixed scoring.
+    Enhanced parallel function with improved AlphaVantage filtering and increased article limits.
     """
     try:
         # Run parallel fetch
@@ -1991,44 +2046,86 @@ def fetch_comprehensive_news_parallel(company: str, days_back: int = 7) -> Dict[
         all_articles.extend(results['nyt'])
         all_articles.extend(results['rss'])
         
-        # Deduplicate
+        # Enhanced deduplication
         unique_articles = deduplicate_articles(all_articles)
         
         # Apply enhanced scoring to fix Benzinga/Fool/Zacks issue
         scored_articles = score_articles_fixed(unique_articles, company)
         final_articles = [article for article, score in scored_articles if score > -5]  # Filter out heavily penalized
         
-        logger.info(f"🎯 Parallel analysis complete: {len(final_articles)} articles")
+        # Calculate enhanced metrics
+        alphavantage_count = len(results['alphavantage'])
+        nyt_count = len(results['nyt'])
+        rss_count = len(results['rss'])
+        total_unique = len(final_articles)
         
-        # Generate analysis
-        summaries = generate_premium_analysis(company, final_articles) if final_articles else {}
+        # Calculate quality metrics
+        premium_source_domains = ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 'cnbc.com', 
+                                 'marketwatch.com', 'barrons.com', 'nytimes.com']
+        high_quality_sources = sum(1 for article in final_articles 
+                                 if article.get('source', '') in premium_source_domains)
+        
+        # Calculate coverage percentages
+        if total_unique > 0:
+            premium_coverage = (high_quality_sources / total_unique * 100)
+            alphavantage_coverage = (alphavantage_count / total_unique * 100) if alphavantage_count <= total_unique else (alphavantage_count / (alphavantage_count + nyt_count + rss_count) * 100)
+        else:
+            premium_coverage = 0
+            alphavantage_coverage = 0
+        
+        # Enhanced analysis quality determination
+        full_content_articles = alphavantage_count + nyt_count + rss_count
+        
+        if alphavantage_count >= 8 and premium_coverage >= 40:
+            analysis_quality = "Premium+"
+        elif alphavantage_count >= 5 and (premium_coverage >= 30 or full_content_articles >= 10):
+            analysis_quality = "Institutional"
+        elif alphavantage_count >= 3 or (premium_coverage >= 40 and full_content_articles >= 8):
+            analysis_quality = "Professional" 
+        elif alphavantage_count >= 1 or high_quality_sources >= 3:
+            analysis_quality = "Standard"
+        else:
+            analysis_quality = "Limited"
+        
+        logger.info(f"🎯 Enhanced parallel analysis complete: {total_unique} articles")
+        logger.info(f"📊 Source breakdown - AV: {alphavantage_count}, NYT: {nyt_count}, RSS: {rss_count}")
+        logger.info(f"📈 Quality: {analysis_quality} | Premium coverage: {premium_coverage:.1f}% | AV coverage: {alphavantage_coverage:.1f}%")
+        
+        # Generate analysis with increased article limit (30 instead of 20)
+        summaries = generate_premium_analysis(company, final_articles, max_articles=30) if final_articles else {}
         
         return {
             'company': company,
             'articles': final_articles,
             'summaries': summaries,
             'metrics': {
-                'total_articles': len(final_articles),
-                'alphavantage_articles': len(results['alphavantage']),
-                'nyt_articles': len(results['nyt']),
-                'rss_articles': len(results['rss']),
-                'parallel_time': results['parallel_time']
+                'total_articles': total_unique,
+                'alphavantage_articles': alphavantage_count,
+                'nyt_articles': nyt_count,
+                'rss_articles': rss_count,
+                'premium_sources_count': high_quality_sources,
+                'high_quality_sources': high_quality_sources,
+                'premium_coverage': round(premium_coverage, 1),
+                'alphavantage_coverage': round(alphavantage_coverage, 1),
+                'analysis_quality': analysis_quality,
+                'parallel_time': results['parallel_time'],
+                'full_content_articles': full_content_articles
             },
             'source_performance': {
-                'alphavantage': len(results['alphavantage']),
-                'nyt_parallel': len(results['nyt']),
-                'rss_feeds': len(results['rss'])
+                'alphavantage': alphavantage_count,
+                'nyt_parallel': nyt_count,
+                'rss_feeds': rss_count
             },
             'success': len(final_articles) > 0
         }
         
     except Exception as e:
-        logger.error(f"Parallel comprehensive news failed: {e}")
+        logger.error(f"Enhanced parallel comprehensive news failed: {e}")
         return {
             'company': company,
             'articles': [],
             'summaries': {},
-            'metrics': {'total_articles': 0, 'parallel_time': 0},
+            'metrics': {'total_articles': 0, 'parallel_time': 0, 'analysis_quality': 'Error'},
             'source_performance': {},
             'success': False
         }
