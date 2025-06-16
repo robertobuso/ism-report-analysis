@@ -709,6 +709,11 @@
                             <i class="bi bi-arrow-left-right me-2"></i>Comparison View
                         </button>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news" target="_blank">
+                            <i class="bi bi-newspaper me-2"></i>News Analysis (Beta)
+                        </a>
+                    </li>
                 </ul>
         
         <!-- Tab Content -->
@@ -989,20 +994,38 @@
         let corrComparisonChartInstance = null;
 
         // Helper function to calculate Simple Moving Average
-        function calculateSMA(data, windowSize) {
-            if (!data || data.length < windowSize) return [];
+        function calculateSMA(alignedData, windowSize) {
+            if (!alignedData || alignedData.length < windowSize) return Array(alignedData.length).fill(null);
+            
             let sma = [];
-            for (let i = 0; i <= data.length - windowSize; i++) {
-                let sum = 0;
-                for (let j = 0; j < windowSize; j++) {
-                    sum += data[i + j] || 0; // Handle potential nulls if not filtered earlier
+            
+            for (let i = 0; i < alignedData.length; i++) {
+                if (i < windowSize - 1) {
+                    // Not enough data points yet
+                    sma.push(null);
+                } else {
+                    // Collect non-null values in the current window
+                    let windowValues = [];
+                    for (let j = i - windowSize + 1; j <= i; j++) {
+                        if (alignedData[j] !== null && !isNaN(alignedData[j])) {
+                            windowValues.push(alignedData[j]);
+                        }
+                    }
+                    
+                    if (windowValues.length >= windowSize) {
+                        // Calculate average of the window
+                        const sum = windowValues.reduce((a, b) => a + b, 0);
+                        sma.push(sum / windowValues.length);
+                    } else {
+                        // Not enough non-null values in window
+                        sma.push(null);
+                    }
                 }
-                sma.push(sum / windowSize);
             }
-            // Pad the beginning of the SMA array with nulls to align with original data labels
-            return Array(windowSize - 1).fill(null).concat(sma);
+            
+            return sma;
         }
-
+        
         function renderComparisonCharts(manufacturingData, servicesData, indexName) {
             // Destroy existing charts
             if (mfgComparisonChartInstance) mfgComparisonChartInstance.destroy();
@@ -1096,14 +1119,7 @@
             // Prepare SMA data specifically for Manufacturing
             let calculatedMfgSma = [];
             if (showMovingAverage) {
-                const numericMfgValuesForSma = alignedMfgValues.filter(v => typeof v === 'number' && !isNaN(v));
-                // console.log("Numeric MFG Values for SMA:", numericMfgValuesForSma); // DEBUG
-                if (numericMfgValuesForSma.length >= smaWindow) {
-                    calculatedMfgSma = calculateSMA(numericMfgValuesForSma, smaWindow);
-                } else {
-                    calculatedMfgSma = Array(combinedLabels.length).fill(null); // Fill to match labels length
-                }
-                // console.log("Calculated MFG SMA data:", calculatedMfgSma); // DEBUG
+                calculatedMfgSma = calculateSMA(alignedMfgValues, smaWindow);
             }
 
             const mfgDatasets = [{
@@ -1139,17 +1155,10 @@
             });
 
             // 2. Services Line Chart
-            // Prepare SMA data specifically for Services (this logic was already improved in my last full JS example)
+            // Prepare SMA data specifically for Services
             let calculatedSvcSma = [];
             if (showMovingAverage) {
-                const numericSvcValuesForSma = alignedSvcValues.filter(v => typeof v === 'number' && !isNaN(v));
-                // console.log("Numeric SVC Values for SMA:", numericSvcValuesForSma); // DEBUG
-                if (numericSvcValuesForSma.length >= smaWindow) {
-                    calculatedSvcSma = calculateSMA(numericSvcValuesForSma, smaWindow);
-                } else {
-                    calculatedSvcSma = Array(combinedLabels.length).fill(null); // Fill to match labels length
-                }
-                // console.log("Calculated SVC SMA data:", calculatedSvcSma); // DEBUG
+                calculatedSvcSma = calculateSMA(alignedSvcValues, smaWindow);
             }
 
             const svcDatasets = [{
@@ -1368,8 +1377,34 @@
                 insightsHTML += `<li class="mb-2"><i class="bi bi-calendar-event me-2 text-primary"></i>Latest Difference (${commonDates[0]}): <strong class="${latestDiff > 0 ? 'text-info' : (latestDiff < 0 ? 'text-success' : 'text-secondary')}">${latestDiff.toFixed(1)} points</strong>.</li>`;
             }
             if (!isNaN(diffChange)) {
-                insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Change in Difference: <strong class="${diffChange > 0 ? 'text-danger' : (diffChange < 0 ? 'text-success' : 'text-secondary')}">${diffChange.toFixed(1)} points</strong> (gap ${diffChange > 0 ? 'widened for Mfg' : (diffChange < 0 ? 'narrowed or favored Svc' : 'stable')}).</li>`;
+                // Determine if the gap widened or narrowed in absolute terms
+                const absLatest = Math.abs(latestDiff);
+                const absPrev = Math.abs(prevDiff);
+                const absChange = absLatest - absPrev;
+                
+                let interpretation;
+                if (absChange > 0.1) {
+                    interpretation = 'gap widened';
+                } else if (absChange < -0.1) {
+                    interpretation = 'gap narrowed';
+                } else {
+                    interpretation = 'gap remained stable';
+                }
+                
+                // Add direction context
+                if (Math.abs(absChange) > 0.1) {
+                    if (latestDiff > 0) {
+                        interpretation += ' (Mfg leading)';
+                    } else {
+                        interpretation += ' (Svc leading)';
+                    }
+                }
+                
+                const changeClass = absChange > 0.1 ? 'text-warning' : (absChange < -0.1 ? 'text-success' : 'text-secondary');
+                
+                insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Change in Difference: <strong class="${changeClass}">${diffChange.toFixed(1)} points</strong> (${interpretation}).</li>`;
             }
+
             insightsHTML += `<li class="mb-2"><i class="bi bi-link-45deg me-2 text-primary"></i>Correlation: <strong>${correlation.toFixed(2)}</strong> (${interpretCorrelation(correlation)}).</li>`;
             insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up me-2 text-info"></i>Mfg Trend: <strong>${mfgTrend.toFixed(2)} points/period</strong>.</li>`;
             insightsHTML += `<li class="mb-2"><i class="bi bi-graph-up me-2 text-success"></i>Svc Trend: <strong>${svcTrend.toFixed(2)} points/period</strong>.</li>`;
@@ -1395,19 +1430,26 @@
             const sumY2 = yArray.reduce((s, v) => s + v * v, 0);
             const numerator = n * sumXY - sumX * sumY;
             const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-            return denominator === 0 ? 0 : numerator / denominator;
+            
+            if (denominator === 0) return 0;
+            
+            const correlation = numerator / denominator;
+            
+            // Clamp to valid correlation bounds [-1, 1] to handle floating point errors
+            return Math.max(-1, Math.min(1, correlation));
         }
 
         function calculateTrend(values) {
             if (values.length < 2) return NaN;
             const n = values.length;
-            const x = Array.from({ length: n }, (_, i) => i); // Time periods 0, 1, 2...
+            // Since data is newest-first, reverse the time indexing
+            const x = Array.from({ length: n }, (_, i) => n - 1 - i); // Time periods (n-1), (n-2), ... 1, 0
             const sumX = x.reduce((s, v) => s + v, 0);
             const sumY = values.reduce((s, v) => s + v, 0);
             const sumXY = x.reduce((s, v, i) => s + v * values[i], 0);
             const sumX2 = x.reduce((s, v) => s + v * v, 0);
             const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-            return isNaN(slope) ? 0 : slope; // Return 0 if slope is NaN (e.g. all x values are same)
+            return isNaN(slope) ? 0 : slope;
         }
 
         function interpretCorrelation(corr) {

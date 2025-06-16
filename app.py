@@ -10,6 +10,7 @@ from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_
 from config_loader import config_loader 
 from typing import List, Optional
 
+
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
@@ -21,6 +22,12 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
 from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
+
+from openai import OpenAI
+from datetime import datetime, timedelta
+import requests
+import re
+
 
 # Configure logging
 logging.basicConfig(
@@ -59,6 +66,13 @@ logger.info("Flask app wrapped with ProxyFix.")
 UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
+
+def convert_markdown_bullet(bullet):
+    # Convert **bold:** to <strong>bold:</strong>
+    bullet = re.sub(r"\*\*(.+?)\*\*:", r"<strong>\1:</strong>", bullet)
+    # Convert [text](url) to HTML links
+    bullet = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank">\1</a>', bullet)
+    return bullet
 
 ALLOWED_EXTENSIONS = {'pdf'}
 
@@ -140,6 +154,135 @@ def index():
         # On error, fall back to the upload page
         return redirect(url_for('upload_view'))
     
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+@app.route("/news")
+@login_required
+def news_form():
+    return render_template("news_simple.html")
+
+@app.route("/news/summary", methods=["POST"])
+@login_required
+def get_news_summary():
+    try:
+        company = request.form.get("company", "").strip()
+        print(f"[DEBUG] Received company: '{company}'")
+
+        if not company:
+            return render_template("news_simple.html", error="Please enter a company name")
+
+        # Step 1: Fetch articles
+        articles = fetch_google_news(company)
+        print(f"[DEBUG] Found {len(articles)} articles")
+
+        # Step 2: Summarize articles
+        summaries_raw = generate_summaries(company, articles)
+        summaries = {
+            key: [convert_markdown_bullet(b) for b in bullets]
+            for key, bullets in summaries_raw.items()
+        }
+
+        # ✅ Step 3: Date range to display in UI
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=1)
+        date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
+
+        # Step 4: Render results
+        return render_template(
+            "news_results.html",
+            company=company,
+            summaries=summaries,
+            articles=articles,
+            date_range=date_range
+        )
+
+    except Exception as e:
+        print(f"[ERROR] Failed in get_news_summary: {e}")
+        traceback.print_exc()
+        return render_template("news_simple.html", error="Something went wrong.")
+
+def fetch_google_news(company):
+    try:
+        one_day_ago = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        query = f"{company} news after:{one_day_ago}"
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            "key": os.getenv("GOOGLE_CUSTOM_SEARCH_API_KEY"),
+            "cx": os.getenv("GOOGLE_SEARCH_ENGINE_ID"),
+            "q": query,
+            "sort": "date",
+            "num": 10
+        }
+        res = requests.get(url, params=params)
+        res.raise_for_status()
+        return [{"title": i["title"], "snippet": i["snippet"], "link": i["link"]} for i in res.json().get("items", [])]
+    except Exception as e:
+        print(f"Error fetching news: {e}")
+        return []
+
+def generate_summaries(company, articles):
+    if not articles:
+        return {
+            "executive": ["No recent articles found."],
+            "investor": ["No recent articles found."],
+            "catalysts": ["No recent articles found."]
+        }
+    try:
+        article_text = "\n".join(f"- {a['title']}: {a['snippet']} ({a['link']})" for a in articles)
+        prompt = (
+            f"You are a financial analyst reviewing the following news about {company}.\n\n"
+            f"Summarize the content in three distinct sections:\n"
+            f"1. Executive Summary – Key business events, leadership changes, M&A, partnerships.\n"
+            f"2. Investor Insights – Market impact, stock performance, financial outlooks.\n"
+            f"3. Catalysts & Drivers – Legal, reputational, labor, macro, or social factors that might affect performance.\n\n"
+            f"{article_text}\n\n"
+            f"Use 2–3 bullet points per section. Include source links where possible."
+        )
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You summarize financial news for different investor audiences."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        return parse_summaries(response.choices[0].message.content)
+    except Exception as e:
+        print(f"Error generating summaries: {e}")
+        return {
+            "executive": ["Error generating summary."],
+            "investor": ["Error generating summary."],
+            "catalysts": ["Error generating summary."]
+        }
+
+def parse_summaries(text):
+    sections = {"executive": [], "investor": [], "catalysts": []}
+    current = None
+
+    section_map = {
+        "executive": re.compile(r"(1\.)?\s*executive\s+summary", re.IGNORECASE),
+        "investor": re.compile(r"(2\.)?\s*investor\s+insights", re.IGNORECASE),
+        "catalysts": re.compile(r"(3\.)?\s*(catalysts|drivers)", re.IGNORECASE)
+    }
+
+    for line in text.strip().splitlines():
+        line = line.strip()
+
+        if section_map["executive"].search(line):
+            current = "executive"
+            continue
+        elif section_map["investor"].search(line):
+            current = "investor"
+            continue
+        elif section_map["catalysts"].search(line):
+            current = "catalysts"
+            continue
+        elif line.startswith("-") and current:
+            sections[current].append(line.lstrip("- ").strip())
+
+    return sections
+
 @app.route('/upload', methods=['GET'])
 @login_required
 def upload_view():
