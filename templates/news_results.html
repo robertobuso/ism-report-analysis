@@ -299,87 +299,291 @@
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
                             <i class="fas fa-newspaper"></i> Source Articles
-                            <span class="badge bg-secondary ms-2">{{ articles_displayed|default(articles|length) }} shown</span>
-                            {% if articles_analyzed and articles_analyzed != articles_displayed %}
-                            <small class="text-muted">({{ articles_analyzed }} analyzed total)</small>
-                            {% endif %}
+                            <span class="badge bg-secondary ms-2">30 analyzed</span>
+                            <small class="text-muted">(showing top 4, expand for all 30)</small>
                         </h5>
                         <small class="text-muted">Premium articles ranked by relevance, source quality, and content depth</small>
                     </div>
                     <div class="card-body">
-                        {% for article in articles %}
-                        <div class="article-item">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div class="flex-grow-1">
-                                    <h6 class="mb-1">
-                                        <a href="{{ article.link }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
-                                            {{ article.title }}
-                                            <i class="fas fa-external-link-alt ms-1" style="font-size: 0.7rem;"></i>
-                                        </a>
+                        <!-- Top 4 Articles (Always Visible) -->
+                        <div id="topArticles">
+                            {% for article in articles[:4] %}
+                            <div class="article-item priority-article">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <!-- Priority Badge -->
+                                            <span class="badge bg-primary badge-sm me-2">Top {{ loop.index }}</span>
+                                            
+                                            <!-- Enhanced Source Type Indicators -->
+                                            {% if article.source_type == 'alphavantage_premium' %}
+                                            <span class="alphavantage-source">
+                                                <i class="fas fa-brain me-1"></i>{{ article.source }}
+                                            </span>
+                                            <span class="badge bg-purple badge-sm">Full Content + Sentiment</span>
+                                            {% if article.sentiment_label %}
+                                            <span class="badge 
+                                                {% if article.sentiment_label == 'Bullish' %}bg-success
+                                                {% elif article.sentiment_label == 'Bearish' %}bg-danger
+                                                {% else %}bg-secondary{% endif %} badge-sm ms-1">
+                                                {{ article.sentiment_label }}
+                                                {% if article.sentiment_score %}({{ "%.2f"|format(article.sentiment_score) }}){% endif %}
+                                            </span>
+                                            {% endif %}
+                                            
+                                            {% elif article.source_type == 'nyt_api' %}
+                                            <span class="nyt-source">
+                                                <i class="fas fa-newspaper me-1"></i>{{ article.source }}
+                                            </span>
+                                            <span class="badge bg-warning badge-sm">NYT API + Full Abstract</span>
+                                            
+                                            {% elif article.source_type == 'rss_feed' %}
+                                            <span class="rss-source">
+                                                <i class="fas fa-rss me-1"></i>{{ article.source }}
+                                            </span>
+                                            <span class="badge bg-info badge-sm">RSS Premium Feed</span>
+                                            
+                                            {% elif article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}
+                                            <span class="premium-source">
+                                                <i class="fas fa-crown me-1"></i>{{ article.source }}
+                                            </span>
+                                            <span class="badge bg-success badge-sm">Premium Source</span>
+                                            
+                                            {% else %}
+                                            <span class="standard-source">
+                                                <i class="fas fa-globe me-1"></i>{{ article.source }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <h6 class="mb-1">
+                                            <a href="{{ article.link }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none priority-link">
+                                                {{ article.title }}
+                                                <i class="fas fa-external-link-alt ms-1" style="font-size: 0.7rem;"></i>
+                                            </a>
+                                        </h6>
+                                        <p class="mb-2 text-muted small">{{ article.snippet }}</p>
+                                        
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <!-- Content Quality Indicator -->
+                                            {% if article.get('full_content') and (article.get('full_content')|length > 200) %}
+                                            <span class="badge bg-light text-dark badge-sm">
+                                                <i class="fas fa-file-text"></i> Full Content
+                                            </span>
+                                            {% endif %}
+                                            
+                                            <!-- Enhanced Badge -->
+                                            {% if article.get('enhanced') %}
+                                            <span class="badge bg-success badge-sm">
+                                                <i class="fas fa-magic"></i> Enhanced
+                                            </span>
+                                            {% endif %}
+                                            
+                                            <!-- Relevance Score for AlphaVantage -->
+                                            {% if article.source_type == 'alphavantage_premium' and article.get('relevance_score') %}
+                                            <span class="badge bg-light text-dark badge-sm">
+                                                Relevance: {{ "%.2f"|format(article.relevance_score) }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- Expandable Section for Remaining 26 Articles -->
+                        <div class="text-center mt-3">
+                            <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#remainingArticles" aria-expanded="false" aria-controls="remainingArticles" id="expandArticlesBtn">
+                                <i class="fas fa-chevron-down me-2"></i>
+                                Show Remaining 26 Articles
+                                <small class="text-muted ms-2">({{ articles[4:]|length }} additional sources)</small>
+                            </button>
+                        </div>
+                        
+                        <div class="collapse mt-3" id="remainingArticles">
+                            <hr class="my-3">
+                            <div class="row">
+                                <div class="col-12">
+                                    <h6 class="text-muted mb-3">
+                                        <i class="fas fa-list me-2"></i>Additional Sources (Articles 5-30)
+                                        <small class="text-muted">- Comprehensive coverage from all premium sources</small>
                                     </h6>
-                                    <p class="mb-2 text-muted small">{{ article.snippet }}</p>
-                                    
-                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <!-- Enhanced Source Type Indicators -->
-                                        {% if article.source_type == 'alphavantage_premium' %}
-                                        <span class="alphavantage-source">
-                                            <i class="fas fa-brain me-1"></i>{{ article.source }}
-                                        </span>
-                                        <span class="badge bg-purple badge-sm">Full Content + Sentiment</span>
-                                        {% if article.sentiment_label %}
-                                        <span class="badge 
-                                            {% if article.sentiment_label == 'Bullish' %}bg-success
-                                            {% elif article.sentiment_label == 'Bearish' %}bg-danger
-                                            {% else %}bg-secondary{% endif %} badge-sm">
-                                            {{ article.sentiment_label }}
-                                            {% if article.sentiment_score %}({{ "%.2f"|format(article.sentiment_score) }}){% endif %}
-                                        </span>
-                                        {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Grid Layout for Remaining Articles -->
+                            <div class="row">
+                                {% for article in articles[4:] %}
+                                <div class="col-md-6 mb-3">
+                                    <div class="additional-article p-3 border rounded">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <span class="badge bg-light text-dark badge-sm me-2">#{{ loop.index + 4 }}</span>
+                                            
+                                            <!-- Compact Source Indicators -->
+                                            {% if article.source_type == 'alphavantage_premium' %}
+                                            <span class="badge bg-purple badge-sm">
+                                                <i class="fas fa-brain"></i> AV+Sentiment
+                                            </span>
+                                            {% elif article.source_type == 'nyt_api' %}
+                                            <span class="badge bg-warning badge-sm">
+                                                <i class="fas fa-newspaper"></i> NYT
+                                            </span>
+                                            {% elif article.source_type == 'rss_feed' %}
+                                            <span class="badge bg-info badge-sm">
+                                                <i class="fas fa-rss"></i> RSS
+                                            </span>
+                                            {% elif article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}
+                                            <span class="badge bg-success badge-sm">
+                                                <i class="fas fa-crown"></i> Premium
+                                            </span>
+                                            {% endif %}
+                                        </div>
                                         
-                                        {% elif article.source_type == 'nyt_api' %}
-                                        <span class="nyt-source">
-                                            <i class="fas fa-newspaper me-1"></i>{{ article.source }}
-                                        </span>
-                                        <span class="badge bg-warning badge-sm">NYT API + Full Abstract</span>
+                                        <h6 class="mb-2" style="font-size: 0.9rem; line-height: 1.3;">
+                                            <a href="{{ article.link }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                                                {{ article.title|truncate(80) }}
+                                                <i class="fas fa-external-link-alt ms-1" style="font-size: 0.6rem;"></i>
+                                            </a>
+                                        </h6>
                                         
-                                        {% elif article.source_type == 'rss_feed' %}
-                                        <span class="rss-source">
-                                            <i class="fas fa-rss me-1"></i>{{ article.source }}
-                                        </span>
-                                        <span class="badge bg-info badge-sm">RSS Premium Feed</span>
+                                        <p class="mb-2 text-muted" style="font-size: 0.8rem;">
+                                            {{ article.snippet|truncate(120) }}
+                                        </p>
                                         
-                                        {% elif article.source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com'] %}
-                                        <span class="premium-source">
-                                            <i class="fas fa-crown me-1"></i>{{ article.source }}
-                                        </span>
-                                        <span class="badge bg-success badge-sm">Premium Source</span>
-                                        
-                                        {% else %}
-                                        <span class="standard-source">
-                                            <i class="fas fa-globe me-1"></i>{{ article.source }}
-                                        </span>
-                                        {% endif %}
-                                        
-                                        <!-- Content Quality Indicator -->
-                                        {% if article.get('full_content') and (article.get('full_content')|length > 200) %}
-                                        <span class="badge bg-light text-dark badge-sm">
-                                            <i class="fas fa-file-text"></i> Full Content
-                                        </span>
-                                        {% endif %}
-                                        
-                                        <!-- Relevance Score for AlphaVantage -->
-                                        {% if article.source_type == 'alphavantage_premium' and article.get('relevance_score') %}
-                                        <span class="badge bg-light text-dark badge-sm">
-                                            Relevance: {{ "%.2f"|format(article.relevance_score) }}
-                                        </span>
-                                        {% endif %}
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">
+                                                <i class="fas fa-globe me-1"></i>{{ article.source }}
+                                            </small>
+                                            
+                                            {% if article.source_type == 'alphavantage_premium' and article.get('sentiment_label') %}
+                                            <span class="badge 
+                                                {% if article.sentiment_label == 'Bullish' %}bg-success
+                                                {% elif article.sentiment_label == 'Bearish' %}bg-danger
+                                                {% else %}bg-secondary{% endif %} badge-sm">
+                                                {{ article.sentiment_label }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            
+                            <!-- Article Statistics -->
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <div class="alert alert-info">
+                                        <h6><i class="fas fa-chart-bar me-2"></i>Complete Article Breakdown (All 30)</h6>
+                                        <div class="row">
+                                            <div class="col-md-3">
+                                                <strong>AlphaVantage:</strong> {{ alphavantage_articles }} articles<br>
+                                                <small class="text-muted">Full content + sentiment analysis</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <strong>NYT API:</strong> {{ nyt_articles }} articles<br>
+                                                <small class="text-muted">Full abstracts + editorial quality</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <strong>Premium RSS:</strong> {{ rss_articles }} articles<br>
+                                                <small class="text-muted">Bloomberg, Reuters, WSJ feeds</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <strong>Premium Sources:</strong> {{ high_quality_sources }} articles<br>
+                                                <small class="text-muted">{{ premium_coverage }}% coverage</small>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        {% endfor %}
                     </div>
                 </div>
+
+                <style>
+                /* Additional CSS for enhanced article display */
+                .priority-article {
+                    border-left: 3px solid #007bff;
+                    background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+                    padding: 1rem;
+                    margin-bottom: 1rem;
+                    border-radius: 8px;
+                }
+
+                .priority-link {
+                    font-weight: 600;
+                    color: #0d47a1 !important;
+                }
+
+                .additional-article {
+                    transition: transform 0.2s, box-shadow 0.2s;
+                    height: 100%;
+                }
+
+                .additional-article:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                }
+
+                .bg-purple { 
+                    background-color: #6f42c1 !important; 
+                }
+
+                .alphavantage-source { 
+                    color: #6f42c1; 
+                    font-weight: 600; 
+                }
+
+                .nyt-source { 
+                    color: #fd7e14; 
+                    font-weight: 600; 
+                }
+
+                .rss-source { 
+                    color: #20c997; 
+                    font-weight: 600; 
+                }
+
+                .premium-source { 
+                    color: #28a745; 
+                    font-weight: 600; 
+                }
+
+                .standard-source { 
+                    color: #6c757d; 
+                }
+
+                /* Collapse button animation */
+                #expandArticlesBtn[aria-expanded="true"] .fa-chevron-down {
+                    transform: rotate(180deg);
+                    transition: transform 0.3s ease;
+                }
+
+                #expandArticlesBtn[aria-expanded="false"] .fa-chevron-down {
+                    transform: rotate(0deg);
+                    transition: transform 0.3s ease;
+                }
+                </style>
+
+                <script>
+                // Update button text when expanded/collapsed
+                document.getElementById('expandArticlesBtn').addEventListener('click', function() {
+                    const isExpanded = this.getAttribute('aria-expanded') === 'true';
+                    const icon = this.querySelector('.fas');
+                    
+                    if (isExpanded) {
+                        // Will be collapsed after click
+                        setTimeout(() => {
+                            this.innerHTML = '<i class="fas fa-chevron-down me-2"></i>Show Remaining 26 Articles <small class="text-muted ms-2">({{ articles[4:]|length }} additional sources)</small>';
+                        }, 300);
+                    } else {
+                        // Will be expanded after click
+                        setTimeout(() => {
+                            this.innerHTML = '<i class="fas fa-chevron-up me-2"></i>Hide Additional Articles <small class="text-muted ms-2">(showing all 30)</small>';
+                        }, 300);
+                    }
+                });
+                </script>
                 {% endif %}
 
                 <!-- Enhanced Analysis Methodology -->

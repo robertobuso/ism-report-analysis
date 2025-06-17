@@ -1,15 +1,13 @@
 import os
+import re
 import base64
 import tempfile
 import logging
 import sys
 import traceback
 import uuid
-import threading
-from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
-from config_loader import config_loader 
-from typing import List, Dict, Optional, Tuple
-
+import json
+from datetime import datetime, timedelta
 
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)
@@ -22,25 +20,21 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
 from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
+
+# Enhanced news analysis imports
 from news_utils import (
-    fetch_alphavantage_news,
-    fetch_google_news,
-    score_articles_with_alphavantage, 
-    generate_premium_analysis,
     convert_markdown_to_html,
     create_source_url_mapping,
-    fetch_comprehensive_news_enhanced,
-    fetch_comprehensive_news_parallel
+    fetch_comprehensive_news_guaranteed_30_enhanced
 )
+from company_ticker_service import fast_company_ticker_service as company_ticker_service
+
+# Database imports
+from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
+from config_loader import config_loader 
+from typing import List, Dict, Optional, Tuple
 
 from openai import OpenAI
-from datetime import datetime, timedelta
-import requests
-import re
-import feedparser
-import time
-from urllib.parse import urlparse, urljoin
-import json
 
 
 # Configure logging
@@ -180,7 +174,7 @@ def news_form():
 @app.route("/news/summary", methods=["POST"])
 @login_required
 def get_news_summary():
-    """Generate institutional-grade financial news analysis with premium sources integration."""
+    """Generate institutional-grade financial news analysis with guaranteed 30 articles and 25% AlphaVantage coverage."""
     try:
         # Parse and validate input
         company = request.form.get("company", "").strip()
@@ -194,11 +188,14 @@ def get_news_summary():
         if days_back < 1 or days_back > 30:
             days_back = 7
         
-        logger.info(f"Processing premium analysis request: {company} ({days_back} days)")
+        # Enhanced company/ticker resolution
+        ticker, company_name = company_ticker_service.get_both_ticker_and_company(company)
+        display_name = company_name if company_name else ticker if ticker else company
         
-        # Call the main orchestration function from news_utils
-        from news_utils import fetch_comprehensive_news_parallel
-        results = fetch_comprehensive_news_parallel(company, days_back)
+        logger.info(f"Processing GUARANTEED 30-article analysis: '{company}' → ticker: '{ticker}', company: '{company_name}' ({days_back} days)")
+        
+        # Call the enhanced orchestration function that guarantees 30 articles
+        results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
         
         # Handle case where no articles found
         if not results['success']:
@@ -209,25 +206,29 @@ def get_news_summary():
             
             return render_template(
                 "news_results.html",
-                company=company,
-                summaries=summaries,
-                articles=articles[:max_display_articles],
-                all_articles=articles,   
+                company=display_name,
+                summaries={
+                    "executive": ["**[NO DATA]** No recent financial news found across all premium sources (AlphaVantage, NYT, Bloomberg RSS). Try expanding date range or verifying company ticker."],
+                    "investor": ["**[RECOMMENDATION]** Verify company ticker symbol or try major exchanges (NYSE/NASDAQ). Consider checking earnings calendar."],
+                    "catalysts": ["**[TIMING]** Monitor upcoming earnings announcements, product launches, or regulatory events."]
+                },
+                articles=[],
+                all_articles=[],   
                 date_range=date_range,
                 analysis_timestamp=analysis_timestamp,
-                article_count=metrics.get('total_articles', 0),
-                articles_analyzed=min(15, metrics.get('total_articles', 0)),  
-                articles_displayed=min(max_display_articles, metrics.get('total_articles', 0)), 
-                analysis_quality=metrics.get('analysis_quality', 'Limited'),
-                high_quality_sources=metrics.get('high_quality_sources', 0),
-                premium_coverage=metrics.get('premium_coverage', 0),
-                alphavantage_articles=metrics.get('alphavantage_articles', 0),
-                alphavantage_coverage=metrics.get('alphavantage_coverage', 0),
-                premium_sources_count=metrics.get('premium_sources_count', 0),
-                premium_sources_coverage=metrics.get('premium_sources_coverage', 0),
-                nyt_articles=metrics.get('nyt_articles', 0),  # Safe get
-                rss_articles=metrics.get('rss_articles', 0),  # Safe get
-                source_performance=results.get('source_performance', {})
+                article_count=0,
+                articles_analyzed=0,
+                articles_displayed=0,
+                analysis_quality='No Data',
+                high_quality_sources=0,
+                premium_coverage=0,
+                alphavantage_articles=0,
+                alphavantage_coverage=0,
+                premium_sources_count=0,
+                premium_sources_coverage=0,
+                nyt_articles=0,
+                rss_articles=0,
+                source_performance={}
             )
         
         # Process successful results for rendering
@@ -247,18 +248,24 @@ def get_news_summary():
         date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
         analysis_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
         
-        # Render results
+        # Enhanced logging
+        logger.info(f"✅ ENHANCED ANALYSIS COMPLETE for {display_name}:")
+        logger.info(f"   • Total articles: {metrics.get('total_articles', 0)} (guaranteed 30)")
+        logger.info(f"   • AlphaVantage: {metrics.get('alphavantage_articles', 0)} ({metrics.get('alphavantage_coverage', 0)}%)")
+        logger.info(f"   • Analysis quality: {metrics.get('analysis_quality', 'Unknown')}")
+        
+        # Render results with enhanced metrics
         max_display_articles = 12
         return render_template(
             "news_results.html",
-            company=company,
+            company=display_name,
             summaries=summaries,
             articles=articles[:max_display_articles],
             all_articles=articles,   
             date_range=date_range,
             analysis_timestamp=analysis_timestamp,
             article_count=metrics.get('total_articles', 0),
-            articles_analyzed=min(15, metrics.get('total_articles', 0)),  
+            articles_analyzed=metrics.get('articles_analyzed', 30),  # Always 30 in new system
             articles_displayed=min(max_display_articles, metrics.get('total_articles', 0)), 
             analysis_quality=metrics.get('analysis_quality', 'Limited'),
             high_quality_sources=metrics.get('high_quality_sources', 0),
@@ -267,24 +274,23 @@ def get_news_summary():
             alphavantage_coverage=metrics.get('alphavantage_coverage', 0),
             premium_sources_count=metrics.get('premium_sources_count', 0),
             premium_sources_coverage=metrics.get('premium_sources_coverage', 0),
-            nyt_articles=metrics.get('nyt_articles', 0),  # Safe get
-            rss_articles=metrics.get('rss_articles', 0),  # Safe get
+            nyt_articles=metrics.get('nyt_articles', 0),
+            rss_articles=metrics.get('rss_articles', 0),
             source_performance=results.get('source_performance', {})
         )
 
     except Exception as e:
-        logger.error(f"Error in premium news analysis: {str(e)}")
+        logger.error(f"Error in enhanced news analysis: {str(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         
         return render_template("news_simple.html", 
-                             error="Premium analysis temporarily unavailable. Please try again.")
-
-# Enhanced API endpoint
+                             error="Enhanced analysis temporarily unavailable. Please try again.")
+    
 @app.route("/api/news/<company>")
 @login_required  
 def api_news_summary(company):
-    """API endpoint for premium sources news analysis."""
+    """API endpoint for enhanced 30-article analysis with guaranteed AlphaVantage representation."""
     try:
         days_back = request.args.get('days', 7, type=int)
         
@@ -292,18 +298,25 @@ def api_news_summary(company):
         if days_back < 1 or days_back > 30:
             days_back = 7
         
-        logger.info(f"API request: {company} ({days_back} days)")
+        # Enhanced company/ticker resolution
+        ticker, company_name = company_ticker_service.get_both_ticker_and_company(company)
+        display_name = company_name if company_name else ticker if ticker else company
         
-        # Use the main orchestration function
-        from news_utils import fetch_comprehensive_news_parallel
-        results = fetch_comprehensive_news_parallel(company, days_back)
+        logger.info(f"API request ENHANCED: '{company}' → ticker: '{ticker}', company: '{company_name}' ({days_back} days)")
         
-        # Format for API response
+        # Use the enhanced orchestration function
+        results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
+        
+        # Format for API response with enhanced metrics
         response_data = {
-            "company": company,
+            "company": display_name,
+            "original_input": company,
+            "resolved_ticker": ticker,
+            "resolved_company_name": company_name,
             "summaries": results['summaries'],
             "metadata": {
                 "total_articles": results['metrics']['total_articles'],
+                "articles_analyzed": results['metrics']['articles_analyzed'],  # Always 30
                 "alphavantage_articles": results['metrics']['alphavantage_articles'],
                 "nyt_articles": results['metrics']['nyt_articles'],
                 "rss_articles": results['metrics']['rss_articles'],
@@ -311,12 +324,15 @@ def api_news_summary(company):
                 "premium_sources_count": results['metrics']['premium_sources_count'],
                 "high_quality_sources": results['metrics']['high_quality_sources'],
                 "premium_coverage": results['metrics']['premium_coverage'],
+                "alphavantage_coverage": results['metrics']['alphavantage_coverage'],
                 "analysis_quality": results['metrics']['analysis_quality'],
                 "response_time_seconds": results['metrics']['response_time'],
                 "date_range": f"{(datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')} to {datetime.now().strftime('%Y-%m-%d')}",
                 "analysis_timestamp": datetime.now().isoformat(),
                 "source_performance": results['source_performance'],
-                "success": results['success']
+                "success": results['success'],
+                "guaranteed_article_count": 30,
+                "minimum_alphavantage_target": "25%"
             }
         }
         
@@ -328,13 +344,14 @@ def api_news_summary(company):
         return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"API error for {company}: {str(e)}")
+        logger.error(f"Enhanced API error for {company}: {str(e)}")
         return jsonify({
             "error": str(e),
             "company": company,
             "metadata": {
                 "analysis_timestamp": datetime.now().isoformat(),
-                "success": False
+                "success": False,
+                "enhanced_analysis": True
             }
         }), 500
     
