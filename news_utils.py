@@ -102,21 +102,38 @@ def get_working_rss_feeds_2025_cleaned() -> Dict[str, str]:
         'benzinga': 'https://www.benzinga.com/feed',
     }
 
-def get_company_specific_feeds_2025_cleaned(company: str) -> Dict[str, str]:
+def get_company_specific_feeds_2025_FIXED(company: str) -> Dict[str, str]:
     """
-    Company-specific feeds that actually work.
+    FIXED: Company-specific feeds that capture recent company articles.
+    This is the KEY FIX that would capture those missing "Onto Innovation" articles.
     """
     from company_ticker_service import fast_company_ticker_service
-    ticker, _ = fast_company_ticker_service.get_both_ticker_and_company(company)
+    ticker, company_name = fast_company_ticker_service.get_both_ticker_and_company(company)
     
     feeds = {}
     
-    # Yahoo Finance per-ticker (works but rate limited)
+    # CRITICAL FIX 1: Yahoo Finance ticker-specific RSS 
+    # This would capture the missing "Onto Innovation enhances leadership..." articles
     if ticker and len(ticker) <= 5:
-        feeds['yahoo_ticker'] = f'https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US'
+        feeds['yahoo_ticker'] = f'http://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US'
+        logger.info(f"FIXED: Added Yahoo Finance ticker RSS for {ticker}")
     
-    # Google News for company (always works)
-    feeds['google_news_company'] = f'https://news.google.com/rss/search?q={company.replace(" ", "+")}&hl=en-US&gl=US&ceid=US:en'
+    # CRITICAL FIX 2: Use resolved company name for better Google News search
+    search_term = company_name if company_name else company
+    if company_name:
+        # Clean up company name for better search
+        clean_name = company_name.replace(' Inc', '').replace(' Corporation', '').replace(' Corp', '')
+        search_term = clean_name.strip()
+    
+    feeds['google_news_company'] = f'https://news.google.com/rss/search?q="{search_term}"&hl=en-US&gl=US&ceid=US:en'
+    logger.info(f"FIXED: Google News search term: '{search_term}' (resolved from '{company}')")
+    
+    # ADDITIONAL FIX 3: More company-specific sources
+    if ticker:
+        # MarketWatch company news
+        feeds['marketwatch_company'] = f'https://www.marketwatch.com/rss/company/{ticker}'
+        # Seeking Alpha company feed  
+        feeds['seeking_alpha_company'] = f'https://seekingalpha.com/symbol/{ticker}/feed.xml'
     
     return feeds
 
@@ -300,46 +317,51 @@ async def fetch_rss_feeds_parallel(company: str, days_back: int = 7) -> List[Dic
     
     return all_articles
 
-async def fetch_rss_feeds_ultra_parallel(company: str, days_back: int = 7) -> List[Dict]:
+async def fetch_rss_feeds_ultra_parallel_FIXED(company: str, days_back: int = 7) -> List[Dict]:
     """
-    ULTRA PARALLEL RSS feed processing - all feeds simultaneously with optimized timeouts.
-    This is the fastest possible RSS implementation.
+    FIXED ULTRA PARALLEL RSS feed processing that captures recent company articles.
+    
+    Key fixes:
+    1. Uses company-specific Yahoo Finance RSS (captures recent articles)
+    2. Better date filtering prevents old articles
+    3. Smart company name matching reduces preposition false matches
     """
     
-    logger.info(f"⚡ Ultra parallel RSS fetch starting for {company}...")
+    logger.info(f"⚡ Ultra parallel RSS fetch FIXED starting for {company}...")
     start_time = time.time()
     
-    # Get optimized feed lists (only the fastest, most reliable feeds)
-    working_feeds = get_ultra_fast_rss_feeds()
-    company_feeds = get_company_specific_feeds_2025_cleaned(company)
-    working_feeds.update(company_feeds)
+    # CRITICAL FIX: Get both working feeds AND company-specific feeds
+    working_feeds = get_ultra_fast_rss_feeds_FIXED()
+    company_feeds = get_company_specific_feeds_2025_FIXED(company)
+    
+    # Merge with company feeds taking priority
+    all_feeds = {**working_feeds, **company_feeds}
     
     # Ultra-aggressive connection settings for maximum speed
     connector = aiohttp.TCPConnector(
-        limit=20,           # More concurrent connections
-        limit_per_host=5,   # More per host
-        ttl_dns_cache=300,  # DNS caching
+        limit=20,           
+        limit_per_host=5,   
+        ttl_dns_cache=300,  
         use_dns_cache=True,
         keepalive_timeout=30,
         enable_cleanup_closed=True
     )
     
-    # Shorter timeouts for aggressive parallel processing
     timeout = aiohttp.ClientTimeout(
-        total=8,    # Reduced from 15 to 8 seconds
-        connect=3,  # Reduced from 5 to 3 seconds
-        sock_read=5 # Socket read timeout
+        total=8,    
+        connect=3,  
+        sock_read=5 
     )
     
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         # Create tasks for all feeds with aggressive concurrency
         tasks = []
-        for feed_name, feed_url in working_feeds.items():
-            task = fetch_single_rss_ultra_fast(session, feed_name, feed_url, company, days_back)
+        for feed_name, feed_url in all_feeds.items():
+            task = fetch_single_rss_ultra_fast_FIXED(session, feed_name, feed_url, company, days_back)
             tasks.append(task)
         
-        # Execute ALL tasks simultaneously with reduced timeout
-        logger.info(f"⚡ Fetching {len(tasks)} RSS feeds with ultra-aggressive parallelization...")
+        # Execute ALL tasks simultaneously
+        logger.info(f"⚡ Fetching {len(tasks)} RSS feeds with FIXED company-specific processing...")
         results = await asyncio.gather(*tasks, return_exceptions=True)
     
     # Process results
@@ -348,26 +370,27 @@ async def fetch_rss_feeds_ultra_parallel(company: str, days_back: int = 7) -> Li
     feed_stats = {}
     
     for i, result in enumerate(results):
-        feed_name = list(working_feeds.keys())[i]
+        feed_name = list(all_feeds.keys())[i]
         
         if isinstance(result, list):
             all_articles.extend(result)
             successful_feeds += 1
             feed_stats[feed_name] = len(result)
+            if len(result) > 0:  # Only log successful feeds
+                logger.info(f"✓ RSS {feed_name}: {len(result)} articles")
         else:
             logger.debug(f"RSS {feed_name}: Exception - {result}")
             feed_stats[feed_name] = 0
     
     total_time = time.time() - start_time
-    logger.info(f"⚡ ULTRA RSS Complete: {successful_feeds}/{len(working_feeds)} feeds, "
+    logger.info(f"⚡ ULTRA RSS FIXED Complete: {successful_feeds}/{len(all_feeds)} feeds, "
                f"{len(all_articles)} articles in {total_time:.2f}s")
     
     return all_articles
 
-def get_ultra_fast_rss_feeds() -> Dict[str, str]:
+def get_ultra_fast_rss_feeds_FIXED() -> Dict[str, str]:
     """
-    Only the fastest, most reliable RSS feeds for maximum performance.
-    Removed slow/unreliable feeds that cause delays.
+    FIXED: Ultra-fast RSS feeds + company-specific capability.
     """
     return {
         # Tier 1: Fastest and most reliable (always work)
@@ -384,30 +407,29 @@ def get_ultra_fast_rss_feeds() -> Dict[str, str]:
         # Tier 3: Good sources with reasonable speed
         'fortune_business': 'https://fortune.com/feed/',
         'business_insider': 'https://www.businessinsider.com/rss',
-        'yahoo_finance': 'https://finance.yahoo.com/rss/',
+        'yahoo_finance_generic': 'https://finance.yahoo.com/rss/',  # Keep as backup
         
         # Tier 4: Backup sources (often work)
         'benzinga': 'https://www.benzinga.com/feed',
         'zerohedge': 'https://feeds.feedburner.com/zerohedge/feed',
     }
 
-async def fetch_single_rss_ultra_fast(session: aiohttp.ClientSession, feed_name: str, 
-                                     feed_url: str, company: str, days_back: int) -> List[Dict]:
+async def fetch_single_rss_ultra_fast_FIXED(session: aiohttp.ClientSession, feed_name: str, 
+                                           feed_url: str, company: str, days_back: int) -> List[Dict]:
     """
-    Ultra-fast single RSS feed fetch with aggressive optimization.
+    FIXED: Ultra-fast single RSS feed fetch with smart company matching and date filtering.
     """
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-            'Accept-Encoding': 'gzip, deflate',  # Enable compression
+            'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
-            'Cache-Control': 'max-age=300'  # Allow 5min cache
+            'Cache-Control': 'max-age=300'
         }
         
         start_time = time.time()
         
-        # Ultra-aggressive timeout (3 seconds max per feed)
         async with session.get(feed_url, headers=headers, timeout=3) as response:
             if response.status != 200:
                 elapsed = (time.time() - start_time) * 1000
@@ -417,34 +439,48 @@ async def fetch_single_rss_ultra_fast(session: aiohttp.ClientSession, feed_name:
             content = await response.read()
             elapsed = (time.time() - start_time) * 1000
             
-            # Parse feed in thread pool (feedparser is CPU-bound)
+            # Parse feed in thread pool
             loop = asyncio.get_event_loop()
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                import feedparser
                 feed = await loop.run_in_executor(executor, feedparser.parse, content)
             
             if not hasattr(feed, 'entries') or not feed.entries:
                 logger.debug(f"RSS {feed_name}: No entries ({elapsed:.0f}ms)")
                 return []
             
-            # Process articles with ultra-fast filtering
-            articles = []
-            cutoff_date = datetime.now() - timedelta(days=days_back)
-            
-            # Get search terms for better matching
-            search_terms = [company.lower()]
-            
-            # Try to get company name from ticker service
+            # CRITICAL FIX: Get resolved company identifiers for smart matching
             try:
                 from company_ticker_service import fast_company_ticker_service
                 ticker, company_name = fast_company_ticker_service.get_both_ticker_and_company(company)
-                if ticker:
-                    search_terms.append(ticker.lower())
-                if company_name:
-                    search_terms.append(company_name.lower())
-            except:
-                pass
+            except Exception:
+                ticker, company_name = None, None
             
-            # Process only first 15 entries for speed (instead of 20)
+            # FIXED: Prioritize company name over ticker for search
+            search_terms = []
+            if company_name and company_name.strip():
+                search_terms.append(company_name.lower())
+                # Add cleaned version
+                clean_name = company_name.lower()
+                for suffix in [' inc', ' corp', ' corporation', ' company', ' ltd', ' limited']:
+                    clean_name = clean_name.replace(suffix, '')
+                if clean_name != company_name.lower() and clean_name.strip():
+                    search_terms.append(clean_name.strip())
+            
+            # Add ticker carefully (avoid short ambiguous tickers)
+            if ticker and len(ticker) > 2:
+                search_terms.append(ticker.lower())
+            elif ticker:
+                search_terms.append(f'"{ticker}"')  # Quoted for short tickers
+            
+            # Add original input as fallback
+            if company.lower() not in search_terms:
+                search_terms.append(company.lower())
+            
+            articles = []
+            cutoff_date = datetime.now() - timedelta(days=days_back)
+            
+            # Process entries with FIXED filtering
             for entry in feed.entries[:15]:
                 try:
                     title = getattr(entry, 'title', '').strip()
@@ -453,7 +489,7 @@ async def fetch_single_rss_ultra_fast(session: aiohttp.ClientSession, feed_name:
                     if not title or not link:
                         continue
                     
-                    # Ultra-fast description extraction
+                    # FIXED: Enhanced description extraction
                     description = ''
                     for field in ['summary', 'description']:
                         if hasattr(entry, field):
@@ -465,24 +501,94 @@ async def fetch_single_rss_ultra_fast(session: aiohttp.ClientSession, feed_name:
                                 description = field_value.value
                                 break
                     
-                    # Clean description quickly
+                    # Clean description
                     if description:
-                        import re
-                        description = re.sub(r'<[^>]+>', '', description)[:400]  # Limit length
+                        description = re.sub(r'<[^>]+>', '', description)[:400]
                     
-                    # Ultra-fast relevance check
+                    # CRITICAL FIX: Robust date filtering
+                    pub_date = None
+                    current_time = datetime.now()
+                    
+                    # Try multiple date parsing strategies
+                    for date_field in ['published_parsed', 'updated_parsed']:
+                        if hasattr(entry, date_field):
+                            date_tuple = getattr(entry, date_field)
+                            if date_tuple and len(date_tuple) >= 6:
+                                try:
+                                    parsed_date = datetime(*date_tuple[:6])
+                                    if parsed_date <= current_time and parsed_date >= datetime(2020, 1, 1):
+                                        pub_date = parsed_date
+                                        break
+                                except (ValueError, TypeError):
+                                    continue
+                    
+                    # String date parsing fallback
+                    if not pub_date:
+                        for date_field in ['published', 'updated']:
+                            if hasattr(entry, date_field):
+                                date_str = getattr(entry, date_field)
+                                if date_str:
+                                    try:
+                                        from email.utils import parsedate_to_datetime
+                                        parsed_date = parsedate_to_datetime(date_str)
+                                        if parsed_date.tzinfo:
+                                            parsed_date = parsed_date.replace(tzinfo=None)
+                                        if parsed_date <= current_time and parsed_date >= datetime(2020, 1, 1):
+                                            pub_date = parsed_date
+                                            break
+                                    except (ValueError, TypeError):
+                                        continue
+                    
+                    # STRICT date filtering - reject old articles
+                    if pub_date and pub_date < cutoff_date:
+                        continue
+                    
+                    # FIXED: Smart relevance check prioritizing company name
                     title_lower = title.lower()
                     desc_lower = description.lower()
                     content = title_lower + ' ' + desc_lower
                     
-                    # Quick company mention check
-                    has_company_mention = any(term in content for term in search_terms)
+                    # Company relevance scoring
+                    relevance_score = 0
+                    company_mention_found = False
                     
-                    # Quick financial context check
-                    financial_keywords = ['stock', 'earnings', 'revenue', 'market']
-                    has_financial_context = any(keyword in content for keyword in financial_keywords)
+                    for i, search_term in enumerate(search_terms):
+                        if search_term in content:
+                            # Higher score for earlier terms (company name prioritized)
+                            weight = len(search_terms) - i
+                            mentions = content.count(search_term)
+                            relevance_score += mentions * weight
+                            company_mention_found = True
+                            
+                            # Extra weight for title mentions
+                            if search_term in title_lower:
+                                relevance_score += weight * 2
                     
-                    if has_company_mention or has_financial_context:
+                    # Financial context check
+                    financial_keywords = ['stock', 'earnings', 'revenue', 'market', 'financial', 'business',
+                                        'cfo', 'ceo', 'appoints', 'announces', 'leadership']
+                    financial_score = sum(1 for keyword in financial_keywords if keyword in content)
+                    relevance_score += financial_score
+                    
+                    # FIXED: Better preposition filtering
+                    is_preposition_match = False
+                    if ticker and len(ticker) <= 4:
+                        ticker_lower = ticker.lower()
+                        preposition_patterns = [
+                            f'pass {ticker_lower}', f'move {ticker_lower}', f'put {ticker_lower}',
+                            f'get {ticker_lower}', f'take {ticker_lower}', f'{ticker_lower} the',
+                            f'{ticker_lower} his', f'{ticker_lower} her'
+                        ]
+                        
+                        if any(pattern in content for pattern in preposition_patterns):
+                            # If company name is also mentioned, it's probably legitimate
+                            if company_name and company_name.lower() in content:
+                                pass  # Keep it
+                            else:
+                                is_preposition_match = True
+                    
+                    # Include if relevant and not preposition match
+                    if (company_mention_found or financial_score >= 2) and not is_preposition_match and relevance_score >= 2:
                         from news_utils import extract_domain
                         article = {
                             "title": title,
@@ -490,8 +596,9 @@ async def fetch_single_rss_ultra_fast(session: aiohttp.ClientSession, feed_name:
                             "full_content": description if description else title,
                             "link": link,
                             "source": extract_domain(link),
-                            "published": "",
-                            "source_type": "rss_feed"
+                            "published": pub_date.isoformat() if pub_date else "",
+                            "source_type": "rss_feed",
+                            "relevance_score": relevance_score
                         }
                         articles.append(article)
                     
@@ -513,19 +620,19 @@ async def fetch_single_rss_ultra_fast(session: aiohttp.ClientSession, feed_name:
 
 def fetch_rss_feeds_working_2025_parallel_OPTIMIZED(company: str, days_back: int = 7) -> List[Dict]:
     """
-    OPTIMIZED version of the RSS parallel function.
-    Drop-in replacement for the existing function with much better performance.
+    FIXED OPTIMIZED version - now captures company-specific articles properly.
+    This is the function that actually gets called by the main system.
     """
     try:
-        # Try to use the ultra-parallel version
-        return asyncio.run(fetch_rss_feeds_ultra_parallel(company, days_back))
+        # Try to use the FIXED ultra-parallel version
+        return asyncio.run(fetch_rss_feeds_ultra_parallel_FIXED(company, days_back))
     except Exception as e:
-        logger.warning(f"Ultra-parallel RSS failed ({e}), using standard parallel")
-        # Fallback to existing parallel function
+        logger.warning(f"Ultra-parallel RSS failed ({e}), using FIXED sequential fallback")
+        # Fallback to FIXED sequential function
         try:
-            return fetch_rss_feeds_working_2025_parallel(company, days_back)
+            return fetch_rss_feeds_working_2025_FIXED_SEQUENTIAL(company, days_back)
         except Exception as e2:
-            logger.error(f"All RSS parallel methods failed: {e2}")
+            logger.error(f"All RSS methods failed: {e2}")
             return []
 
 # More sophisticated financial and business keywords
@@ -628,8 +735,9 @@ def convert_to_ticker(company: str) -> str:
     return company
 
 def extract_domain(url: str) -> str:
-    """Extract clean domain from URL."""
+    """Extract domain from URL."""
     try:
+        from urllib.parse import urlparse
         parsed = urlparse(url)
         domain = parsed.netloc.lower()
         if domain.startswith('www.'):
@@ -1091,12 +1199,11 @@ def fetch_reuters_api_news(company: str, days_back: int = 7) -> List[Dict]:
         return []
 
 # Fix 3: RSS Parser with sys import fixed
-def parse_rss_feed_fixed(feed_url: str, company: str, days_back: int = 7) -> List[Dict]:
+def parse_rss_feed_FIXED_DATES(feed_url: str, company: str, days_back: int = 7) -> List[Dict]:
     """
-    Fixed RSS parser with proper imports.
+    FIXED synchronous RSS parser with all the same fixes as the async version.
     """
     try:
-        # Headers
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
             'Accept': 'application/rss+xml, application/xml, text/xml, */*',
@@ -1107,21 +1214,44 @@ def parse_rss_feed_fixed(feed_url: str, company: str, days_back: int = 7) -> Lis
             logger.warning(f"RSS feed HTTP {response.status_code}: {feed_url}")
             return []
         
-        # Parse feed
         import feedparser
         feed = feedparser.parse(response.content)
         
         if not hasattr(feed, 'entries') or not feed.entries:
             return []
         
+        # Apply all the same FIXED logic as the async version
+        # (Same company identification, date filtering, relevance scoring)
+        
+        # Get company identifiers
+        try:
+            from company_ticker_service import fast_company_ticker_service
+            ticker, company_name = fast_company_ticker_service.get_both_ticker_and_company(company)
+        except Exception:
+            ticker, company_name = None, None
+        
+        # Build search terms (company name prioritized)
+        search_terms = []
+        if company_name and company_name.strip():
+            search_terms.append(company_name.lower())
+            clean_name = company_name.lower()
+            for suffix in [' inc', ' corp', ' corporation', ' company', ' ltd', ' limited']:
+                clean_name = clean_name.replace(suffix, '')
+            if clean_name != company_name.lower() and clean_name.strip():
+                search_terms.append(clean_name.strip())
+        
+        if ticker and len(ticker) > 2:
+            search_terms.append(ticker.lower())
+        elif ticker:
+            search_terms.append(f'"{ticker}"')
+        
+        if company.lower() not in search_terms:
+            search_terms.append(company.lower())
+        
         articles = []
         cutoff_date = datetime.now() - timedelta(days=days_back)
         
-        # Get search terms for better matching
-        search_terms = get_nyt_search_terms_dynamic(company)
-        search_terms_lower = [term.lower() for term in search_terms]
-        
-        for entry in feed.entries[:20]:  # Limit to 20 entries
+        for entry in feed.entries[:20]:
             try:
                 title = getattr(entry, 'title', '').strip()
                 link = getattr(entry, 'link', '').strip()
@@ -1129,7 +1259,7 @@ def parse_rss_feed_fixed(feed_url: str, company: str, days_back: int = 7) -> Lis
                 if not title or not link:
                     continue
                 
-                # Get description
+                # Extract description
                 description = ''
                 for field in ['summary', 'description', 'content']:
                     if hasattr(entry, field):
@@ -1143,40 +1273,83 @@ def parse_rss_feed_fixed(feed_url: str, company: str, days_back: int = 7) -> Lis
                         if description.strip():
                             break
                 
-                # Clean description
                 if description:
-                    import re
                     description = re.sub(r'<[^>]+>', '', description)
                     description = re.sub(r'\s+', ' ', description).strip()[:800]
                 
-                # Date check
+                # FIXED date parsing (same as async version)
                 pub_date = None
+                current_time = datetime.now()
+                
                 for date_field in ['published_parsed', 'updated_parsed']:
                     if hasattr(entry, date_field):
                         date_tuple = getattr(entry, date_field)
                         if date_tuple and len(date_tuple) >= 6:
                             try:
-                                pub_date = datetime(*date_tuple[:6])
-                                break
+                                parsed_date = datetime(*date_tuple[:6])
+                                if parsed_date <= current_time and parsed_date >= datetime(2020, 1, 1):
+                                    pub_date = parsed_date
+                                    break
                             except (ValueError, TypeError):
                                 continue
                 
+                if not pub_date:
+                    for date_field in ['published', 'updated']:
+                        if hasattr(entry, date_field):
+                            date_str = getattr(entry, date_field)
+                            if date_str:
+                                try:
+                                    from email.utils import parsedate_to_datetime
+                                    parsed_date = parsedate_to_datetime(date_str)
+                                    if parsed_date.tzinfo:
+                                        parsed_date = parsed_date.replace(tzinfo=None)
+                                    if parsed_date <= current_time and parsed_date >= datetime(2020, 1, 1):
+                                        pub_date = parsed_date
+                                        break
+                                except (ValueError, TypeError):
+                                    continue
+                
+                # Strict date filtering
                 if pub_date and pub_date < cutoff_date:
                     continue
                 
-                # Relevance check
+                # FIXED relevance check (same logic as async)
                 title_lower = title.lower()
                 desc_lower = description.lower()
                 content = title_lower + ' ' + desc_lower
                 
-                # Check for company mention
-                has_company_mention = any(term in content for term in search_terms_lower)
+                relevance_score = 0
+                company_mention_found = False
                 
-                # Financial context
-                financial_keywords = ['stock', 'shares', 'earnings', 'revenue', 'market', 'business']
-                has_financial_context = any(keyword in content for keyword in financial_keywords)
+                for i, search_term in enumerate(search_terms):
+                    if search_term in content:
+                        weight = len(search_terms) - i
+                        mentions = content.count(search_term)
+                        relevance_score += mentions * weight
+                        company_mention_found = True
+                        
+                        if search_term in title_lower:
+                            relevance_score += weight * 2
                 
-                if has_company_mention or has_financial_context:
+                financial_keywords = ['stock', 'earnings', 'revenue', 'market', 'financial', 'business',
+                                    'cfo', 'ceo', 'appoints', 'announces', 'leadership']
+                financial_score = sum(1 for keyword in financial_keywords if keyword in content)
+                relevance_score += financial_score
+                
+                # Preposition filtering
+                is_preposition_match = False
+                if ticker and len(ticker) <= 4:
+                    ticker_lower = ticker.lower()
+                    preposition_patterns = [
+                        f'pass {ticker_lower}', f'move {ticker_lower}', f'put {ticker_lower}',
+                        f'get {ticker_lower}', f'take {ticker_lower}', f'{ticker_lower} the'
+                    ]
+                    
+                    if any(pattern in content for pattern in preposition_patterns):
+                        if not (company_name and company_name.lower() in content):
+                            is_preposition_match = True
+                
+                if (company_mention_found or financial_score >= 2) and not is_preposition_match and relevance_score >= 2:
                     article = {
                         "title": title,
                         "snippet": description[:300] if description else title[:300],
@@ -1184,10 +1357,11 @@ def parse_rss_feed_fixed(feed_url: str, company: str, days_back: int = 7) -> Lis
                         "link": link,
                         "source": extract_domain(link),
                         "published": pub_date.isoformat() if pub_date else "",
-                        "source_type": "rss_feed"
+                        "source_type": "rss_feed",
+                        "relevance_score": relevance_score
                     }
                     articles.append(article)
-                
+                    
             except Exception as e:
                 logger.debug(f"Error processing RSS entry: {e}")
                 continue
@@ -1198,82 +1372,33 @@ def parse_rss_feed_fixed(feed_url: str, company: str, days_back: int = 7) -> Lis
         logger.warning(f"RSS feed error {feed_url}: {e}")
         return []
 
-def fetch_rss_feeds_working_2025(company: str, days_back: int = 7) -> List[Dict]:
+def fetch_rss_feeds_working_2025_FIXED_SEQUENTIAL(company: str, days_back: int = 7) -> List[Dict]:
     """
-    Fetch from actually working RSS feeds in 2025.
+    FIXED sequential fallback if async fails.
     """
-    logger.info(f"Fetching 2025 working RSS feeds for {company}...")
+    logger.info(f"Using FIXED sequential RSS fallback for {company}...")
     
-    # Get working feeds
-    working_feeds = get_working_rss_feeds_2025_cleaned()  # Changed from get_working_rss_feeds_2025()
-    
-    # Add company-specific feeds
-    company_feeds = get_company_specific_feeds_2025_cleaned(company)  # Changed from get_company_specific_feeds_2025()
-    working_feeds.update(company_feeds)
+    # Get feeds
+    working_feeds = get_ultra_fast_rss_feeds_FIXED()
+    company_feeds = get_company_specific_feeds_2025_FIXED(company)
+    all_feeds = {**working_feeds, **company_feeds}
     
     all_articles = []
     successful_feeds = 0
-    feed_stats = {}
     
-    # Prioritize premium sources (process these first)
-    premium_order = [
-        'cnbc_business', 'cnbc_finance', 'cnbc_earnings', 
-        'ft_home', 'investing_com', 'seeking_alpha',
-        'marketwatch_main', 'cnbc_technology'
-    ]
-    
-    # Process premium feeds first
-    for feed_name in premium_order:
-        if feed_name in working_feeds:
-            feed_url = working_feeds[feed_name]
-            try:
-                logger.debug(f"Processing premium RSS: {feed_name}")
-                articles = parse_rss_feed_fixed(feed_url, company, days_back)
-                
-                if articles:
-                    all_articles.extend(articles)
-                    successful_feeds += 1
-                    feed_stats[feed_name] = len(articles)
-                    logger.info(f"✓ Premium RSS {feed_name}: {len(articles)} articles")
-                else:
-                    feed_stats[feed_name] = 0
-                    logger.debug(f"✗ Premium RSS {feed_name}: 0 articles")
-                    
-                # Rate limiting
-                time.sleep(3)  # 3 seconds between premium feeds
-                
-            except Exception as e:
-                logger.warning(f"Premium RSS {feed_name} failed: {e}")
-                feed_stats[feed_name] = 0
-                continue
-    
-    # Process remaining feeds
-    remaining_feeds = {k: v for k, v in working_feeds.items() if k not in premium_order}
-    
-    for feed_name, feed_url in remaining_feeds.items():
+    for feed_name, feed_url in all_feeds.items():
         try:
-            logger.debug(f"Processing RSS: {feed_name}")
-            articles = parse_rss_feed_fixed(feed_url, company, days_back)
-            
+            articles = parse_rss_feed_FIXED_DATES(feed_url, company, days_back)
             if articles:
                 all_articles.extend(articles)
                 successful_feeds += 1
-                feed_stats[feed_name] = len(articles)
-                logger.info(f"✓ RSS {feed_name}: {len(articles)} articles")
-            else:
-                feed_stats[feed_name] = 0
-                
-            # Rate limiting
-            time.sleep(2)
-            
+                logger.info(f"✓ Sequential RSS {feed_name}: {len(articles)} articles")
+            time.sleep(1)  # Rate limiting
         except Exception as e:
-            logger.warning(f"RSS {feed_name} failed: {e}")
-            feed_stats[feed_name] = 0
+            logger.warning(f"Sequential RSS {feed_name} failed: {e}")
             continue
     
-    logger.info(f"2025 RSS Results: {successful_feeds}/{len(working_feeds)} successful, {len(all_articles)} total articles")
-    logger.info(f"Feed performance: {feed_stats}")
-    
+    logger.info(f"FIXED Sequential RSS: {successful_feeds}/{len(all_feeds)} successful, {len(all_articles)} total articles")
     return all_articles
 
 def extract_domain_simple(url: str) -> str:
@@ -1287,7 +1412,6 @@ def extract_domain_simple(url: str) -> str:
         return domain
     except:
         return "unknown"
-
 
 def combine_premium_sources_enhanced(company: str, days_back: int = 7) -> List[Dict]:
     """
@@ -3264,3 +3388,46 @@ def analyze_sentiment_distribution(articles: List[Dict]) -> str:
         return f"Sentiment Analysis ({alphavantage_articles} articles): {sentiment_counts['Bullish']} Bullish, {sentiment_counts['Neutral']} Neutral, {sentiment_counts['Bearish']} Bearish. Average sentiment: {avg_sentiment:.2f} ({sentiment_trend} trend)"
     else:
         return "Sentiment Analysis: Not available (no AlphaVantage articles with sentiment data)"
+    
+# Test function to verify the fixes
+def test_optimized_fixed_function():
+    """Test that the FIXED OPTIMIZED function captures the missing articles."""
+    print("Testing FIXED OPTIMIZED RSS function for ONTO...")
+    
+    articles = fetch_rss_feeds_working_2025_parallel_OPTIMIZED("ONTO", 14)
+    print(f"Total articles found: {len(articles)}")
+    
+    # Look for the specific missing articles
+    missing_keywords = [
+        "brian roberts",
+        "enhances leadership", 
+        "could market be wrong",
+        "leadership team"
+    ]
+    
+    found_count = 0
+    for article in articles:
+        title_lower = article['title'].lower()
+        for keyword in missing_keywords:
+            if keyword in title_lower:
+                print(f"✅ FOUND: {article['title']}")
+                print(f"   Source: {article['source']}")
+                print(f"   Published: {article['published']}")
+                print(f"   Relevance: {article.get('relevance_score', 'N/A')}")
+                found_count += 1
+                break
+    
+    print(f"\nFound {found_count} of the previously missing articles!")
+    
+    # Show feed breakdown
+    sources = {}
+    for article in articles:
+        source = article['source']
+        sources[source] = sources.get(source, 0) + 1
+    
+    print(f"\nSource breakdown:")
+    for source, count in sorted(sources.items(), key=lambda x: x[1], reverse=True):
+        print(f"  {source}: {count} articles")
+
+if __name__ == "__main__":
+    test_optimized_fixed_function()
