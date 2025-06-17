@@ -106,6 +106,11 @@ SOURCE QUALITY METRICS:
 
 ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 
+**CRITICAL FORMATTING REQUIREMENTS:**
+- Use EXACTLY these section headers: "**EXECUTIVE SUMMARY**", "**INVESTOR INSIGHTS**", "**CATALYSTS & RISKS**"
+- Start each bullet with a bullet point symbol: "•"
+- Each section must have exactly 4-5 bullets
+
 **CRITICAL WRITING REQUIREMENTS:**
 1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
 2. **Explicit Source Attribution**: Always cite sources using format "according to [source]", "as reported by [source]", "per [source]"
@@ -192,40 +197,59 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
         
         response = anthropic_client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=4000,
-            temperature=0.07,  # Slightly higher for more natural language flow
-            system=f"You are a Managing Director of Equity Research at Goldman Sachs writing institutional-grade investment analysis for {company}. Your writing combines analytical precision with compelling storytelling. Every factual claim must cite its source explicitly. Write in an accessible, professional style that portfolio managers would find both credible and engaging.",
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
+            max_tokens=7500,
+            temperature=0.07,
+            timeout=180.0,
+            system=f"You are a Managing Director of Equity Research at Goldman Sachs writing institutional-grade investment analysis for {company}...",
+            messages=[{"role": "user", "content": prompt}]
         )
         
         analysis_text = response.content[0].text
         generation_time = time.time() - start_time
 
-        logger.info(f"🔍 CLAUDE DEBUG - Full response: {repr(analysis_text)}")
+        # Enhanced debugging for parsing issues
+        logger.info(f"🔍 CLAUDE RESPONSE DEBUG - Length: {len(analysis_text)} chars")
+        logger.info(f"🔍 CLAUDE RESPONSE DEBUG - First 200 chars: {repr(analysis_text[:200])}")
+        logger.info(f"🔍 CLAUDE RESPONSE DEBUG - Contains 'executive': {'executive' in analysis_text.lower()}")
+        logger.info(f"🔍 CLAUDE RESPONSE DEBUG - Contains 'investor': {'investor' in analysis_text.lower()}")
+        logger.info(f"🔍 CLAUDE RESPONSE DEBUG - Contains 'catalyst': {'catalyst' in analysis_text.lower()}")
         
-        # Enhanced logging
-        logger.info(f"🎯 Enhanced Claude Sonnet 4 analysis generated for {company}:")
-        logger.info(f"   • Analysis length: {len(analysis_text)} characters")
-        logger.info(f"   • Premium source coverage: {premium_count}/{len(analysis_articles)} ({premium_count/len(analysis_articles)*100:.1f}%)")
-        logger.info(f"   • Generation time: {generation_time:.2f}s")
-        logger.info(f"   • Enhanced readability & source attribution: ✅")
+        # Check for common section indicators
+        section_indicators = ['executive summary', 'investor insights', 'catalysts', 'risks']
+        for indicator in section_indicators:
+            if indicator in analysis_text.lower():
+                logger.info(f"✅ Found section indicator: '{indicator}'")
         
-        return parse_financial_summaries_enhanced(analysis_text)
-        
-    except Exception as e:
-        logger.error(f"Enhanced Claude Sonnet 4 analysis failed for {company}: {str(e)}")
-        # Fallback to OpenAI
-        try:
-            from news_utils import generate_premium_analysis_30_articles
-            return generate_premium_analysis_30_articles(company, articles, max_articles)
-        except Exception as fallback_error:
-            logger.error(f"Fallback to OpenAI also failed: {fallback_error}")
-            return create_error_summaries_claude(company, str(e))
+    except anthropic.TimeoutError:
+        logger.error(f"❌ Claude Sonnet 4 timeout after 180 seconds for {company}")
+        raise ValueError("Claude Sonnet 4 analysis timed out. Please try again with a shorter date range.")
+    except anthropic.RateLimitError:
+        logger.error(f"❌ Claude Sonnet 4 rate limited for {company}")
+        raise ValueError("Claude Sonnet 4 is currently rate limited. Please try again in a few minutes.")
+    except Exception as api_error:
+        logger.error(f"❌ Claude Sonnet 4 API error for {company}: {str(api_error)}")
+        raise ValueError(f"Claude Sonnet 4 API error: {str(api_error)}")
+    
+    # Enhanced logging
+    logger.info(f"🎯 Enhanced Claude Sonnet 4 analysis generated for {company}:")
+    logger.info(f"   • Analysis length: {len(analysis_text)} characters")
+    logger.info(f"   • Premium source coverage: {premium_count}/{len(analysis_articles)} ({premium_count/len(analysis_articles)*100:.1f}%)")
+    logger.info(f"   • Generation time: {generation_time:.2f}s")
+    
+    # Parse with enhanced logging
+    logger.info("🔧 Starting enhanced parsing...")
+    parsed_results = parse_financial_summaries_enhanced(analysis_text)
+    
+    # Validate parsed results
+    total_bullets = sum(len(section) for section in parsed_results.values())
+    logger.info(f"📊 Parsing results: {total_bullets} total bullets across {len(parsed_results)} sections")
+    
+    for section_name, bullets in parsed_results.items():
+        logger.info(f"   • {section_name}: {len(bullets)} bullets")
+        if bullets:
+            logger.info(f"     - First bullet: {bullets[0][:100]}...")
+    
+    return parsed_results
 
 def parse_financial_summaries_enhanced(text: str) -> Dict[str, List[str]]:
     """
@@ -244,18 +268,17 @@ def parse_financial_summaries_enhanced(text: str) -> Dict[str, List[str]]:
 
     # Enhanced header patterns - much more flexible
     def create_section_pattern(section_name: str) -> re.Pattern:
-        # Handle various formats Claude might use
         patterns = [
-            # Standard markdown headers
-            rf"^\s*#{1,6}\s*{section_name}",
-            # Bold headers  
-            rf"^\s*\*\*\s*{section_name}\s*\*\*",
+            # Fix: Handle ## **SECTION** format that Claude uses
+            rf"^\s*#{1,6}\s*\*\*\s*{section_name}\s*\*\*\s*$",
+            # Standard markdown headers  
+            rf"^\s*#{1,6}\s*{section_name}\s*$",
+            # Bold headers
+            rf"^\s*\*\*\s*{section_name}\s*\*\*\s*$", 
             # ALL CAPS headers
-            rf"^\s*{section_name.upper()}",
+            rf"^\s*{section_name.upper()}\s*$",
             # Headers with colons
-            rf"^\s*{section_name}\s*:",
-            # Headers in brackets
-            rf"^\s*\[\s*{section_name}\s*\]",
+            rf"^\s*{section_name}\s*:\s*$",
         ]
         combined_pattern = "|".join(f"({p})" for p in patterns)
         return re.compile(combined_pattern, re.IGNORECASE)
@@ -383,16 +406,40 @@ def create_error_summaries_claude(company: str, error_msg: str) -> Dict[str, Lis
 # Integration wrapper to replace existing OpenAI calls
 def generate_premium_analysis_upgraded_v2(company: str, articles: List[Dict], max_articles: int = 30) -> Dict[str, List[str]]:
     """
-    ENHANCED INTEGRATION FUNCTION - Version 2 with improved readability and source attribution.
+    ENHANCED INTEGRATION FUNCTION with robust error handling and fallback.
     """
     
     if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
         logger.info(f"🎯 Using Enhanced Claude Sonnet 4 for superior readable analysis of {company}")
-        return generate_premium_analysis_claude_sonnet_4_enhanced(company, articles, max_articles)
+        try:
+            result = generate_premium_analysis_claude_sonnet_4_enhanced(company, articles, max_articles)
+            logger.info(f"✅ Claude Sonnet 4 analysis completed successfully for {company}")
+            return result
+        except Exception as claude_error:
+            logger.error(f"❌ Claude Sonnet 4 failed for {company}: {str(claude_error)}")
+            logger.warning(f"🔄 Falling back to OpenAI for {company}")
+            try:
+                from news_utils import generate_premium_analysis_30_articles
+                return generate_premium_analysis_30_articles(company, articles, max_articles)
+            except Exception as openai_error:
+                logger.error(f"❌ OpenAI fallback also failed for {company}: {str(openai_error)}")
+                return create_error_summaries_claude(company, f"Both Claude and OpenAI failed: {str(claude_error)}, {str(openai_error)}")
     else:
-        logger.warning("Enhanced Claude Sonnet 4 not available, falling back to OpenAI")
-        from news_utils import generate_premium_analysis_30_articles
-        return generate_premium_analysis_30_articles(company, articles, max_articles)
+        missing_components = []
+        if not ANTHROPIC_AVAILABLE:
+            missing_components.append("Anthropic library")
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            missing_components.append("ANTHROPIC_API_KEY")
+            
+        logger.warning(f"⚠️ Claude Sonnet 4 not available for {company}: Missing {', '.join(missing_components)}")
+        logger.info(f"🔄 Using OpenAI fallback for {company}")
+        
+        try:
+            from news_utils import generate_premium_analysis_30_articles
+            return generate_premium_analysis_30_articles(company, articles, max_articles)
+        except Exception as openai_error:
+            logger.error(f"❌ OpenAI fallback failed for {company}: {str(openai_error)}")
+            return create_error_summaries_claude(company, f"Analysis failed: {str(openai_error)}")
 
 # Performance comparison utilities
 def compare_analysis_quality(company: str, articles: List[Dict]) -> Dict[str, Any]:

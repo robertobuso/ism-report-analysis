@@ -1168,22 +1168,24 @@ class ParallelSourceOrchestrator:
         return min(score, 2.0)  # Cap at 2.0
     
     async def _generate_enhanced_analysis_async(self, company: str, articles: List[Dict], 
-                                              relevance_metrics: Dict) -> Dict[str, List[str]]:
-        """Generate analysis with enhanced context from relevance assessment."""
+                                          relevance_metrics: Dict) -> Dict[str, List[str]]:
+        """Generate analysis with Claude Sonnet 4 instead of OpenAI."""
         try:
-            # Run analysis generation in thread pool
+            # Use Claude Sonnet 4 directly instead of OpenAI
+            from news_utils_claude_sonnet_4 import generate_premium_analysis_upgraded_v2
+            
             loop = asyncio.get_event_loop()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                from news_utils import generate_premium_analysis_30_articles
-                future = executor.submit(generate_premium_analysis_30_articles, company, articles)
-                return await loop.run_in_executor(None, lambda: future.result(timeout=30))
+                future = executor.submit(generate_premium_analysis_upgraded_v2, company, articles)
+                return await loop.run_in_executor(None, lambda: future.result(timeout=180))
+                
         except Exception as e:
-            logger.error(f"Error generating enhanced analysis: {e}")
-            # Fallback analysis
+            logger.error(f"Error generating Claude Sonnet 4 analysis: {e}")
+            # Fallback to simple analysis
             return {
                 "executive": [f"Analysis of {len(articles)} articles for {company} with enhanced relevance filtering"],
-                "investor": [f"Relevance rate: {relevance_metrics.get('relevance_percentage', 0):.1%} - indicating {'high' if relevance_metrics.get('relevance_percentage', 0) > 0.6 else 'moderate'} company-specific coverage"],
-                "catalysts": [f"Dynamic source selection used - {'Google CSE triggered' if relevance_metrics.get('google_cse_triggered', False) else 'Premium sources sufficient'}"]
+                "investor": [f"Relevance rate: {relevance_metrics.get('relevance_percentage', 0):.1%}"],
+                "catalysts": [f"Dynamic source selection used"]
             }
     
     def _calculate_enhanced_metrics(self, articles: List[Dict], source_results: Dict,

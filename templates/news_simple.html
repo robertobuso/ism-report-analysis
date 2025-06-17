@@ -85,8 +85,11 @@
                         <div class="feature-icon bg-primary text-white mb-3">
                             <i class="fas fa-chart-line"></i>
                         </div>
-                        <h2 class="mb-3">Institutional Financial Analysis</h2>
-                        <p class="text-muted">Goldman Sachs-grade insights with quantified impacts and trading context</p>
+                        <h2 class="mb-3">Claude Sonnet 4 Financial Analysis</h2>
+                        <p class="text-muted">Goldman Sachs-grade insights powered by Claude Sonnet 4 with quantified impacts and superior reasoning</p>
+                        <div class="alert alert-info">
+                            <small><i class="fas fa-robot me-1"></i> <strong>Enhanced with Claude Sonnet 4:</strong> Superior analytical depth, natural language flow, and transparent source attribution</small>
+                        </div>
                     </div>
 
                     <!-- Error Alert -->
@@ -261,52 +264,58 @@
             overlay.id = 'analysisOverlay';
             overlay.innerHTML = `
                 <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                           background: rgba(0,0,0,0.8); z-index: 9999; display: flex; 
-                           align-items: center; justify-content: center;">
+                        background: rgba(0,0,0,0.8); z-index: 9999; display: flex; 
+                        align-items: center; justify-content: center;">
                     <div style="background: white; padding: 30px; border-radius: 15px; 
-                               text-align: center; max-width: 400px; margin: 20px;">
+                            text-align: center; max-width: 400px; margin: 20px;">
                         <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <h5>Generating Institutional Analysis</h5>
-                        <div id="progressText">Searching premium financial sources...</div>
+                        <h5>Generating Claude Sonnet 4 Analysis</h5>
+                        <div id="progressText">Initializing premium financial sources...</div>
                         <div class="progress mt-3" style="height: 8px;">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                 role="progressbar" style="width: 0%" id="progressBar"></div>
+                                role="progressbar" style="width: 0%" id="progressBar"></div>
                         </div>
-                        <small class="text-muted mt-2 d-block">This may take 30-60 seconds for comprehensive analysis</small>
+                        <small class="text-muted mt-2 d-block">Claude Sonnet 4 analysis may take 1-3 minutes for superior insights</small>
                     </div>
                 </div>
             `;
             document.body.appendChild(overlay);
             
-            // Simulate progress updates
-            let progress = 0;
+            // Enhanced progress updates for Claude Sonnet 4 (7 steps)
             const progressSteps = [
-                {progress: 20, text: "Fetching Bloomberg, Reuters, WSJ articles..."},
-                {progress: 40, text: "Scoring articles by financial relevance..."},
-                {progress: 60, text: "Generating institutional-grade insights..."},
-                {progress: 80, text: "Quantifying financial impacts..."},
-                {progress: 95, text: "Finalizing analysis report..."}
+                {progress: 15, text: "Fetching Bloomberg, Reuters, WSJ articles..."},
+                {progress: 30, text: "Processing AlphaVantage sentiment data..."},
+                {progress: 45, text: "Scoring articles by financial relevance..."},
+                {progress: 60, text: "Claude Sonnet 4 analyzing comprehensive data..."},
+                {progress: 75, text: "Generating institutional-grade insights..."},
+                {progress: 85, text: "Quantifying financial impacts and timelines..."},
+                {progress: 95, text: "Finalizing enhanced analysis report..."}
             ];
             
             let stepIndex = 0;
-            const progressInterval = setInterval(() => {
+            window.progressInterval = setInterval(() => {
                 if (stepIndex < progressSteps.length) {
                     const step = progressSteps[stepIndex];
                     document.getElementById('progressBar').style.width = step.progress + '%';
                     document.getElementById('progressText').textContent = step.text;
                     stepIndex++;
                 } else {
-                    clearInterval(progressInterval);
+                    // Keep progress bar animated while waiting for Claude
+                    document.getElementById('progressText').textContent = "Claude Sonnet 4 generating final insights...";
                 }
-            }, 8000); // Update every 8 seconds
+            }, 12000); // Update every 12 seconds for longer process
         }
-        
         function hideProgressOverlay() {
             const overlay = document.getElementById('analysisOverlay');
             if (overlay) {
                 overlay.remove();
+            }
+            // Clear any running progress intervals
+            if (window.progressInterval) {
+                clearInterval(window.progressInterval);
+                window.progressInterval = null;
             }
         }
 
