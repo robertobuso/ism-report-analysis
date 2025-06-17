@@ -227,100 +227,141 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
             logger.error(f"Fallback to OpenAI also failed: {fallback_error}")
             return create_error_summaries_claude(company, str(e))
 
-def _fallback_alternative_parser(text: str) -> Dict[str, List[str]]:
-    logger.warning("USING _fallback_alternative_parser – no structured bullets extracted")
-    return {"executive": [text.strip()], "investor": [], "catalysts": []}
-
-
 def parse_financial_summaries_enhanced(text: str) -> Dict[str, List[str]]:
     """
-    v4 – Claude-Sonnet-4 parser (handles Markdown ‘##’ headers and **[TAG]** bullets)
-
+    Enhanced parser for Claude Sonnet 4 responses - handles multiple formats robustly.
+    
     Sections returned:
         • executive
-        • investor
+        • investor  
         • catalysts
     """
     sections: Dict[str, List[str]] = {"executive": [], "investor": [], "catalysts": []}
     current_section: str | None = None
 
-    # ---- header patterns ------------------------------------------------------
-    def _hdr_regex(header: str) -> re.Pattern:
-        # optional leading ###, ##, #  and optional ** / __ / * / _
-        pat = (
-            rf"^\s*(?:#{1,6}\s*)?"          # Markdown heading markers
-            rf"(?:\*\*|__|\*|_)?\s*"        # optional emphasis start
-            rf"{header}\s*"
-            rf"(?:\*\*|__|\*|_)?\s*$"       # optional emphasis end
-        )
-        return re.compile(pat, re.I)
+    logger.info(f"🔍 PARSER DEBUG - Input text length: {len(text)} chars")
+    logger.info(f"🔍 PARSER DEBUG - First 500 chars: {repr(text[:500])}")
+
+    # Enhanced header patterns - much more flexible
+    def create_section_pattern(section_name: str) -> re.Pattern:
+        # Handle various formats Claude might use
+        patterns = [
+            # Standard markdown headers
+            rf"^\s*#{1,6}\s*{section_name}",
+            # Bold headers  
+            rf"^\s*\*\*\s*{section_name}\s*\*\*",
+            # ALL CAPS headers
+            rf"^\s*{section_name.upper()}",
+            # Headers with colons
+            rf"^\s*{section_name}\s*:",
+            # Headers in brackets
+            rf"^\s*\[\s*{section_name}\s*\]",
+        ]
+        combined_pattern = "|".join(f"({p})" for p in patterns)
+        return re.compile(combined_pattern, re.IGNORECASE)
 
     section_patterns = {
-        "executive": _hdr_regex(r"executive\s+summary"),
-        "investor":  _hdr_regex(r"investor\s+insights?"),
-        "catalysts": _hdr_regex(r"catalysts?\s*(?:&|\band\b)?\s*risks?"),
+        "executive": create_section_pattern(r"executive\s+summary"),
+        "investor": create_section_pattern(r"investor\s+insights?"),
+        "catalysts": create_section_pattern(r"(?:catalysts?\s*(?:&|and)?\s*risks?|risks?\s*(?:&|and)?\s*catalysts?)"),
     }
 
-    # ---- iterate line-by-line --------------------------------------------------
-    for ln, raw in enumerate(text.splitlines()):
-        line = raw.strip()
+    lines = text.strip().split('\n')
+    
+    # First pass: find sections more aggressively
+    for i, line in enumerate(lines):
+        line = line.strip()
         if not line:
             continue
+            
+        # Check for section headers
+        for section_name, pattern in section_patterns.items():
+            if pattern.search(line):
+                current_section = section_name
+                logger.info(f"✅ Found section '{section_name}' at line {i}: {line[:50]}...")
+                continue
 
-        # -------- section detection (skip lines starting with '[' to avoid bullets)
-        if not line.startswith("["):
-            for name, pat in section_patterns.items():
-                if pat.match(line):
-                    current_section = name
-                    logger.debug("Header %s @ line %d: %s", name, ln, line)
+        # Enhanced bullet detection
+        if current_section:
+            is_bullet = False
+            bullet_text = ""
+            
+            # Multiple bullet formats
+            bullet_patterns = [
+                r"^\s*[-•*◦▪▫]\s+(.+)",           # Symbol bullets
+                r"^\s*\d+[\.\)]\s+(.+)",          # Numbered bullets  
+                r"^\s*\[[^\]]+\]\s*(.+)",         # Tagged bullets [TAG] text
+                r"^\s*(?:\*\*\[[^\]]+\]\*\*)\s*(.+)",  # **[TAG]** text
+            ]
+            
+            for pattern in bullet_patterns:
+                match = re.match(pattern, line)
+                if match:
+                    bullet_text = match.group(1).strip()
+                    is_bullet = True
                     break
-            else:
-                name = None
-            if name:
-                continue  # header line itself is not a bullet
+            
+            # Fallback: substantial text in a section (not a header)
+            if not is_bullet and len(line) > 20:
+                # Make sure it's not a section header
+                is_header = any(pattern.search(line) for pattern in section_patterns.values())
+                if not is_header:
+                    bullet_text = line.strip()
+                    is_bullet = True
+            
+            # Clean up bullet text
+            if is_bullet and bullet_text:
+                # Remove emphasis around tags
+                bullet_text = re.sub(r"^(?:\*\*|__|\*|_)?\s*\[[^\]]+\]\s*(?:\*\*|__|\*|_)?\s*", "", bullet_text).strip()
+                
+                if len(bullet_text) > 10:  # Minimum content threshold
+                    sections[current_section].append(bullet_text)
+                    logger.debug(f"→ {current_section}: {bullet_text[:60]}...")
 
-        # -------- bullet detection ---------------------------------------------
-        is_bullet = False
-        bullet_text = ""
-
-        # 1) symbol bullets
-        if line.startswith(("-", "•", "*", "◦", "▪", "▫")):
-            bullet_text = line.lstrip("-•*◦▪▫ ").strip()
-            is_bullet = True
-        # 2) numbered bullets
-        elif re.match(r"^\d+[\.\)]\s+", line):
-            bullet_text = re.sub(r"^\d+[\.\)]\s+", "", line).strip()
-            is_bullet = True
-        # 3) bracket-tag bullets (“[VALUATION] …”)
-        elif line.startswith("[") and "]" in line:
-            bullet_text = re.sub(r"^\[[^\]]+\]\s*", "", line).strip()
-            is_bullet = True
-        # 4) fallback: substantial text inside a known section
-        elif current_section and len(line) > 20:
-            bullet_text = line
-            is_bullet = True
-
-        # -------- clean up bullet text -----------------------------------------
-        if is_bullet:
-            # strip optional ** / __ / * / _ emphasis around a bracket tag
-            bullet_text = re.sub(
-                r"^(?:\*\*|__|\*|_)?\s*\[[^\]]+\]\s*(?:\*\*|__|\*|_)?\s*", "", bullet_text
-            ).strip()
-
-        # -------- store bullet --------------------------------------------------
-        if is_bullet and current_section and len(bullet_text) > 15:
-            sections[current_section].append(bullet_text)
-            logger.debug("→ %s: %.60s", current_section, bullet_text)
-
-    # ---- graceful fallback -----------------------------------------------------
+    # Enhanced fallback parsing if no sections found
     if all(not v for v in sections.values()):
-        logger.warning("Primary parsing extracted no bullets – using fallback.")
-        try:
-            from . import parse_claude_response_alternative  # type: ignore
-            return parse_claude_response_alternative(text)
-        except Exception:
-            return _fallback_alternative_parser(text)
-
+        logger.warning("🚨 Primary parsing failed - using enhanced fallback")
+        
+        # Try to split by common separators
+        text_parts = re.split(r'\n\s*\n', text.strip())  # Split by double newlines
+        
+        # Distribute parts to sections
+        for i, part in enumerate(text_parts):
+            if not part.strip():
+                continue
+                
+            # Clean the part
+            lines = [line.strip() for line in part.split('\n') if line.strip()]
+            if not lines:
+                continue
+                
+            # Try to identify section by keywords
+            full_text = ' '.join(lines).lower()
+            
+            if any(word in full_text for word in ['executive', 'summary', 'strategic', 'business']):
+                target_section = 'executive'
+            elif any(word in full_text for word in ['investor', 'valuation', 'analyst', 'rating']):
+                target_section = 'investor'  
+            elif any(word in full_text for word in ['catalyst', 'risk', 'event', 'regulatory']):
+                target_section = 'catalysts'
+            else:
+                # Distribute evenly
+                target_section = ['executive', 'investor', 'catalysts'][i % 3]
+            
+            # Add meaningful content
+            for line in lines:
+                if len(line) > 15:  # Minimum content
+                    sections[target_section].append(line)
+        
+        logger.info(f"📊 Fallback results: executive={len(sections['executive'])}, investor={len(sections['investor'])}, catalysts={len(sections['catalysts'])}")
+    
+    # Final validation - ensure each section has content
+    for section_name, bullets in sections.items():
+        if not bullets:
+            sections[section_name] = [f"No specific {section_name} developments identified in recent coverage."]
+    
+    logger.info(f"🎯 PARSER FINAL: executive={len(sections['executive'])}, investor={len(sections['investor'])}, catalysts={len(sections['catalysts'])}")
+    
     return sections
 
 def create_empty_summaries_claude() -> Dict[str, List[str]]:

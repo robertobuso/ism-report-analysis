@@ -239,7 +239,7 @@
             // Show progress overlay
             showProgressOverlay();
             
-            // Add timeout protection
+            // Add enhanced timeout protection for Claude Sonnet 4
             setTimeout(() => {
                 if (button.disabled) {
                     hideProgressOverlay();
@@ -248,9 +248,9 @@
                     button.disabled = false;
                     const inputs = form.querySelectorAll('input, select');
                     inputs.forEach(input => input.disabled = false);
-                    alert('Analysis is taking longer than expected. Please try again.');
+                    alert('Analysis is taking longer than expected. Please try again or try a shorter date range.');
                 }
-            }, 60000);
+            }, 180000); // 3 minute timeout for Claude Sonnet 4
             
             form.classList.add('was-validated');
         });
