@@ -342,7 +342,7 @@
                                                 {% elif article.sentiment_label == 'Bearish' %}bg-danger
                                                 {% else %}bg-secondary{% endif %} badge-sm ms-1">
                                                 {{ article.sentiment_label }}
-                                                {% if article.sentiment_score %}({{ "%.2f"|format(article.sentiment_score) }}){% endif %}
+                                                {% if article.sentiment_score %}({{ article.sentiment_score|round(1) }}){% endif %}
                                             </span>
                                             {% endif %}
                                             
@@ -397,7 +397,7 @@
                                             <!-- Relevance Score for AlphaVantage -->
                                             {% if article.source_type == 'alphavantage_premium' and article.get('relevance_score') %}
                                             <span class="badge bg-light text-dark badge-sm">
-                                                Relevance: {{ "%.2f"|format(article.relevance_score) }}
+                                                Relevance: {{ article.relevance_score|round(2) }}
                                             </span>
                                             {% endif %}
                                         </div>
@@ -617,7 +617,7 @@
                                     {% if rss_articles is defined and rss_articles > 0 %}Premium RSS ({{ rss_articles }} feeds), {% endif %}
                                     Google Search fallback
                                 </li>
-                                <li><strong>Content Quality:</strong> {{ alphavantage_coverage|default(0) }}% full content, {{ premium_coverage|default(0) }}% premium sources</li>
+                                <li><strong>Content Quality:</strong> {{ alphavantage_coverage|default(0)|round }}% full content, {{ premium_coverage|default(0)|round }}% premium sources</li>
                                 <li><strong>Analysis Features:</strong> 
                                     {% if alphavantage_articles > 0 %}Sentiment analysis, relevance scoring, {% endif %}
                                     quantified financial impacts, trading context
@@ -678,7 +678,7 @@
                 alphavantage: {{ alphavantage_articles|default(0) }},
                 nyt: {{ nyt_articles|default(0) }},
                 rss: {{ rss_articles|default(0) }},
-                premium: {{ high_quality_sources }}
+                premium: {{ high_quality_sources|default(0) }}
             };
             
             let text = `PREMIUM FINANCIAL ANALYSIS: ${company}\n`;

@@ -232,15 +232,6 @@ def get_news_summary():
                 source_performance={}
             )
         
-        # UPGRADE: Use Claude Sonnet 4 for analysis generation
-        if results['articles']:
-            from news_utils_claude_sonnet_4 import generate_premium_analysis_upgraded_v2
-            enhanced_summaries = generate_premium_analysis_upgraded_v2(company, results['articles'])
-            results['summaries'] = enhanced_summaries
-            
-            # Add Claude Sonnet 4 indicator
-            results['enhanced_claude_analysis'] = True
-        
         # Process successful results for rendering
         articles = results['articles']
         metrics = results['metrics']

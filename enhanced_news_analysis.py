@@ -410,9 +410,43 @@ class ParallelSourceOrchestrator:
         
         summaries = {}
         if selected_articles:
-            summaries = await self._generate_enhanced_analysis_async(
-                company, selected_articles, relevance_stats
-            )
+            # Phase 5: Generate Analysis - FIXED: Single Claude call only
+            summaries = {}
+            if selected_articles:
+                try:
+                    from news_utils_claude_sonnet_4 import generate_premium_analysis_upgraded_v2
+                    
+                    # Run Claude Sonnet 4 in thread pool since it's not async
+                    loop = asyncio.get_event_loop()
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(generate_premium_analysis_upgraded_v2, company, selected_articles)
+                        summaries = await loop.run_in_executor(None, lambda: future.result(timeout=180))
+                    
+                    logger.info("✅ Claude Sonnet 4 analysis completed successfully")
+                    
+                except Exception as claude_error:
+                    logger.error(f"❌ Claude Sonnet 4 failed: {claude_error}")
+                    logger.info("🔄 Falling back to OpenAI...")
+                    try:
+                        # Fallback to OpenAI
+                        from news_utils import generate_premium_analysis_30_articles
+                        loop = asyncio.get_event_loop()
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(generate_premium_analysis_30_articles, company, selected_articles)
+                            summaries = await loop.run_in_executor(None, lambda: future.result(timeout=120))
+                    except Exception as openai_error:
+                        logger.error(f"❌ OpenAI fallback also failed: {openai_error}")
+                        summaries = {
+                            "executive": [f"**[SYSTEM]** Analysis temporarily unavailable for {company}. Multiple premium sources processed successfully."],
+                            "investor": [f"**[RECOMMENDATION]** Raw data available. Consider refreshing analysis or checking company ticker."],
+                            "catalysts": [f"**[TIMING]** Monitor upcoming events for {company}. Enhanced analysis will retry automatically."]
+                        }
+            else:
+                summaries = {
+                    "executive": [f"**[NO DATA]** No recent financial news found for {company} across all premium sources."],
+                    "investor": [f"**[RECOMMENDATION]** Verify company ticker or expand date range for {company}."],
+                    "catalysts": [f"**[TIMING]** Monitor upcoming announcements or earnings events for {company}."]
+                }
         
         # Calculate final metrics
         response_time = time.time() - start_time
@@ -1166,27 +1200,6 @@ class ParallelSourceOrchestrator:
             score += 0.1
         
         return min(score, 2.0)  # Cap at 2.0
-    
-    async def _generate_enhanced_analysis_async(self, company: str, articles: List[Dict], 
-                                          relevance_metrics: Dict) -> Dict[str, List[str]]:
-        """Generate analysis with Claude Sonnet 4 instead of OpenAI."""
-        try:
-            # Use Claude Sonnet 4 directly instead of OpenAI
-            from news_utils_claude_sonnet_4 import generate_premium_analysis_upgraded_v2
-            
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(generate_premium_analysis_upgraded_v2, company, articles)
-                return await loop.run_in_executor(None, lambda: future.result(timeout=180))
-                
-        except Exception as e:
-            logger.error(f"Error generating Claude Sonnet 4 analysis: {e}")
-            # Fallback to simple analysis
-            return {
-                "executive": [f"Analysis of {len(articles)} articles for {company} with enhanced relevance filtering"],
-                "investor": [f"Relevance rate: {relevance_metrics.get('relevance_percentage', 0):.1%}"],
-                "catalysts": [f"Dynamic source selection used"]
-            }
     
     def _calculate_enhanced_metrics(self, articles: List[Dict], source_results: Dict,
                                   relevance_metrics: Dict, response_time: float) -> Dict:
