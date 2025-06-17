@@ -205,6 +205,8 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
         
         analysis_text = response.content[0].text
         generation_time = time.time() - start_time
+
+        logger.info(f"🔍 CLAUDE DEBUG - Full response: {repr(analysis_text)}")
         
         # Enhanced logging
         logger.info(f"🎯 Enhanced Claude Sonnet 4 analysis generated for {company}:")
@@ -225,57 +227,86 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
             logger.error(f"Fallback to OpenAI also failed: {fallback_error}")
             return create_error_summaries_claude(company, str(e))
 
+def _fallback_alternative_parser(text: str) -> Dict[str, List[str]]:
+    """
+    Ultra-simple backup: puts the whole text into 'executive'
+    so the pipeline never hard-fails.
+    """
+    logger.warning("USING _fallback_alternative_parser – no structured bullets extracted")
+    return {"executive": [text.strip()], "investor": [], "catalysts": []}
+
+
 def parse_financial_summaries_enhanced(text: str) -> Dict[str, List[str]]:
     """
-    Enhanced parsing for Claude Sonnet 4's more sophisticated output.
-    Claude tends to be more structured and consistent than OpenAI.
+    v3 – Robust Claude-Sonnet-4 parser.
+
+    • Accepts headers with optional ** / __ / * / _ Markdown formatting.
+    • Refuses to treat lines that start with '[' (e.g. “[VALUATION] …”) as headers.
+    • Strips leading bracket tags from bullet lines.
+    • Falls back gracefully if no bullets are found.
     """
-    sections = {"executive": [], "investor": [], "catalysts": []}
-    current_section = None
-    
-    # Enhanced section detection for Claude's output patterns
+    sections: Dict[str, List[str]] = {"executive": [], "investor": [], "catalysts": []}
+    current_section: str | None = None
+
+    # ---------- header patterns (Markdown-friendly) ----------
+    def _hdr_regex(header: str) -> re.Pattern:
+        # optional **, __, *, or _ wrapped around the header text
+        pat = rf"^\s*(?:\*\*|__|\*|_)?\s*{header}\s*(?:\*\*|__|\*|_)?\s*$"
+        return re.compile(pat, re.I)
+
     section_patterns = {
-        "executive": re.compile(r".*(executive\s+summary|strategic|financial\s+impact).*", re.IGNORECASE),
-        "investor": re.compile(r".*(investor\s+insights|valuation|market\s+dynamics).*", re.IGNORECASE),
-        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?|probability).*", re.IGNORECASE)
+        "executive": _hdr_regex(r"executive\s+summary"),
+        "investor": _hdr_regex(r"investor\s+insights?"),
+        "catalysts": _hdr_regex(r"catalysts?\s*(?:&|\band\b)?\s*risks?"),
     }
-    
-    lines = text.strip().split('\n')
-    
-    for line in lines:
-        line = line.strip()
+
+    # ---------- iterate lines ----------
+    for ln, raw in enumerate(text.splitlines()):
+        line = raw.strip()
         if not line:
             continue
-            
-        # Check for section headers
-        section_found = False
-        for section_name, pattern in section_patterns.items():
-            if pattern.match(line):
-                current_section = section_name
-                section_found = True
-                logger.debug(f"Found section: {section_name}")
-                break
-        
-        if section_found:
-            continue
-            
-        # Process bullet points (Claude tends to use various formats)
-        if line.startswith(('-', '•', '*', '◦')) and current_section:
-            bullet = line.lstrip('-•*◦ ').strip()
-            if bullet and len(bullet) > 15:  # Filter out short fragments
-                sections[current_section].append(bullet)
-                logger.debug(f"Added bullet to {current_section}: {bullet[:50]}...")
-    
-    # Quality check - ensure each section has content
-    for section_name, bullets in sections.items():
-        if not bullets:
-            logger.warning(f"No bullets found for section: {section_name}")
-            sections[section_name] = [f"Enhanced Claude Sonnet 4 analysis available - processing completed for {section_name} category with full context utilization."]
-    
-    # Log parsing results
-    total_bullets = sum(len(bullets) for bullets in sections.values())
-    logger.info(f"Parsed {total_bullets} total bullets: Executive={len(sections['executive'])}, Investor={len(sections['investor'])}, Catalysts={len(sections['catalysts'])}")
-    
+
+        # --- section detection (ignore lines that look like bullets) ---
+        if not line.startswith("["):
+            for name, pat in section_patterns.items():
+                if pat.match(line):
+                    current_section = name
+                    logger.debug("Header %s @ line %d: %s", name, ln, line)
+                    break
+            else:
+                name = None  # no header found
+            if name:
+                continue  # skip the header itself
+
+        # --- bullet extraction ---
+        is_bullet, bullet = False, ""
+
+        if line.startswith(("-", "•", "*", "◦", "▪", "▫")):
+            bullet = line.lstrip("-•*◦▪▫ ").strip()
+            is_bullet = True
+        elif re.match(r"^\d+[\.\)]\s+", line):
+            bullet = re.sub(r"^\d+[\.\)]\s+", "", line).strip()
+            is_bullet = True
+        elif line.startswith("[") and "]" in line:
+            bullet = re.sub(r"^\[[^\]]+\]\s*", "", line).strip()
+            is_bullet = True
+        elif current_section and len(line) > 20:
+            bullet = line
+            is_bullet = True
+
+        if is_bullet and current_section and len(bullet) > 15:
+            sections[current_section].append(bullet)
+            logger.debug("→ %s: %.60s", current_section, bullet)
+
+    # ---------- graceful fallback ----------
+    if all(not v for v in sections.values()):
+        logger.warning("Primary parsing extracted no bullets – using fallback.")
+        try:
+            from . import parse_claude_response_alternative  # type: ignore
+            return parse_claude_response_alternative(text)
+        except Exception:
+            return _fallback_alternative_parser(text)
+
     return sections
 
 def create_empty_summaries_claude() -> Dict[str, List[str]]:
