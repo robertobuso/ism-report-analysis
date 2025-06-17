@@ -191,7 +191,7 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
         start_time = time.time()
         
         response = anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-20250514",
             max_tokens=4000,
             temperature=0.07,  # Slightly higher for more natural language flow
             system=f"You are a Managing Director of Equity Research at Goldman Sachs writing institutional-grade investment analysis for {company}. Your writing combines analytical precision with compelling storytelling. Every factual claim must cite its source explicitly. Write in an accessible, professional style that portfolio managers would find both credible and engaging.",
@@ -460,7 +460,7 @@ def setup_claude_sonnet_4():
             anthropic_client = anthropic.Anthropic(api_key=api_key)
             # Test with a simple message
             test_response = anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-20250514",
                 max_tokens=50,
                 messages=[{"role": "user", "content": "Hello, Claude!"}]
             )
