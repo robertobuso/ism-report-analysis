@@ -14,6 +14,9 @@ import aiohttp
 import concurrent.futures
 import sys
 
+from enhanced_news_analysis import DynamicSourceOrchestrator, AnalysisConfig
+from configuration_and_integration import ConfigurationManager, MigrationHelper
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
@@ -1002,10 +1005,10 @@ def fetch_rss_feeds_working_2025(company: str, days_back: int = 7) -> List[Dict]
     logger.info(f"Fetching 2025 working RSS feeds for {company}...")
     
     # Get working feeds
-    working_feeds = get_working_rss_feeds_2025()
+    working_feeds = get_working_rss_feeds_2025_cleaned()  # Changed from get_working_rss_feeds_2025()
     
     # Add company-specific feeds
-    company_feeds = get_company_specific_feeds_2025(company)
+    company_feeds = get_company_specific_feeds_2025_cleaned(company)  # Changed from get_company_specific_feeds_2025()
     working_feeds.update(company_feeds)
     
     all_articles = []
@@ -1106,7 +1109,8 @@ def combine_premium_sources_enhanced(company: str, days_back: int = 7) -> List[D
     
     # 2. Fetch from enhanced premium RSS feeds
     try:
-        rss_articles = fetch_rss_feeds_working_2025(company, days_back)
+        # FIXED: Use the correct function name
+        rss_articles = fetch_rss_feeds_working_2025(company, days_back)  # Make sure this function exists
         all_articles.extend(rss_articles)
         source_stats['premium_rss'] = len(rss_articles)
         if rss_articles:
@@ -1734,7 +1738,7 @@ def fetch_comprehensive_news_enhanced(company: str, days_back: int = 7, enable_m
     
     # Step 1: Fetch from AlphaVantage Premium (highest priority)
     try:
-        alphavantage_articles = fetch_alphavantage_news(company, days_back)
+        alphavantage_articles = fetch_alphavantage_news_enhanced(company, days_back)  # FIXED: Added _enhanced
         all_articles.extend(alphavantage_articles)
         source_performance['alphavantage'] = len(alphavantage_articles)
         logger.info(f"✓ AlphaVantage: {len(alphavantage_articles)} articles with full content + sentiment")
@@ -2357,232 +2361,280 @@ def fetch_comprehensive_news_parallel(company: str, days_back: int = 7) -> Dict[
 
 def fetch_comprehensive_news_guaranteed_30_enhanced(company: str, days_back: int = 7) -> Dict[str, Any]:
     """
-    Enhanced orchestration with parallel RSS fetching and optional full-text extraction.
+    ENHANCED version with dynamic relevance assessment and intelligent Google CSE triggering.
+    
+    This replaces the original function with:
+    1. Early relevance assessment for premium source articles
+    2. Dynamic Google CSE triggering based on relevance, not just quantity
+    3. Improved article selection and scoring
+    4. Better performance for both well-known and lesser-known companies
+    
+    Maintains backward compatibility with existing app.py calls.
     """
-    import time
-    start_time = time.time()
     
-    all_articles = []
-    source_performance = {}
-    api_errors = []
-    
-    logger.info(f"🚀 Starting ENHANCED 30-article analysis for {company} ({days_back} days)")
-    
-    # Step 1: Fetch from Enhanced AlphaVantage (highest priority)
     try:
-        alphavantage_articles = fetch_alphavantage_news_enhanced(company, days_back)
-        all_articles.extend(alphavantage_articles)
-        source_performance['alphavantage'] = len(alphavantage_articles)
-        logger.info(f"✓ Enhanced AlphaVantage: {len(alphavantage_articles)} articles with improved filtering")
-    except Exception as e:
-        logger.error(f"Enhanced AlphaVantage failed: {e}")
-        source_performance['alphavantage'] = 0
-        api_errors.append(f"AlphaVantage: {str(e)}")
-    
-    # Step 2: Fetch from NYT API (parallel version)
-    try:
-        if 'fetch_nyt_parallel' in globals():
-            # Use async version if available
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            nyt_articles = loop.run_until_complete(fetch_nyt_parallel(company, days_back))
-            loop.close()
-        else:
-            # Fallback to regular NYT API
-            nyt_articles = fetch_nyt_news_working(company, days_back, max_articles=100)
+        logger.info(f"🚀 Starting ENHANCED 30-article analysis for {company} ({days_back} days)")
         
-        # Deduplicate against AlphaVantage
-        alphavantage_urls = {article.get('link', '') for article in alphavantage_articles}
-        new_nyt_articles = [a for a in nyt_articles if a.get('link', '') not in alphavantage_urls]
+        # Use the enhanced system with configuration
+        config_manager = ConfigurationManager()
+        config = config_manager.get_analysis_config()
+        orchestrator = DynamicSourceOrchestrator(config)
         
-        all_articles.extend(new_nyt_articles)
-        source_performance['nyt'] = len(new_nyt_articles)
-        logger.info(f"✓ NYT API: {len(new_nyt_articles)} unique articles")
+        # Execute enhanced analysis
+        results = orchestrator.fetch_enhanced_news_with_dynamic_cse(company, days_back)
         
-    except Exception as e:
-        logger.error(f"NYT API failed: {e}")
-        source_performance['nyt'] = 0
-        api_errors.append(f"NYT: {str(e)}")
-    
-    # Step 3: Fetch from Premium RSS feeds (PARALLEL - much faster!)
-    try:
-        logger.info(f"🚀 Starting PARALLEL RSS fetch...")
-        rss_start_time = time.time()
+        if not results['success']:
+            logger.warning(f"Enhanced analysis found no articles for {company}")
+            return create_empty_results(company, days_back)
         
-        # Use the new parallel RSS fetcher
-        rss_articles = fetch_rss_feeds_working_2025_parallel(company, days_back)
-        
-        rss_time = time.time() - rss_start_time
-        logger.info(f"✓ Parallel RSS completed in {rss_time:.2f}s (vs ~30s sequential)")
-        
-        # Deduplicate against existing articles
-        existing_urls = {article.get('link', '') for article in all_articles}
-        new_rss_articles = [a for a in rss_articles if a.get('link', '') not in existing_urls]
-        
-        all_articles.extend(new_rss_articles)
-        source_performance['rss'] = len(new_rss_articles)
-        logger.info(f"✓ Parallel RSS: {len(new_rss_articles)} unique articles")
-        
-    except Exception as e:
-        logger.error(f"Parallel RSS failed: {e}")
-        source_performance['rss'] = 0
-        api_errors.append(f"RSS: {str(e)}")
-    
-    # Step 4: Google Search (if we need more articles)
-    current_count = len(all_articles)
-    if current_count < 25:  # Only use Google if we don't have enough premium articles
-        try:
-            google_articles = fetch_google_news(company, days_back)
+        # Convert to original format for backward compatibility with app.py
+        enhanced_results = {
+            'company': company,
+            'articles': results['articles'],
+            'summaries': results['summaries'],
+            'metrics': {
+                # Original fields (maintained for compatibility)
+                'total_articles': results['metrics']['total_articles'],
+                'alphavantage_articles': results['metrics']['alphavantage_articles'],
+                'nyt_articles': results['metrics']['nyt_articles'],
+                'rss_articles': results['metrics']['rss_articles'],
+                'google_articles': results['metrics'].get('google_articles', 0),
+                'premium_sources_count': results['metrics']['premium_sources_count'],
+                'high_quality_sources': results['metrics']['premium_sources_count'],
+                'premium_coverage': results['metrics']['premium_coverage'],
+                'alphavantage_coverage': results['metrics']['alphavantage_coverage'],
+                'analysis_quality': results['metrics']['analysis_quality'],
+                'response_time': results['metrics']['response_time'],
+                'articles_analyzed': results['metrics']['total_articles'],
+                'articles_displayed': min(12, results['metrics']['total_articles']),
+                'full_content_articles': results['metrics']['alphavantage_articles'] + results['metrics']['nyt_articles'],
+                'premium_sources_coverage': results['metrics']['premium_coverage'],
+                
+                # Enhanced fields (new capabilities)
+                'relevant_articles': results['metrics'].get('relevant_articles', 0),
+                'relevance_percentage': results['metrics'].get('relevance_percentage', 0),
+                'average_relevance_score': results['metrics'].get('average_relevance_score', 0),
+                'enhanced_scoring_used': True,
+                'dynamic_cse_logic_used': True
+            },
+            'source_performance': results['source_performance'],
+            'success': results['success'],
             
-            # Deduplicate against existing articles
-            existing_urls = {article.get('link', '') for article in all_articles}
-            new_google_articles = [a for a in google_articles if a.get('link', '') not in existing_urls]
-            
-            # Limit Google articles to maintain quality
-            needed_articles = 30 - current_count
-            new_google_articles = new_google_articles[:needed_articles]
-            
-            all_articles.extend(new_google_articles)
-            source_performance['google'] = len(new_google_articles)
-            logger.info(f"✓ Google Search: {len(new_google_articles)} gap-filling articles")
-            
-        except Exception as e:
-            logger.error(f"Google search failed: {e}")
-            source_performance['google'] = 0
-            api_errors.append(f"Google: {str(e)}")
-    else:
-        source_performance['google'] = 0
-        logger.info("✓ Google Search: Skipped (sufficient premium articles)")
-    
-    # Step 5: Enhanced deduplication and quality scoring
-    all_articles = deduplicate_articles(all_articles)
-    
-    # Step 6: GUARANTEE 30 articles with proper AlphaVantage representation
-    target_articles = 30
-    alphavantage_articles_final = [a for a in all_articles if a.get('source_type') == 'alphavantage_premium']
-    non_alphavantage_articles = [a for a in all_articles if a.get('source_type') != 'alphavantage_premium']
-    
-    # Ensure minimum AlphaVantage representation (25% or at least 7 articles)
-    min_av_articles = max(int(target_articles * 0.25), min(7, len(alphavantage_articles_final)))
-    
-    if len(alphavantage_articles_final) >= min_av_articles:
-        # We have enough AV articles, select best mix
-        selected_av_articles = alphavantage_articles_final[:min_av_articles]
-        remaining_slots = target_articles - len(selected_av_articles)
-        
-        # Fill remaining slots with best non-AV articles
-        remaining_articles = alphavantage_articles_final[min_av_articles:] + non_alphavantage_articles
-        scored_remaining = score_articles_fixed(remaining_articles, company)
-        selected_remaining = [article for article, score in scored_remaining[:remaining_slots]]
-        
-        final_articles = selected_av_articles + selected_remaining
-    else:
-        # Not enough AV articles, take all we have plus best others
-        logger.warning(f"Only {len(alphavantage_articles_final)} AlphaVantage articles available (target: {min_av_articles})")
-        remaining_slots = target_articles - len(alphavantage_articles_final)
-        
-        scored_others = score_articles_fixed(non_alphavantage_articles, company)
-        selected_others = [article for article, score in scored_others[:remaining_slots]]
-        
-        final_articles = alphavantage_articles_final + selected_others
-    
-    # Ensure we have exactly 30 articles (pad with best available if needed)
-    if len(final_articles) < target_articles:
-        remaining_needed = target_articles - len(final_articles)
-        
-        # Get additional articles from any available source
-        all_remaining = [a for a in all_articles if a not in final_articles]
-        if all_remaining:
-            scored_remaining = score_articles_fixed(all_remaining, company)
-            additional_articles = [article for article, score in scored_remaining[:remaining_needed]]
-            final_articles.extend(additional_articles)
-        
-        logger.info(f"Added {len(additional_articles) if 'additional_articles' in locals() else 0} additional articles to reach 30")
-    
-    # Limit to exactly 30 articles
-    final_articles = final_articles[:target_articles]
-    
-    # Step 7: Optional full-text extraction for premium articles
-    final_articles = enhance_articles_with_full_text(final_articles)
-    
-    # Step 8: Calculate final metrics
-    total_articles = len(final_articles)
-    alphavantage_count = sum(1 for a in final_articles if a.get('source_type') == 'alphavantage_premium')
-    nyt_count = sum(1 for a in final_articles if a.get('source_type') == 'nyt_api')
-    rss_count = sum(1 for a in final_articles if a.get('source_type') == 'rss_feed')
-    google_count = sum(1 for a in final_articles if a.get('source_type') == 'google_search')
-    
-    # Premium source counts
-    premium_source_domains = ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 'cnbc.com', 
-                             'marketwatch.com', 'barrons.com', 'nytimes.com']
-    high_quality_sources = sum(1 for article in final_articles 
-                             if article.get('source', '') in premium_source_domains)
-    
-    # Calculate percentages
-    alphavantage_percentage = (alphavantage_count / total_articles * 100) if total_articles > 0 else 0
-    premium_coverage = (high_quality_sources / total_articles * 100) if total_articles > 0 else 0
-    
-    # Determine analysis quality
-    full_content_articles = alphavantage_count + nyt_count + rss_count
-    
-    if alphavantage_percentage >= 25 and premium_coverage >= 40:
-        analysis_quality = "Premium+"
-    elif alphavantage_percentage >= 20 or (premium_coverage >= 30 and full_content_articles >= 10):
-        analysis_quality = "Institutional"
-    elif alphavantage_percentage >= 15 or full_content_articles >= 8:
-        analysis_quality = "Professional" 
-    elif alphavantage_count >= 3 or high_quality_sources >= 8:
-        analysis_quality = "Standard"
-    else:
-        analysis_quality = "Limited"
-    
-    response_time = time.time() - start_time
-    
-    # Step 9: Generate analysis with exactly 30 articles
-    summaries = {}
-    if final_articles:
-        summaries = generate_premium_analysis_30_articles(company, final_articles)
-    else:
-        summaries = {
-            "executive": ["**[NO DATA]** No recent financial news found across all premium sources. Try expanding date range or verifying company ticker."],
-            "investor": ["**[RECOMMENDATION]** Verify company ticker symbol or try major exchanges (NYSE/NASDAQ)."],
-            "catalysts": ["**[TIMING]** Monitor upcoming earnings announcements or regulatory events."]
+            # Enhanced metadata
+            'google_cse_triggered': results.get('google_cse_triggered', False),
+            'relevance_metrics': results.get('relevance_metrics', {}),
+            'resolved_ticker': results.get('resolved_ticker'),
+            'resolved_company_name': results.get('resolved_company_name'),
+            'enhanced_analysis': True
         }
+        
+        # Enhanced logging
+        logger.info(f"✅ ENHANCED Analysis Complete for {company}:")
+        logger.info(f"   • Total articles: {enhanced_results['metrics']['total_articles']}")
+        logger.info(f"   • Relevant articles: {enhanced_results['metrics']['relevant_articles']} ({enhanced_results['metrics']['relevance_percentage']:.1f}%)")
+        logger.info(f"   • Google CSE triggered: {enhanced_results['google_cse_triggered']}")
+        logger.info(f"   • Analysis quality: {enhanced_results['metrics']['analysis_quality']}")
+        
+        return enhanced_results
+        
+    except Exception as e:
+        logger.error(f"Enhanced analysis failed for {company}: {str(e)}")
+        logger.error(f"Falling back to original implementation...")
+        
+        # Fallback to original logic if enhanced system fails
+        try:
+            return fetch_comprehensive_news_fallback(company, days_back)
+        except Exception as fallback_error:
+            logger.error(f"Fallback also failed: {fallback_error}")
+            return create_error_results(company, days_back, str(e))
+
+def fetch_comprehensive_news_fallback(company: str, days_back: int = 7) -> Dict[str, Any]:
+    """
+    Fallback implementation using original logic if enhanced system fails.
+    """
+    logger.warning(f"Using fallback implementation for {company}")
     
-    # Enhanced logging
-    logger.info(f"🎯 ENHANCED 30-ARTICLE ANALYSIS COMPLETE for {company}:")
-    logger.info(f"   • Final articles: {total_articles} (target: 30)")
-    logger.info(f"   • AlphaVantage: {alphavantage_count} ({alphavantage_percentage:.1f}%)")
-    logger.info(f"   • NYT API: {nyt_count}")
-    logger.info(f"   • Parallel RSS: {rss_count}")
-    logger.info(f"   • Google: {google_count}")
-    logger.info(f"   • Premium sources: {high_quality_sources} ({premium_coverage:.1f}%)")
-    logger.info(f"   • Analysis quality: {analysis_quality}")
-    logger.info(f"   • Response time: {response_time:.2f}s")
+    try:
+        all_articles = []
+        source_performance = {}
+        
+        # Use existing functions in original order
+        # 1. AlphaVantage
+        try:
+            alphavantage_articles = fetch_alphavantage_news_enhanced(company, days_back)
+            all_articles.extend(alphavantage_articles)
+            source_performance['alphavantage'] = len(alphavantage_articles)
+        except Exception as e:
+            logger.error(f"Fallback AlphaVantage failed: {e}")
+            source_performance['alphavantage'] = 0
+        
+        # 2. NYT
+        try:
+            nyt_articles = fetch_nyt_news_working(company, days_back, max_articles=100)
+            # Deduplicate against AlphaVantage
+            existing_urls = {a.get('link', '') for a in all_articles}
+            new_nyt_articles = [a for a in nyt_articles if a.get('link', '') not in existing_urls]
+            all_articles.extend(new_nyt_articles)
+            source_performance['nyt'] = len(new_nyt_articles)
+        except Exception as e:
+            logger.error(f"Fallback NYT failed: {e}")
+            source_performance['nyt'] = 0
+        
+        # 3. RSS
+        try:
+            rss_articles = fetch_rss_feeds_working_2025_parallel(company, days_back)
+            # Deduplicate
+            existing_urls = {a.get('link', '') for a in all_articles}
+            new_rss_articles = [a for a in rss_articles if a.get('link', '') not in existing_urls]
+            all_articles.extend(new_rss_articles)
+            source_performance['rss'] = len(new_rss_articles)
+        except Exception as e:
+            logger.error(f"Fallback RSS failed: {e}")
+            source_performance['rss'] = 0
+        
+        # 4. Google (if needed)
+        google_articles = 0
+        if len(all_articles) < 25:
+            try:
+                google_results = fetch_google_news(company, days_back)
+                existing_urls = {a.get('link', '') for a in all_articles}
+                new_google_articles = [a for a in google_results if a.get('link', '') not in existing_urls]
+                all_articles.extend(new_google_articles[:10])  # Limit Google results
+                google_articles = len(new_google_articles[:10])
+                source_performance['google'] = google_articles
+            except Exception as e:
+                logger.error(f"Fallback Google failed: {e}")
+                source_performance['google'] = 0
+        
+        # Final processing
+        unique_articles = deduplicate_articles(all_articles)
+        scored_articles = score_articles_fixed(unique_articles, company)
+        final_articles = [article for article, score in scored_articles[:30]]
+        
+        # Calculate metrics
+        alphavantage_count = source_performance.get('alphavantage', 0)
+        nyt_count = source_performance.get('nyt', 0)
+        rss_count = source_performance.get('rss', 0)
+        total_articles = len(final_articles)
+        
+        # Premium source calculation
+        premium_sources = ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 'nytimes.com']
+        high_quality_sources = sum(1 for a in final_articles if a.get('source', '') in premium_sources)
+        premium_coverage = (high_quality_sources / total_articles * 100) if total_articles > 0 else 0
+        alphavantage_coverage = (alphavantage_count / total_articles * 100) if total_articles > 0 else 0
+        
+        # Generate summaries
+        if final_articles:
+            summaries = generate_premium_analysis_30_articles(company, final_articles)
+        else:
+            summaries = create_empty_summaries()
+        
+        return {
+            'company': company,
+            'articles': final_articles,
+            'summaries': summaries,
+            'metrics': {
+                'total_articles': total_articles,
+                'alphavantage_articles': alphavantage_count,
+                'nyt_articles': nyt_count,
+                'rss_articles': rss_count,
+                'google_articles': google_articles,
+                'premium_sources_count': high_quality_sources,
+                'high_quality_sources': high_quality_sources,
+                'premium_coverage': round(premium_coverage, 1),
+                'alphavantage_coverage': round(alphavantage_coverage, 1),
+                'analysis_quality': 'Standard',
+                'response_time': 0,
+                'articles_analyzed': total_articles,
+                'articles_displayed': min(12, total_articles),
+                'full_content_articles': alphavantage_count + nyt_count,
+                'premium_sources_coverage': round(premium_coverage, 1)
+            },
+            'source_performance': source_performance,
+            'success': len(final_articles) > 0,
+            'google_cse_triggered': google_articles > 0,
+            'enhanced_analysis': False  # Indicate this is fallback
+        }
+        
+    except Exception as e:
+        logger.error(f"Fallback implementation also failed: {e}")
+        return create_error_results(company, days_back, f"Fallback error: {str(e)}")
+
+def create_empty_results(company: str, days_back: int) -> Dict[str, Any]:
+    """Create empty results structure when no articles found."""
+    from datetime import datetime, timedelta
+    
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
+    date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
     
     return {
         'company': company,
-        'articles': final_articles,
-        'summaries': summaries,
-        'metrics': {
-            'total_articles': total_articles,
-            'alphavantage_articles': alphavantage_count,
-            'nyt_articles': nyt_count,
-            'rss_articles': rss_count,
-            'google_articles': google_count,
-            'premium_sources_count': high_quality_sources,
-            'high_quality_sources': high_quality_sources,
-            'premium_coverage': round(premium_coverage, 1),
-            'alphavantage_coverage': round(alphavantage_percentage, 1),
-            'analysis_quality': analysis_quality,
-            'response_time': response_time,
-            'full_content_articles': full_content_articles,
-            'articles_analyzed': total_articles,  # Always 30
-            'articles_displayed': min(12, total_articles)  # For UI display
+        'articles': [],
+        'summaries': {
+            "executive": [f"**[NO DATA]** No recent financial news found for {company} across all premium sources (AlphaVantage, NYT, Bloomberg RSS). Try expanding date range or verifying company ticker."],
+            "investor": [f"**[RECOMMENDATION]** Verify company ticker symbol or try major exchanges (NYSE/NASDAQ). Consider checking earnings calendar for {company}."],
+            "catalysts": [f"**[TIMING]** Monitor upcoming earnings announcements, product launches, or regulatory events for {company}."]
         },
-        'source_performance': source_performance,
-        'api_errors': api_errors,
-        'success': len(final_articles) > 0
+        'metrics': {
+            'total_articles': 0,
+            'alphavantage_articles': 0,
+            'nyt_articles': 0,
+            'rss_articles': 0,
+            'google_articles': 0,
+            'premium_sources_count': 0,
+            'high_quality_sources': 0,
+            'premium_coverage': 0,
+            'alphavantage_coverage': 0,
+            'analysis_quality': 'No Data',
+            'response_time': 0,
+            'articles_analyzed': 0,
+            'articles_displayed': 0,
+            'full_content_articles': 0
+        },
+        'source_performance': {},
+        'success': False,
+        'google_cse_triggered': False,
+        'enhanced_analysis': True
+    }
+
+def create_error_results(company: str, days_back: int, error_msg: str) -> Dict[str, Any]:
+    """Create error results structure when analysis fails."""
+    return {
+        'company': company,
+        'articles': [],
+        'summaries': {
+            "executive": [f"**[ERROR]** Analysis temporarily unavailable for {company}: {error_msg}"],
+            "investor": ["**[RETRY]** Please try again in a few moments or contact support."],
+            "catalysts": ["**[FALLBACK]** Consider checking company's investor relations page directly."]
+        },
+        'metrics': {
+            'total_articles': 0,
+            'analysis_quality': 'Error',
+            'response_time': 0,
+            'alphavantage_articles': 0,
+            'nyt_articles': 0,
+            'rss_articles': 0,
+            'google_articles': 0,
+            'premium_sources_count': 0,
+            'high_quality_sources': 0,
+            'premium_coverage': 0,
+            'alphavantage_coverage': 0,
+            'articles_analyzed': 0,
+            'articles_displayed': 0,
+            'full_content_articles': 0
+        },
+        'source_performance': {},
+        'success': False,
+        'enhanced_analysis': False
+    }
+
+def create_empty_summaries() -> Dict[str, List[str]]:
+    """Create empty summaries when no articles available."""
+    return {
+        "executive": ["No significant executive developments identified."],
+        "investor": ["No recent investor-relevant developments identified."],
+        "catalysts": ["No material catalysts or risks detected in recent coverage."]
     }
 
 def enhance_articles_with_full_text(articles: List[Dict]) -> List[Dict]:

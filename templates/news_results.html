@@ -96,6 +96,20 @@
         .progress-thin {
             height: 6px;
         }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            backdrop-filter: blur(10px);
+            color: #333 !important; /* ✅ Fix: Ensure text is dark */
+        }
+
+        .metric-card small,
+        .metric-card .small {
+            color: #6c757d !important; /* ✅ Fix: Ensure small text is visible gray */
+        }
         
         @media (max-width: 768px) {
             .back-button {
@@ -170,7 +184,7 @@
                         </div>
                     </div>
                     
-                    <div class="row">
+                    <div class="row justify-content-center">
                         {% if alphavantage_articles > 0 %}
                         <div class="col-md-3 col-6">
                             <div class="metric-card text-center">
@@ -299,8 +313,8 @@
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
                             <i class="fas fa-newspaper"></i> Source Articles
-                            <span class="badge bg-secondary ms-2">30 analyzed</span>
-                            <small class="text-muted">(showing top 4, expand for all 30)</small>
+                            <span class="badge bg-secondary ms-2">{{ article_count }} analyzed</span>
+                            <small class="text-muted">(showing top 4, expand for all {{ article_count }})</small>
                         </h5>
                         <small class="text-muted">Premium articles ranked by relevance, source quality, and content depth</small>
                     </div>
@@ -309,6 +323,7 @@
                         <div id="topArticles">
                             {% for article in articles[:4] %}
                             <div class="article-item priority-article">
+                                <!-- Keep existing article display code unchanged -->
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div class="flex-grow-1">
                                         <div class="d-flex align-items-center mb-2">
@@ -392,12 +407,14 @@
                             {% endfor %}
                         </div>
                         
-                        <!-- Expandable Section for Remaining 26 Articles -->
+                        <!-- Expandable Section for Remaining Articles -->
+                        {% set remaining_articles = articles[4:] %}
+                        {% if remaining_articles|length > 0 %}
                         <div class="text-center mt-3">
                             <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#remainingArticles" aria-expanded="false" aria-controls="remainingArticles" id="expandArticlesBtn">
                                 <i class="fas fa-chevron-down me-2"></i>
-                                Show Remaining 26 Articles
-                                <small class="text-muted ms-2">({{ articles[4:]|length }} additional sources)</small>
+                                Show Remaining {{ remaining_articles|length }} Articles
+                                <small class="text-muted ms-2">({{ remaining_articles|length }} additional sources)</small>
                             </button>
                         </div>
                         
@@ -406,7 +423,7 @@
                             <div class="row">
                                 <div class="col-12">
                                     <h6 class="text-muted mb-3">
-                                        <i class="fas fa-list me-2"></i>Additional Sources (Articles 5-30)
+                                        <i class="fas fa-list me-2"></i>Additional Sources (Articles 5-{{ article_count }})
                                         <small class="text-muted">- Comprehensive coverage from all premium sources</small>
                                     </h6>
                                 </div>
@@ -414,7 +431,7 @@
                             
                             <!-- Grid Layout for Remaining Articles -->
                             <div class="row">
-                                {% for article in articles[4:] %}
+                                {% for article in remaining_articles %}
                                 <div class="col-md-6 mb-3">
                                     <div class="additional-article p-3 border rounded">
                                         <div class="d-flex align-items-center mb-2">
@@ -474,7 +491,7 @@
                             <div class="row mt-4">
                                 <div class="col-12">
                                     <div class="alert alert-info">
-                                        <h6><i class="fas fa-chart-bar me-2"></i>Complete Article Breakdown (All 30)</h6>
+                                        <h6><i class="fas fa-chart-bar me-2"></i>Complete Article Breakdown (All {{ article_count }})</h6>
                                         <div class="row">
                                             <div class="col-md-3">
                                                 <strong>AlphaVantage:</strong> {{ alphavantage_articles }} articles<br>
@@ -497,6 +514,7 @@
                                 </div>
                             </div>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -566,20 +584,21 @@
                 </style>
 
                 <script>
-                // Update button text when expanded/collapsed
+                // Update button text when expanded/collapsed - FIXED VERSION
                 document.getElementById('expandArticlesBtn').addEventListener('click', function() {
+                    const remainingCount = {{ remaining_articles|length }};
+                    const totalCount = {{ article_count }};
                     const isExpanded = this.getAttribute('aria-expanded') === 'true';
-                    const icon = this.querySelector('.fas');
                     
                     if (isExpanded) {
                         // Will be collapsed after click
                         setTimeout(() => {
-                            this.innerHTML = '<i class="fas fa-chevron-down me-2"></i>Show Remaining 26 Articles <small class="text-muted ms-2">({{ articles[4:]|length }} additional sources)</small>';
+                            this.innerHTML = `<i class="fas fa-chevron-down me-2"></i>Show Remaining ${remainingCount} Articles <small class="text-muted ms-2">(${remainingCount} additional sources)</small>`;
                         }, 300);
                     } else {
                         // Will be expanded after click
                         setTimeout(() => {
-                            this.innerHTML = '<i class="fas fa-chevron-up me-2"></i>Hide Additional Articles <small class="text-muted ms-2">(showing all 30)</small>';
+                            this.innerHTML = `<i class="fas fa-chevron-up me-2"></i>Hide Additional Articles <small class="text-muted ms-2">(showing all ${totalCount})</small>`;
                         }, 300);
                     }
                 });
@@ -643,11 +662,6 @@
                     <button onclick="exportAnalysis()" class="btn btn-outline-info">
                         <i class="fas fa-download"></i> Export Summary
                     </button>
-                    {% if article_count > 15 %}
-                    <button onclick="showAllArticles()" class="btn btn-outline-warning" id="showAllBtn">
-                        <i class="fas fa-eye"></i> Show All {{ article_count }} Articles
-                    </button>
-                    {% endif %}
                 </div>
             </div>
         </div>
@@ -656,7 +670,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function exportAnalysis() {
-            const company = "{{ company }}";
+            const company = {{ company|tojson }};
             const dateRange = "{{ date_range }}";
             const analysisQuality = "{{ analysis_quality }}";
             const sourceBreakdown = {
@@ -709,13 +723,6 @@
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
-        }
-        
-        function showAllArticles() {
-            // This would require additional backend support or AJAX call
-            // For now, just scroll to top and suggest refresh with more articles
-            window.scrollTo({top: 0, behavior: 'smooth'});
-            alert('To view all articles, please refresh the analysis or contact support for expanded view.');
         }
         
         // Print styles

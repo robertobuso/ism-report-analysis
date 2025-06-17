@@ -1,0 +1,12 @@
+{
+  "relevance_thresholds": {
+    "min_relevant_premium_articles_before_cse": 8,
+    "min_company_relevance_score": 0.6,
+    "min_financial_context_score": 0.3,
+    "min_relevant_percentage": 0.4
+  },
+  "google_cse": {
+    "max_articles_before_cse_check": 25,
+    "cse_article_limit": 10
+  }
+}

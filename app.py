@@ -28,6 +28,7 @@ from news_utils import (
     fetch_comprehensive_news_guaranteed_30_enhanced
 )
 from company_ticker_service import fast_company_ticker_service as company_ticker_service
+from configuration_and_integration import ConfigurationManager, IntegrationHelper
 
 # Database imports
 from db_utils import initialize_database, get_pmi_data_by_month, get_index_time_series, get_industry_status_over_time, get_all_indices, get_all_report_dates, get_db_connection
@@ -260,7 +261,7 @@ def get_news_summary():
             "news_results.html",
             company=display_name,
             summaries=summaries,
-            articles=articles[:max_display_articles],
+            articles=articles,
             all_articles=articles,   
             date_range=date_range,
             analysis_timestamp=analysis_timestamp,
