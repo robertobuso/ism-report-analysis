@@ -3204,6 +3204,14 @@ def generate_premium_analysis_30_articles(company: str, articles: List[Dict]) ->
     """
     Enhanced analysis function optimized for exactly 30 articles.
     """
+
+    # Try Claude Sonnet 4 first
+    try:
+        from news_utils_claude_sonnet_4 import generate_premium_analysis_claude_sonnet_4_enhanced
+        return generate_premium_analysis_claude_sonnet_4_enhanced(company, articles)
+    except Exception as e:
+        logger.warning(f"Claude Sonnet 4 failed, using OpenAI fallback: {e}")
+
     if not articles or len(articles) == 0:
         return {
             "executive": ["No recent financial news found."],
