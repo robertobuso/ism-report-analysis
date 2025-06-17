@@ -194,7 +194,7 @@
                                 <div class="progress progress-thin mt-2">
                                     <div class="progress-bar bg-purple" style="width: {{ alphavantage_coverage }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ alphavantage_coverage }}%</small>
+                                <small class="text-muted">{{ alphavantage_coverage|default(0)|round }}%</small>
                             </div>
                         </div>
                         {% endif %}
@@ -235,7 +235,7 @@
                                 <div class="progress progress-thin mt-2">
                                     <div class="progress-bar bg-success" style="width: {{ premium_coverage }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ premium_coverage }}%</small>
+                                <small class="text-muted">{{ premium_coverage|default(0)|round }}%</small>
                             </div>
                         </div>
                     </div>
