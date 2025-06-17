@@ -228,45 +228,46 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
             return create_error_summaries_claude(company, str(e))
 
 def _fallback_alternative_parser(text: str) -> Dict[str, List[str]]:
-    """
-    Ultra-simple backup: puts the whole text into 'executive'
-    so the pipeline never hard-fails.
-    """
     logger.warning("USING _fallback_alternative_parser – no structured bullets extracted")
     return {"executive": [text.strip()], "investor": [], "catalysts": []}
 
 
 def parse_financial_summaries_enhanced(text: str) -> Dict[str, List[str]]:
     """
-    v3 – Robust Claude-Sonnet-4 parser.
+    v4 – Claude-Sonnet-4 parser (handles Markdown ‘##’ headers and **[TAG]** bullets)
 
-    • Accepts headers with optional ** / __ / * / _ Markdown formatting.
-    • Refuses to treat lines that start with '[' (e.g. “[VALUATION] …”) as headers.
-    • Strips leading bracket tags from bullet lines.
-    • Falls back gracefully if no bullets are found.
+    Sections returned:
+        • executive
+        • investor
+        • catalysts
     """
     sections: Dict[str, List[str]] = {"executive": [], "investor": [], "catalysts": []}
     current_section: str | None = None
 
-    # ---------- header patterns (Markdown-friendly) ----------
+    # ---- header patterns ------------------------------------------------------
     def _hdr_regex(header: str) -> re.Pattern:
-        # optional **, __, *, or _ wrapped around the header text
-        pat = rf"^\s*(?:\*\*|__|\*|_)?\s*{header}\s*(?:\*\*|__|\*|_)?\s*$"
+        # optional leading ###, ##, #  and optional ** / __ / * / _
+        pat = (
+            rf"^\s*(?:#{1,6}\s*)?"          # Markdown heading markers
+            rf"(?:\*\*|__|\*|_)?\s*"        # optional emphasis start
+            rf"{header}\s*"
+            rf"(?:\*\*|__|\*|_)?\s*$"       # optional emphasis end
+        )
         return re.compile(pat, re.I)
 
     section_patterns = {
         "executive": _hdr_regex(r"executive\s+summary"),
-        "investor": _hdr_regex(r"investor\s+insights?"),
+        "investor":  _hdr_regex(r"investor\s+insights?"),
         "catalysts": _hdr_regex(r"catalysts?\s*(?:&|\band\b)?\s*risks?"),
     }
 
-    # ---------- iterate lines ----------
+    # ---- iterate line-by-line --------------------------------------------------
     for ln, raw in enumerate(text.splitlines()):
         line = raw.strip()
         if not line:
             continue
 
-        # --- section detection (ignore lines that look like bullets) ---
+        # -------- section detection (skip lines starting with '[' to avoid bullets)
         if not line.startswith("["):
             for name, pat in section_patterns.items():
                 if pat.match(line):
@@ -274,31 +275,44 @@ def parse_financial_summaries_enhanced(text: str) -> Dict[str, List[str]]:
                     logger.debug("Header %s @ line %d: %s", name, ln, line)
                     break
             else:
-                name = None  # no header found
+                name = None
             if name:
-                continue  # skip the header itself
+                continue  # header line itself is not a bullet
 
-        # --- bullet extraction ---
-        is_bullet, bullet = False, ""
+        # -------- bullet detection ---------------------------------------------
+        is_bullet = False
+        bullet_text = ""
 
+        # 1) symbol bullets
         if line.startswith(("-", "•", "*", "◦", "▪", "▫")):
-            bullet = line.lstrip("-•*◦▪▫ ").strip()
+            bullet_text = line.lstrip("-•*◦▪▫ ").strip()
             is_bullet = True
+        # 2) numbered bullets
         elif re.match(r"^\d+[\.\)]\s+", line):
-            bullet = re.sub(r"^\d+[\.\)]\s+", "", line).strip()
+            bullet_text = re.sub(r"^\d+[\.\)]\s+", "", line).strip()
             is_bullet = True
+        # 3) bracket-tag bullets (“[VALUATION] …”)
         elif line.startswith("[") and "]" in line:
-            bullet = re.sub(r"^\[[^\]]+\]\s*", "", line).strip()
+            bullet_text = re.sub(r"^\[[^\]]+\]\s*", "", line).strip()
             is_bullet = True
+        # 4) fallback: substantial text inside a known section
         elif current_section and len(line) > 20:
-            bullet = line
+            bullet_text = line
             is_bullet = True
 
-        if is_bullet and current_section and len(bullet) > 15:
-            sections[current_section].append(bullet)
-            logger.debug("→ %s: %.60s", current_section, bullet)
+        # -------- clean up bullet text -----------------------------------------
+        if is_bullet:
+            # strip optional ** / __ / * / _ emphasis around a bracket tag
+            bullet_text = re.sub(
+                r"^(?:\*\*|__|\*|_)?\s*\[[^\]]+\]\s*(?:\*\*|__|\*|_)?\s*", "", bullet_text
+            ).strip()
 
-    # ---------- graceful fallback ----------
+        # -------- store bullet --------------------------------------------------
+        if is_bullet and current_section and len(bullet_text) > 15:
+            sections[current_section].append(bullet_text)
+            logger.debug("→ %s: %.60s", current_section, bullet_text)
+
+    # ---- graceful fallback -----------------------------------------------------
     if all(not v for v in sections.values()):
         logger.warning("Primary parsing extracted no bullets – using fallback.")
         try:
