@@ -101,58 +101,60 @@ class QualityValidationEngine:
         self, 
         company: str, 
         analysis: Dict[str, List[str]], 
-        articles: List[Dict],
+        articles: List[Dict], 
         prior_issues: Optional[List[Dict]] = None
     ) -> str:
         """
-        Create comprehensive validation prompt for Claude, optionally including prior issues.
+        Create comprehensive validation prompt for Claude with current date and prior issues.
         """
 
+        # Current date
+        today_str = datetime.now().strftime("%B %d, %Y")  # e.g., "June 18, 2025"
+
+        # Calculate analysis context
         article_count = len(articles)
         source_types = set(article.get('source_type', 'unknown') for article in articles)
         premium_sources = sum(
             1 for article in articles 
-            if article.get('source', '') in [
+            if article.get('source', '') in {
                 'bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 
                 'nytimes.com', 'cnbc.com', 'marketwatch.com'
-            ]
+            }
         )
 
+        # Format existing analysis
         formatted_analysis = self._format_analysis_for_review(analysis)
 
+        # Source context
         source_summary = f"""
     ANALYSIS CONTEXT:
+    - Today’s Date: {today_str}
+    - Company: {company}
     - Total articles analyzed: {article_count}
     - Source types: {', '.join(source_types)}
-    - Premium sources: {premium_sources}/{article_count} ({(premium_sources / article_count * 100) if article_count else 0:.1f}%)
-    - Company: {company}
-        """.strip()
+    - Premium sources: {premium_sources}/{article_count} ({premium_sources / article_count * 100:.1f}%)
+    """.strip()
 
-        # Start the prompt
-        prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs reviewing a draft financial analysis for institutional investors.
-
-    {source_summary}
-
-    DRAFT ANALYSIS TO REVIEW:
-    {formatted_analysis}
-
-    Your job is to validate this analysis against professional investment standards and enhance it for institutional-grade quality.
-    """
-
-        # Inject prior issues if any
+        # Optional prior issues summary
+        issues_section = ""
         if prior_issues:
             issues_summary = "\n".join([
                 f"- [{i+1}] {issue['category'].upper()} ({issue['severity']}): {issue['issue']}"
                 for i, issue in enumerate(prior_issues)
             ])
-            prompt += f"""\n\nNOTE: In the last review, the following issues were identified and not yet resolved:
+            issues_section = f"""
+    NOTE: In the last review, the following issues were identified and must be addressed in this version:
     {issues_summary}
+    """
 
-    Please address them specifically in this revision."""
-
+        # Final prompt
         return f"""You are a Managing Director of Equity Research at Goldman Sachs reviewing a draft financial analysis for institutional investors.
 
 {source_summary}
+
+🚨 DO NOT assume the year is 2024. Today is {today_str}. Validate ALL claims — especially dates — using current data and web search if needed.
+
+{issues_section}
 
 DRAFT ANALYSIS TO REVIEW:
 {formatted_analysis}
