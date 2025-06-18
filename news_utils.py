@@ -370,45 +370,118 @@ class QualityValidationEngine:
                 formatted_analysis += f"{i}. {clean_bullet}\n"
             formatted_analysis += "\n"
         
-        return f"""You are a Managing Director of Equity Research validating financial analysis for institutional investors.
+        return f"""You are a Managing Director of Equity Research at Goldman Sachs reviewing a draft financial analysis for institutional investors.
 
-TODAY'S DATE: {today_str}
-COMPANY: {company}
-ARTICLES ANALYZED: {len(articles)}
+🚨 DO NOT assume the year is 2024. Today is {today_str}. Validate ALL claims — especially dates — using current data and web search if needed.
 
 DRAFT ANALYSIS TO REVIEW:
 {formatted_analysis}
 
-VALIDATION FRAMEWORK (Score 0-10):
-1. FACT VERIFICATION - Verify numerical claims, stock data, financial metrics
-2. VALUATION CONTEXT - Ensure current market data, proper risk context
-3. INVESTMENT ACTIONABILITY - Specific, actionable insights with clear timelines
-4. PROFESSIONAL TONE - Institutional-grade language, analytical objectivity
+Your job is to validate this analysis against professional investment standards and enhance it for institutional-grade quality.
 
-Return ONLY valid JSON:
+### QUALITY VALIDATION FRAMEWORK (Score each dimension 0-10)
+
+**1. FACT VERIFICATION & ACCURACY**
+- Use web search to verify ALL numerical claims (stock returns, price levels, financial metrics)
+- Check current stock price and trading levels
+- Verify analyst price targets, ratings, and estimates  
+- Confirm financial data (revenue, earnings, margins) from recent filings
+- Flag any unverifiable or outdated claims
+
+**2. VALUATION CONTEXT & RISK ASSESSMENT**
+- Ensure current stock price and valuation metrics are stated
+- Include proper risk context (near highs/lows, volatility, beta)
+- Verify P/E ratios, EV/EBITDA, and other valuation multiples
+- Check analyst consensus and price target ranges
+- Assess whether valuation discussion matches current market reality
+
+**3. PROBABILITY DISCIPLINE & METHODOLOGY**
+- Remove unsupported probability percentages ("70% probability of success")
+- Replace with appropriate qualitative language ("likely", "possible", "uncertain")
+- Only allow probabilities if clear methodology is provided
+- Ensure forecasts are appropriately hedged and sourced
+
+**4. INVESTMENT ACTIONABILITY & SPECIFICITY**
+- Ensure insights lead to clear investment implications
+- Replace vague statements with specific, actionable insights
+- Include concrete catalysts with realistic timelines
+- Provide measurable risk/reward assessments
+- Remove generic "monitor developments" type language
+
+**5. PROFESSIONAL TONE & INSTITUTIONAL QUALITY**
+- Remove promotional or hype language
+- Ensure analytical objectivity and professional skepticism
+- Maintain institutional-grade gravitas
+- Remove speculative or sensational claims
+- Ensure consistent professional financial terminology
+
+### CRITICAL VALIDATION CHECKS
+- Is the stock price/performance data current and accurate?
+- Are strategic developments properly sourced and contextualized?
+- Do financial projections have reasonable basis?
+- Are competitive dynamics accurately represented?
+- Is regulatory/business risk properly assessed?
+
+### ENHANCEMENT REQUIREMENTS
+- Each bullet point should be investment-actionable
+- Include specific financial metrics where available
+- Provide timeline context for key developments
+- Balance bullish and bearish perspectives appropriately
+- Cite sources naturally without overwhelming the analysis
+
+### OUTPUT FORMAT
+Return ONLY a valid JSON response with this exact structure:
+
+```json
 {{
   "overall_verdict": "pass" | "needs_revision" | "fail",
   "overall_score": float,
+  "validation_timestamp": "{datetime.now().isoformat()}",
   "gate_scores": {{
     "fact_verification": float,
     "valuation_context": float,
+    "probability_discipline": float, 
     "investment_actionability": float,
     "professional_tone": float
   }},
   "critical_issues": [
     {{
-      "category": "fact_verification|valuation_context|investment_actionability|professional_tone",
-      "severity": "high|medium|low",
-      "issue": "Description",
-      "recommendation": "How to fix"
+      "category": "fact_verification" | "valuation_context" | "probability_discipline" | "investment_actionability" | "professional_tone",
+      "severity": "high" | "medium" | "low",
+      "issue": "Specific description of the problem",
+      "original_text": "Exact text that needs fixing",
+      "web_search_finding": "What web search revealed (if applicable)",
+      "recommendation": "How to fix this issue"
     }}
   ],
+  "enhancements_made": [
+    "List of specific improvements made to the analysis"
+  ],
   "revised_analysis": {{
-    "executive": ["Enhanced bullet 1", "Enhanced bullet 2", "Enhanced bullet 3"],
-    "investor": ["Enhanced insight 1", "Enhanced insight 2", "Enhanced insight 3"],
-    "catalysts": ["Enhanced catalyst 1", "Enhanced catalyst 2", "Enhanced catalyst 3"]
+    "executive": [
+      "Enhanced bullet point 1 with specific metrics and sources",
+      "Enhanced bullet point 2 with investment implications",
+      "Enhanced bullet point 3 with timeline and risk context"
+    ],
+    "investor": [
+      "Enhanced investor insight 1 with valuation context",
+      "Enhanced investor insight 2 with analyst data", 
+      "Enhanced investor insight 3 with market positioning"
+    ],
+    "catalysts": [
+      "Enhanced catalyst 1 with probability and timeline",
+      "Enhanced catalyst 2 with risk quantification",
+      "Enhanced catalyst 3 with market impact assessment"
+    ]
+  }},
+  "quality_metadata": {{
+    "target_score": 8.0,
+    "improvement_areas": ["List areas for future enhancement"],
+    "validation_confidence": float,
+    "sources_verified": int
   }}
-}}"""
+}}
+CRITICAL: Return ONLY the JSON response. No additional text or explanation."""
     
     async def _run_claude_validation(self, prompt: str) -> str:
         """Execute Claude validation."""
@@ -1277,53 +1350,144 @@ def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, Li
     """Generate analysis using Claude Sonnet 4."""
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     
-    # Prepare article content
-    article_text = ""
-    for i, article in enumerate(articles[:30], 1):
-        source_type = article.get('source_type', 'google_search')
-        
+    # --- CALCULATE METRICS AND CITATION GUIDE FROM 'articles' (List[Dict]) ---
+    source_type_counts = {}
+    # Iterate over the original list of article dictionaries
+    for article_item in articles[:30]: # Use the input list of dicts
+        source_type = article_item.get('source_type', 'google_search')
+        source_type_counts[source_type] = source_type_counts.get(source_type, 0) + 1
+
+    premium_sources_list = ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 'nytimes.com', 'cnbc.com', 'marketwatch.com']
+    premium_count = sum(1 for article_item in articles[:30] if article_item.get('source', '') in premium_sources_list)
+    alphavantage_count = source_type_counts.get('alphavantage_premium', 0)
+
+    # Create source citation guide correctly
+    # This assumes create_source_url_mapping returns a dict like {'source_domain': [1, 5, 10]}
+    # You might need to adjust create_source_url_mapping or how you build this guide.
+    # For now, let's create a simple one:
+    article_source_info_for_prompt = "\n\nARTICLE SOURCE DETAILS (for your reference in citation):\n"
+    for i, article_item in enumerate(articles[:30], 1):
+        article_source_info_for_prompt += f"Article {i}: Source - {article_item.get('source', 'N/A')}, Title - \"{article_item.get('title', 'N/A')[:50]}...\"\n"
+
+    # --- PREPARE article_text_for_promptSTRING FOR THE PROMPT ---
+    article_text_for_prompt = "" # Use a different variable name for clarity
+    for i, article_item in enumerate(articles[:30], 1):
+        source_type = article_item.get('source_type', 'google_search')
+
         if source_type == 'alphavantage_premium':
-            sentiment_label = article.get('sentiment_label', 'Neutral')
-            sentiment_score = article.get('sentiment_score', 0)
-            relevance_score = article.get('relevance_score', 0)
-            
-            article_text += f"\n{i}. [ALPHAVANTAGE+SENTIMENT] {article['title']}\n"
-            article_text += f"   Source: {article['source']} | Sentiment: {sentiment_label} ({sentiment_score:.3f}) | Relevance: {relevance_score:.3f}\n"
-            article_text += f"   Content: {article.get('full_content', article.get('snippet', ''))}\n"
+            sentiment_label = article_item.get('sentiment_label', 'Neutral')
+            sentiment_score = article_item.get('sentiment_score', 0)
+            relevance_score = article_item.get('relevance_score', 0)
+            article_text_for_prompt += f"\n{i}. [ALPHAVANTAGE+SENTIMENT] {article_item['title']}\n"
+            article_text_for_prompt += f"   Source: {article_item['source']} | Sentiment: {sentiment_label} ({sentiment_score:.3f}) | Relevance: {relevance_score:.3f}\n"
+            article_text_for_prompt += f"   Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
         elif source_type == 'nyt_api':
-            article_text += f"\n{i}. [NYT_PREMIUM] {article['title']}\n"
-            article_text += f"   Source: {article['source']} (NYT Editorial Quality)\n"
-            article_text += f"   Content: {article.get('full_content', article.get('snippet', ''))}\n"
+            article_text_for_prompt += f"\n{i}. [NYT_PREMIUM] {article_item['title']}\n"
+            article_text_for_prompt += f"   Source: {article_item['source']} (NYT Editorial Quality)\n"
+            article_text_for_prompt += f"   Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
         else:
-            article_text += f"\n{i}. [PREMIUM_SOURCE] {article['title']}\n"
-            article_text += f"   Source: {article['source']}\n"
-            article_text += f"   Content: {article.get('snippet', '')}\n"
-        
-        article_text += f"   Link: {article['link']}\n"
+            article_text_for_prompt += f"\n{i}. [PREMIUM_SOURCE] {article_item['title']}\n"
+            article_text_for_prompt += f"   Source: {article_item['source']}\n"
+            article_text_for_prompt += f"   Content: {article_item.get('snippet', '')}\n"
+        article_text_for_prompt += f"   Link: {article_item['link']}\n"
+
     
     # Create prompt
-    prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing institutional-grade investment analysis for {company}.
+    prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors who value both analytical precision AND clear, compelling narratives. Your analysis will be read by portfolio managers making investment decisions.
 
-COMPREHENSIVE DATA ({len(articles[:30])} articles):
-{article_text}
+COMPREHENSIVE DATA INTELLIGENCE ({len(article_text_for_prompt)} articles with FULL context):
+{article_text_for_prompt}
 
-Generate actionable insights for portfolio managers making investment decisions.
+{article_source_info_for_prompt}
 
-**EXECUTIVE SUMMARY** (4-5 bullets)
-Strategic developments affecting fundamental business outlook with quantified impacts and timelines.
+SOURCE QUALITY METRICS (for your awareness):
+• Total Articles Used: {len(articles[:30])}
+• Premium Sources (Bloomberg/Reuters/WSJ/FT/NYT/CNBC/MarketWatch): {premium_count} ({premium_count/len(articles[:30])*100:.1f}% if articles else 0%)
+• AlphaVantage (Full Content + Sentiment): {alphavantage_count}
+• Source Distribution: {source_type_counts}
 
-**INVESTOR INSIGHTS** (4-5 bullets)  
-Valuation drivers, analyst actions, and market sentiment with specific metrics and price targets.
+ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 
-**CATALYSTS & RISKS** (4-5 bullets)
-Near-term trading catalysts and risk factors with probability estimates and timelines.
+**CRITICAL FORMATTING REQUIREMENTS:**
+- Use EXACTLY these section headers: "**EXECUTIVE SUMMARY**", "**INVESTOR INSIGHTS**", "**CATALYSTS & RISKS**"
+- Start each bullet with a bullet point symbol: "•"
+- Each section must have exactly 4-5 bullets
 
-REQUIREMENTS:
-- Start each bullet with "•"
-- Include specific financial metrics and timeline estimates
-- Cite sources naturally (e.g., "according to reuters.com")
-- Use professional investment commentary style
-- Quantify everything possible with ranges and confidence levels"""
+**CRITICAL WRITING REQUIREMENTS:**
+1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
+2. **Explicit Source Attribution**: Always cite sources using format "according to [source]", "as reported by [source]", "per [source]"
+3. **Accessible Language**: Maintain analytical precision but use clear, readable language that flows naturally
+4. **Quantified Insights**: Include specific metrics and probability estimates, but weave them into compelling narratives
+5. **Professional Tone**: Write like you're briefing a client, not generating a technical report
+
+**EXECUTIVE SUMMARY** (Strategic & Financial Impact - Write as compelling investment thesis)
+Create 4-5 bullets that tell the strategic story of {company} with quantified impacts and clear source attribution:
+
+• Start each bullet with strategic context, then layer in specific financial metrics
+• Include timeline estimates and probability assessments naturally woven into the narrative
+• Always cite your sources explicitly (e.g., "according to reuters.com", "as highlighted by cnbc.com")
+• Use sophisticated tags but make the content accessible: [STRATEGY], [FINANCIAL_IMPACT], [EXECUTION_RISK], [VALUE_CREATION], [MANAGEMENT_QUALITY]
+• Example style: "[STRATEGY] {company}'s expansion into [specific area] represents a significant strategic shift that could drive [specific financial impact with range] over [timeline], with [confidence level] probability of success according to analysis from [specific sources]. This initiative builds on [context from other sources]..."
+
+**INVESTOR INSIGHTS** (Valuation & Market Dynamics - Write as investment analysis narrative)
+Create 4-5 bullets that weave valuation analysis into compelling market stories:
+
+• Integrate valuation metrics (P/E, EV/EBITDA) into broader market positioning narrative
+• Connect analyst consensus and price targets to underlying business drivers, citing specific sources
+• Correlate sentiment analysis with fundamental developments in a readable way
+• Include competitive positioning as part of investment thesis, not isolated data points
+• Use tags: [VALUATION], [PEER_COMPARISON], [SENTIMENT_ANALYSIS], [TECHNICAL], [INSTITUTIONAL_FLOW]
+• Example style: "[VALUATION] Trading at [specific metrics] versus peers, {company} appears [undervalued/fairly valued/overvalued] based on [specific analysis methodology]. Recent analyst updates from [sources] suggest [price target range] reflecting [specific business drivers], with sentiment analysis from [AlphaVantage/other sources] indicating [market sentiment context]..."
+
+**CATALYSTS & RISKS** (Probability-Weighted Analysis with Investment Context)
+Create 4-5 bullets that present catalysts and risks as investment decision factors:
+
+• Frame each catalyst/risk in terms of investment impact and timeline, not just technical probability
+• Provide specific dates and probability estimates but explain the investment rationale
+• Connect technical analysis and options flow to fundamental business developments
+• Always attribute risk assessments to specific sources and analysis
+• Use tags: [CATALYST], [EVENT_RISK], [REGULATORY], [MACRO_SENSITIVITY], [TECHNICAL_LEVELS]
+• Example style: "[CATALYST] The upcoming [specific event/announcement] scheduled for [date] presents a [upside/downside] catalyst with [probability estimate] likelihood of [specific financial impact], as indicated by [source citations]. This catalyst is particularly significant because [business context], with options market positioning of [technical details] suggesting [market expectations]..."
+
+**ENHANCED REQUIREMENTS FOR SUPERIOR READABILITY:**
+
+1. **Source Attribution Excellence**: Every factual claim must cite its source explicitly
+   - Use natural language: "according to marketwatch.com", "as reported by reuters.com", "per bloomberg analysis"
+   - When multiple sources support a point: "confirmed across reuters.com and cnbc.com reports"
+   - When sources conflict: "while reuters.com suggests X, bloomberg.com indicates Y, suggesting [your analysis]"
+
+2. **Narrative Flow Mastery**: 
+   - Begin each bullet with strategic context before diving into metrics
+   - Connect quantitative insights to broader business implications
+   - Use transition phrases to create smooth flow between technical and strategic points
+   - End bullets with forward-looking implications
+
+3. **Quantification with Context**:
+   - Always provide ranges and confidence intervals: "15-25% upside with 70% confidence"
+   - Include timeline specificity: "expected by Q3 2025"
+   - Connect metrics to business drivers: "driven by market share expansion in [specific segment]"
+
+4. **Professional Investment Commentary Style**:
+   - Write as if briefing a sophisticated investor
+   - Use active voice and confident language
+   - Avoid overly technical jargon without context
+   - Maintain analytical rigor while ensuring accessibility
+
+**CROSS-SOURCE VALIDATION REQUIREMENTS**:
+- When multiple sources provide similar information, synthesize and cite all relevant sources
+- When sources conflict, acknowledge differences and provide your analytical view
+- Highlight unique insights from premium sources (Bloomberg, Reuters, WSJ)
+- Leverage AlphaVantage sentiment data as supporting evidence for fundamental themes
+
+**FINAL QUALITY CHECK**:
+Each bullet should pass these tests:
+✓ Does it tell a clear story that advances the investment thesis?
+✓ Are all factual claims explicitly attributed to sources?
+✓ Would a portfolio manager understand the investment implications?
+✓ Is the language accessible while maintaining analytical depth?
+✓ Do the quantified estimates have proper context and confidence levels?
+
+Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling and transparent source attribution."""
 
     response = anthropic_client.messages.create(
         model="claude-sonnet-4-20250514",
@@ -1332,24 +1496,24 @@ REQUIREMENTS:
         messages=[{"role": "user", "content": prompt}]
     )
     
-    analysis_text = response.content[0].text
-    logger.info(f"Claude Sonnet 4 analysis generated: {len(analysis_text)} chars")
-    
-    return parse_analysis_response(analysis_text)
+    analysis_text_response = response.content[0].text # analysis_text is already used
+    logger.info(f"Claude Sonnet 4 analysis generated: {len(analysis_text_response)} chars")
+
+    return parse_analysis_response(analysis_text_response)
 
 def generate_openai_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
     """Generate analysis using OpenAI as fallback."""
     # Prepare article content (simplified for OpenAI)
-    article_text = ""
+    article_text_for_prompt= ""
     for i, article in enumerate(articles[:30], 1):
-        article_text += f"\n{i}. {article['title']}\n"
-        article_text += f"   Source: {article['source']}\n"
-        article_text += f"   Content: {article.get('snippet', '')}\n"
+        article_text_for_prompt+= f"\n{i}. {article['title']}\n"
+        article_text_for_prompt+= f"   Source: {article['source']}\n"
+        article_text_for_prompt+= f"   Content: {article.get('snippet', '')}\n"
     
     prompt = f"""You are a senior equity research analyst analyzing {company}.
 
 ARTICLES TO ANALYZE:
-{article_text}
+{article_text_for_prompt}
 
 Generate institutional-grade analysis in exactly this format:
 
