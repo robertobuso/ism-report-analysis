@@ -2650,45 +2650,53 @@ def fetch_comprehensive_news_parallel(company: str, days_back: int = 7) -> Dict[
 
 def fetch_comprehensive_news_guaranteed_30_enhanced(company: str, days_back: int = 7) -> Dict[str, Any]:
     """
-    MAIN INTEGRATION FUNCTION - Now uses the parallel optimized system.
+    MAIN INTEGRATION FUNCTION - Now uses Quality-Enhanced Parallel system
     
-    This replaces the original function with the new parallel implementation:
+    KEY ENHANCEMENT: Integrated Quality Validation Engine ensures PayPal-level consistency
     
-    KEY FIXES:
-    1. ✅ NYT API now uses COMPANY NAMES instead of ticker symbols  
-    2. ✅ All API calls are now PARALLEL instead of sequential
-    3. ✅ RSS feeds are fully parallelized
-    4. ✅ Google searches are parallelized  
-    5. ✅ Overall response time reduced from 3+ minutes to 10-30 seconds
+    Quality Features:
+    1. ✅ Claude Sonnet 4 quality validation with web search
+    2. ✅ Fact verification for all numerical claims  
+    3. ✅ Valuation context and risk assessment
+    4. ✅ Professional tone and investment actionability
+    5. ✅ Automatic enhancement and error correction
     
-    Performance Improvement: ~6-18x faster than the original sequential version
+    Performance: 15-45 seconds (includes quality validation)
+    Quality Target: 8.0+ score on institutional metrics
     
     Maintains full backward compatibility with app.py calls.
     """
     
     try:
-        # Try to use the new parallel system
-        from enhanced_news_analysis import fetch_comprehensive_news_guaranteed_30_enhanced_PARALLEL
+        # Try to use the new quality-enhanced parallel system
+        from enhanced_news_analysis import fetch_comprehensive_news_guaranteed_30_enhanced_PARALLEL_WITH_QUALITY
         
-        logger.info(f"🚀 Using PARALLEL OPTIMIZED system for {company}")
+        logger.info(f"🚀 Using QUALITY-ENHANCED PARALLEL system for {company}")
         
-        # Call the parallel optimized version
-        results = fetch_comprehensive_news_guaranteed_30_enhanced_PARALLEL(company, days_back)
+        # Call the quality-enhanced version
+        results = fetch_comprehensive_news_guaranteed_30_enhanced_PARALLEL_WITH_QUALITY(company, days_back)
         
-        # Log performance improvement
+        # Log quality performance
         response_time = results.get('metrics', {}).get('response_time', 0)
-        if response_time > 0:
-            improvement = 180 / max(response_time, 1)  # Compare to ~3 minute baseline
-            logger.info(f"📈 PERFORMANCE: {response_time:.1f}s (≈{improvement:.1f}x faster than sequential)")
+        quality_score = results.get('metrics', {}).get('quality_score')
+        
+        if quality_score:
+            logger.info(f"📈 QUALITY PERFORMANCE: {quality_score:.1f}/10 in {response_time:.1f}s")
+            if quality_score >= 8.0:
+                logger.info(f"🏆 EXCELLENT QUALITY: Achieved target institutional grade")
+            elif quality_score >= 7.0:
+                logger.info(f"✅ GOOD QUALITY: Passed minimum threshold")
+            else:
+                logger.warning(f"⚠️ QUALITY CONCERN: Below target - review needed")
         
         return results
         
     except ImportError as e:
-        logger.error(f"Parallel system not available ({e}), falling back to enhanced sequential")
+        logger.error(f"Quality-enhanced system not available ({e}), falling back to enhanced sequential")
         return fetch_comprehensive_news_enhanced_sequential_fallback(company, days_back)
     
     except Exception as e:
-        logger.error(f"Parallel system failed ({e}), falling back to enhanced sequential") 
+        logger.error(f"Quality-enhanced system failed ({e}), falling back to enhanced sequential") 
         return fetch_comprehensive_news_enhanced_sequential_fallback(company, days_back)
 
 def fetch_comprehensive_news_enhanced_sequential_fallback(company: str, days_back: int = 7) -> Dict[str, Any]:

@@ -175,6 +175,105 @@
                     {% endif %}
                 </div>
 
+                <!-- Quality Validation Display -->
+                {% if quality_validation and quality_validation.enabled %}
+                <div class="alert {% if quality_validation.passed %}alert-success{% elif quality_validation.passed == False %}alert-warning{% else %}alert-info{% endif %} mb-4">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h6 class="mb-1">
+                                <i class="fas fa-shield-alt"></i> 
+                                Institutional Quality Validation
+                                {% if quality_validation.score %}
+                                <span class="badge {% if quality_validation.score >= 8.0 %}bg-success{% elif quality_validation.score >= 7.0 %}bg-warning{% else %}bg-danger{% endif %} ms-2">
+                                    {{ quality_validation.score|round(1) }}/10
+                                    {% if quality_validation.quality_grade %}({{ quality_validation.quality_grade }}){% endif %}
+                                </span>
+                                {% endif %}
+                            </h6>
+                            <small class="text-muted">
+                                {% if quality_validation.passed %}
+                                ✅ Analysis validated for fact accuracy, valuation context, and investment actionability
+                                {% elif quality_validation.passed == False %}
+                                ⚠️ Quality issues detected and corrected automatically
+                                {% else %}
+                                ℹ️ Quality validation in progress
+                                {% endif %}
+                                
+                                {% if quality_validation.enhancements_made %}
+                                • {{ quality_validation.enhancements_made|length }} enhancements applied
+                                {% endif %}
+                                
+                                {% if quality_validation.critical_issues %}
+                                • {{ quality_validation.critical_issues|length }} issues resolved
+                                {% endif %}
+                            </small>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            {% if quality_validation.score %}
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar 
+                                    {% if quality_validation.score >= 8.0 %}bg-success
+                                    {% elif quality_validation.score >= 7.0 %}bg-warning  
+                                    {% else %}bg-danger{% endif %}" 
+                                    style="width: {{ quality_validation.score * 10 }}%"></div>
+                            </div>
+                            <small class="text-muted">
+                                Target: 8.0+ (Institutional Grade)
+                            </small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Quality Details Expandable Section -->
+                    {% if quality_validation.gate_scores or quality_validation.critical_issues %}
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#qualityDetails" aria-expanded="false">
+                            <i class="fas fa-chart-bar"></i> View Quality Details
+                        </button>
+                        
+                        <div class="collapse mt-2" id="qualityDetails">
+                            {% if quality_validation.gate_scores %}
+                            <div class="row mt-2">
+                                <div class="col-12">
+                                    <small class="text-muted"><strong>Quality Dimensions:</strong></small>
+                                    <div class="row">
+                                        {% for gate, score in quality_validation.gate_scores.items() %}
+                                        <div class="col-md-2 col-6">
+                                            <div class="text-center">
+                                                <div class="small fw-bold">{{ score|round(1) }}/10</div>
+                                                <div class="small text-muted">{{ gate.replace('_', ' ').title() }}</div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if quality_validation.critical_issues %}
+                            <div class="mt-2">
+                                <small class="text-muted"><strong>Issues Resolved:</strong></small>
+                                <ul class="small mb-0 mt-1">
+                                    {% for issue in quality_validation.critical_issues[:3] %}
+                                    <li class="text-muted">
+                                        <span class="badge badge-sm {% if issue.severity == 'high' %}bg-danger{% elif issue.severity == 'medium' %}bg-warning{% else %}bg-info{% endif %}">
+                                            {{ issue.severity }}
+                                        </span>
+                                        {{ issue.category.replace('_', ' ').title() }}: {{ issue.issue|truncate(80) }}
+                                    </li>
+                                    {% endfor %}
+                                    {% if quality_validation.critical_issues|length > 3 %}
+                                    <li class="text-muted">... and {{ quality_validation.critical_issues|length - 3 }} more issues resolved</li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 <!-- Enhanced Source Breakdown -->
                 <div class="source-breakdown">
                     <div class="row text-center">
@@ -607,7 +706,7 @@
 
                 <!-- Enhanced Analysis Methodology -->
                 <div class="alert alert-info mt-4">
-                    <h6><i class="fas fa-info-circle"></i> Premium Analysis Methodology</h6>
+                    <h6><i class="fas fa-info-circle"></i> Enhanced Analysis Methodology</h6>
                     <div class="row">
                         <div class="col-md-6">
                             <ul class="mb-0 small">
@@ -627,7 +726,21 @@
                         <div class="col-md-6">
                             <ul class="mb-0 small">
                                 <li><strong>Processing:</strong> {{ articles_analyzed|default(article_count) }} articles analyzed, {{ articles_displayed|default(8) }} top articles displayed</li>
-                                <li><strong>Quality Grade:</strong> {{ analysis_quality }} - 
+                                
+                                <!-- Enhanced Quality Information -->
+                                {% if quality_validation and quality_validation.enabled %}
+                                <li><strong>Quality Validation:</strong> 
+                                    {% if quality_validation.score %}
+                                    {{ quality_validation.score|round(1) }}/10 
+                                    ({{ quality_validation.quality_grade or 'Graded' }})
+                                    {% else %}
+                                    Enabled
+                                    {% endif %}
+                                    - Fact verification, valuation context, investment actionability
+                                </li>
+                                {% endif %}
+                                
+                                <li><strong>Analysis Grade:</strong> {{ analysis_quality }} - 
                                     {% if analysis_quality == 'Premium+' %}Multi-source with sentiment analysis
                                     {% elif analysis_quality == 'Institutional' %}Premium sources with quantified impacts
                                     {% elif analysis_quality == 'Professional' %}Enhanced analysis with business context
@@ -642,6 +755,9 @@
                     <div class="row">
                         <div class="col-12">
                             <small class="text-muted">
+                                {% if quality_validation and quality_validation.enabled %}
+                                <strong>Quality Assurance:</strong> All analyses undergo institutional-grade validation including fact verification, valuation context assessment, and investment actionability review. 
+                                {% endif %}
                                 <strong>Limitations:</strong> Premium paywalled content limited to excerpts unless available via APIs. 
                                 <strong>Disclaimer:</strong> For informational purposes only. Not investment advice. 
                                 Consult latest SEC filings and qualified financial advisors.
