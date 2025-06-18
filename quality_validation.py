@@ -48,82 +48,108 @@ class QualityValidationEngine:
                                         company: str, 
                                         initial_analysis: Dict[str, List[str]],
                                         articles: List[Dict],
-                                        attempt: int = 1) -> Dict[str, Any]:
+                                        attempt: int = 1,
+                                        prior_issues: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """
         Main quality validation and enhancement pipeline.
-        Includes adaptive retry logic using revised analysis.
+        Includes adaptive retry logic using revised analysis and prior issues.
         """
-        
         if not self.anthropic_client:
             logger.warning(f"Quality validation skipped for {company} - Anthropic not available")
             return self._create_unvalidated_result(initial_analysis)
-        
+
         try:
             logger.info(f"🔍 Starting quality validation for {company} (attempt {attempt}/{self.max_retries + 1})")
 
-            # Step 1: Generate validation prompt
-            validation_prompt = self._create_validation_prompt(company, initial_analysis, articles)
-            
+            # Step 1: Generate validation prompt with prior issues if any
+            validation_prompt = self._create_validation_prompt(company, initial_analysis, articles, prior_issues)
+
             # Step 2: Run Claude validation
             start_time = time.time()
             validation_response = await self._run_claude_validation(validation_prompt)
             validation_time = time.time() - start_time
-            
+
             # Step 3: Parse and validate response
             validation_result = self._parse_validation_response(validation_response)
-            
+
             # Step 4: Log quality metrics
             self._log_quality_metrics(company, validation_result, validation_time)
-            
-            # Step 5: Determine if retry is needed
+
+            # Step 5: Check if retry is needed
             score = validation_result.get("overall_score", 0)
             passed = score >= self.quality_thresholds["minimum_pass"]
-            
+
             if not passed and attempt <= self.max_retries:
                 logger.warning(
                     f"🔄 Quality score {score:.1f} below threshold "
                     f"{self.quality_thresholds['minimum_pass']}, retrying with revised analysis..."
                 )
                 revised = validation_result.get("revised_analysis", initial_analysis)
-                return await self.validate_and_enhance_analysis(company, revised, articles, attempt + 1)
-            
+                issues = validation_result.get("critical_issues", [])
+                return await self.validate_and_enhance_analysis(
+                    company, revised, articles, attempt + 1, prior_issues=issues
+                )
+
             # Step 6: Return final validated result
             return self._create_validated_result(validation_result, validation_time)
-        
+
         except Exception as e:
             logger.error(f"❌ Quality validation failed for {company}: {str(e)}")
             return self._create_fallback_result(initial_analysis, str(e))
-
     
-    def _create_validation_prompt(self, 
-                                company: str, 
-                                analysis: Dict[str, List[str]], 
-                                articles: List[Dict]) -> str:
+    def _create_validation_prompt(
+        self, 
+        company: str, 
+        analysis: Dict[str, List[str]], 
+        articles: List[Dict],
+        prior_issues: Optional[List[Dict]] = None
+    ) -> str:
         """
-        Create comprehensive validation prompt for Claude.
+        Create comprehensive validation prompt for Claude, optionally including prior issues.
         """
-        
-        # Calculate analysis context
+
         article_count = len(articles)
         source_types = set(article.get('source_type', 'unknown') for article in articles)
-        premium_sources = sum(1 for article in articles 
-                            if article.get('source', '') in [
-                                'bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 
-                                'nytimes.com', 'cnbc.com', 'marketwatch.com'
-                            ])
-        
-        # Format analysis for review
+        premium_sources = sum(
+            1 for article in articles 
+            if article.get('source', '') in [
+                'bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 
+                'nytimes.com', 'cnbc.com', 'marketwatch.com'
+            ]
+        )
+
         formatted_analysis = self._format_analysis_for_review(analysis)
-        
-        # Create source summary
+
         source_summary = f"""
-ANALYSIS CONTEXT:
-- Total articles analyzed: {article_count}
-- Source types: {', '.join(source_types)}
-- Premium sources: {premium_sources}/{article_count} ({premium_sources/article_count*100:.1f}%)
-- Company: {company}
+    ANALYSIS CONTEXT:
+    - Total articles analyzed: {article_count}
+    - Source types: {', '.join(source_types)}
+    - Premium sources: {premium_sources}/{article_count} ({(premium_sources / article_count * 100) if article_count else 0:.1f}%)
+    - Company: {company}
         """.strip()
-        
+
+        # Start the prompt
+        prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs reviewing a draft financial analysis for institutional investors.
+
+    {source_summary}
+
+    DRAFT ANALYSIS TO REVIEW:
+    {formatted_analysis}
+
+    Your job is to validate this analysis against professional investment standards and enhance it for institutional-grade quality.
+    """
+
+        # Inject prior issues if any
+        if prior_issues:
+            issues_summary = "\n".join([
+                f"- [{i+1}] {issue['category'].upper()} ({issue['severity']}): {issue['issue']}"
+                for i, issue in enumerate(prior_issues)
+            ])
+            prompt += f"""\n\nNOTE: In the last review, the following issues were identified and not yet resolved:
+    {issues_summary}
+
+    Please address them specifically in this revision."""
+
         return f"""You are a Managing Director of Equity Research at Goldman Sachs reviewing a draft financial analysis for institutional investors.
 
 {source_summary}
