@@ -5,7 +5,7 @@ Test script for Quality Validation Engine
 
 import asyncio
 import json
-from news_utils import QualityValidationEngine
+from quality_validation import quality_engine, validate_analysis_quality, is_quality_validation_available
 
 def test_setup():
     """Test if quality validation is properly set up."""

@@ -542,6 +542,16 @@ class ParallelSourceOrchestrator:
         self.config = config or NewsAnalysisConfig()
         self.relevance_assessor = RelevanceAssessor()
         logger.warning("ParallelSourceOrchestrator is deprecated. Use fetch_comprehensive_news_guaranteed_30_enhanced() directly.")
+    
+    async def fetch_enhanced_news_with_parallel_sources(self, company: str, days_back: int = 7) -> Dict[str, Any]:
+        """Deprecated - use main function instead."""
+        logger.warning("Use fetch_comprehensive_news_guaranteed_30_enhanced() instead of ParallelSourceOrchestrator")
+        return await _run_comprehensive_analysis(company, days_back, False)
+    
+    async def fetch_enhanced_news_with_quality_validation(self, company: str, days_back: int = 7) -> Dict[str, Any]:
+        """Deprecated - use main function instead."""
+        logger.warning("Use fetch_comprehensive_news_guaranteed_30_enhanced() instead of ParallelSourceOrchestrator")
+        return await _run_comprehensive_analysis(company, days_back, True)
 
 class QualityEnhancedSourceOrchestrator:
     """
@@ -1489,46 +1499,6 @@ def create_error_result(company: str, days_back: int, error_msg: str) -> Dict[st
         'error': error_msg
     }
 
-def create_source_url_mapping(articles: List[Dict]) -> Dict[str, str]:
-    """Create mapping of source domains to their actual article URLs for linking."""
-    source_mapping = {}
-    for article in articles:
-        source = article.get('source', '')
-        if source and source not in source_mapping:
-            source_mapping[source] = article.get('link', '#')
-    
-    return source_mapping
-
-def convert_markdown_to_html(text: str, source_mapping: Dict[str, str] = None) -> str:
-    """Convert markdown formatting to HTML with clickable source links."""
-    if source_mapping is None:
-        source_mapping = {}
-    
-    # Convert **bold** to <strong>
-    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-    
-    # Convert *italic* to <em>
-    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
-    
-    # Convert [text](url) to HTML links
-    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2" target="_blank" rel="noopener">\1</a>', text)
-    
-    # Convert *(Source: domain)* to clickable source links
-    def replace_source(match):
-        source_domain = match.group(1).strip()
-        if source_domain in source_mapping:
-            url = source_mapping[source_domain]
-            premium_badge = ''
-            if source_domain in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com', 'nytimes.com']:
-                premium_badge = ' <span class="badge bg-success badge-sm">Premium</span>'
-            return f'<span class="text-muted small">(Source: <a href="{url}" target="_blank" rel="noopener" class="source-link">{source_domain}</a>{premium_badge})</span>'
-        else:
-            return f'<span class="text-muted small">(Source: {source_domain})</span>'
-    
-    text = re.sub(r'\*\(Source:\s*([^)]+)\)\*', replace_source, text)
-    
-    return text
-
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
@@ -1736,6 +1706,53 @@ async def _run_comprehensive_analysis(company: str, days_back: int,
 # ============================================================================
 # BACKWARD COMPATIBILITY FUNCTIONS
 # ============================================================================
+
+# Deprecated function aliases for backward compatibility
+def fetch_comprehensive_news_guaranteed_30_enhanced_PARALLEL_WITH_QUALITY(company: str, days_back: int = 7) -> Dict[str, Any]:
+    """Deprecated - use fetch_comprehensive_news_guaranteed_30_enhanced() instead."""
+    logger.warning("Function name deprecated. Use fetch_comprehensive_news_guaranteed_30_enhanced() instead.")
+    return fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back, enable_quality_validation=True)
+
+def fetch_comprehensive_news_guaranteed_30_enhanced_WITH_OPTIONAL_QUALITY(company: str, days_back: int = 7, 
+                                                                         enable_quality_validation: bool = True) -> Dict[str, Any]:
+    """Deprecated - use fetch_comprehensive_news_guaranteed_30_enhanced() instead."""
+    logger.warning("Function name deprecated. Use fetch_comprehensive_news_guaranteed_30_enhanced() instead.")
+    return fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back, enable_quality_validation)
+
+def fetch_comprehensive_news_guaranteed_30_enhanced_WITH_ITERATIVE_QUALITY(company: str, days_back: int = 7) -> Dict[str, Any]:
+    """Deprecated - use fetch_comprehensive_news_guaranteed_30_enhanced() instead."""
+    logger.warning("Function name deprecated. Use fetch_comprehensive_news_guaranteed_30_enhanced() instead.")
+    return fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back, enable_quality_validation=True)
+
+def fetch_enhanced_news_with_parallel_sources(company: str, days_back: int = 7) -> Dict[str, Any]:
+    """Deprecated - use fetch_comprehensive_news_guaranteed_30_enhanced() instead."""
+    logger.warning("Function name deprecated. Use fetch_comprehensive_news_guaranteed_30_enhanced() instead.")
+    return fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back, enable_quality_validation=False)
+
+def fetch_enhanced_news_with_quality_validation(company: str, days_back: int = 7) -> Dict[str, Any]:
+    """Deprecated - use fetch_comprehensive_news_guaranteed_30_enhanced() instead."""
+    logger.warning("Function name deprecated. Use fetch_comprehensive_news_guaranteed_30_enhanced() instead.")
+    return fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back, enable_quality_validation=True)
+
+def generate_premium_analysis_upgraded_v2(company: str, articles: List[Dict], max_articles: int = 30) -> Dict[str, List[str]]:
+    """Deprecated - functionality moved to generate_enhanced_analysis()."""
+    logger.warning("Function name deprecated. Use generate_enhanced_analysis() instead.")
+    return generate_enhanced_analysis(company, articles)
+
+def generate_premium_analysis_claude_sonnet_4_enhanced(company: str, articles: List[Dict], max_articles: int = 30) -> Dict[str, List[str]]:
+    """Deprecated - functionality moved to generate_enhanced_analysis()."""
+    logger.warning("Function name deprecated. Use generate_enhanced_analysis() instead.")
+    return generate_enhanced_analysis(company, articles)
+
+def generate_premium_analysis_30_articles(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+    """Deprecated - use generate_enhanced_analysis() instead."""
+    logger.warning("Function name deprecated. Use generate_enhanced_analysis() instead.")
+    return generate_enhanced_analysis(company, articles)
+
+def create_empty_results_enhanced(company: str, days_back: int) -> Dict[str, Any]:
+    """Deprecated - use create_empty_result() instead."""
+    logger.warning("Function name deprecated. Use create_empty_result() instead.")
+    return create_empty_result(company, days_back)
 
 # Quality validation functions for backward compatibility
 async def validate_analysis_quality(company: str, analysis: Dict[str, List[str]], articles: List[Dict]) -> Dict[str, Any]:

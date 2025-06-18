@@ -207,7 +207,7 @@ class IntegrationHelper:
             """Enhanced news analysis endpoint with dynamic relevance assessment."""
             try:
                 from flask import request, render_template
-                from news_utils import DynamicSourceOrchestrator
+                from enhanced_news_analysis import DynamicSourceOrchestrator
                 
                 # Parse input
                 company = request.form.get("company", "").strip()
@@ -402,7 +402,7 @@ class MigrationHelper:
             config_manager.config['quality_thresholds']['target'] = 8.5
             config_manager.config['iterative_improvement']['max_iterations'] = 4
             
-            from news_utils import DynamicSourceOrchestrator
+            from enhanced_news_analysis import DynamicSourceOrchestrator
             orchestrator = DynamicSourceOrchestrator(config)
             
             # Run enhanced analysis
@@ -455,7 +455,7 @@ def fetch_comprehensive_news_guaranteed_30_enhanced(company: str, days_back: int
     """
     
     # Import the enhanced system
-    from news_utils import ConfigurationManager, MigrationHelper
+    from configuration_and_integration import ConfigurationManager, MigrationHelper
     
     # Use compatibility wrapper to maintain existing interface
     enhanced_function = MigrationHelper.create_compatibility_wrapper()

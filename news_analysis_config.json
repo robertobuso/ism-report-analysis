@@ -8,5 +8,21 @@
   "google_cse": {
     "max_articles_before_cse_check": 25,
     "cse_article_limit": 10
+  },
+  "quality_thresholds": {
+    "minimum_pass": 7.0,
+    "target": 8.0, 
+    "excellent": 8.5,
+    "improvement_required": 0.3
+  },
+  "web_search": {
+    "enabled": true,
+    "max_searches_per_validation": 5,
+    "search_timeout": 10
+  },
+  "iterative_improvement": {
+    "max_iterations": 3,
+    "minimum_improvement": 0.3,
+    "enable_web_verification": true
   }
 }

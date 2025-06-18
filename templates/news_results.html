@@ -221,6 +221,12 @@
                                 Target: 8.0+ (Institutional Grade)
                             </small>
                             {% endif %}
+                            
+                             <!-- NEW: Show iterative improvements -->
+                            {% if quality_validation.improvement_analysis %}
+                            <small>Iterations: {{ quality_validation.improvement_analysis.attempt }}, 
+                                Trajectory: {{ quality_validation.improvement_analysis.trajectory }}</small>
+                            {% endif %}
                         </div>
                     </div>
                     
