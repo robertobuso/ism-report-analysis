@@ -1,0 +1,8 @@
+PROMPT ANALYSIS SUMMARY
+======================
+Characters: 9,330
+Estimated tokens: 2,332
+Lines: 106
+Unique lines: 89
+Duplicate lines: 18
+Article section found: NO

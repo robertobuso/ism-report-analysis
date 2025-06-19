@@ -75,7 +75,7 @@ class NewsAnalysisConfig:
     QUALITY_MAX_RETRIES: int = 2
     
     # Performance settings
-    PARALLEL_TIMEOUT: int = 290
+    PARALLEL_TIMEOUT: int = 360
     RSS_TIMEOUT: int = 15
     NYT_TIMEOUT: int = 10
     GOOGLE_TIMEOUT: int = 10
@@ -667,7 +667,7 @@ class ClaudeWebSearchEngine:
                         tools=tools  # <- dynamic based on attempt
                     )
                 ),
-                timeout=290.0
+                timeout=360.0
             )
 
             logger.info("💡 Forcing stateless mode with empty system prompt")
@@ -715,16 +715,16 @@ class ClaudeWebSearchEngine:
             return len(text) // 4
 
     def _create_web_search_validation_prompt(self, 
-                                           company: str, 
-                                           analysis: Dict[str, List[str]], 
-                                           articles: List[Dict],
-                                           attempt: int) -> str:
-        """Create validation prompt that leverages web search for fact-checking."""
+                                       company: str, 
+                                       analysis: Dict[str, List[str]], 
+                                       articles: List[Dict],
+                                       attempt: int) -> str:
+        """Create validation prompt that scores BOTH original and revised analysis."""
         
         formatted_analysis = self._format_analysis_for_review(analysis)
         today_str = datetime.now().strftime("%B %d, %Y")
 
-        # ✅ UPDATED: Handle both relevant and standard articles differently
+        # Create article summaries (existing code)
         article_summaries = ""
         for i, article in enumerate(articles, 1):
             title = article.get('title', '')
@@ -743,82 +743,95 @@ class ClaudeWebSearchEngine:
             else:
                 article_summaries += f"{i}. [PREMIUM-{relevance_level.upper()}] {title}\n   {source}\n   {snippet}\n\n"
         
-        return f"""You are a Managing Director at Goldman Sachs validating financial analysis with REAL-TIME WEB SEARCH capabilities.
+        return f"""You are a Managing Director at Goldman Sachs conducting a BEFORE/AFTER quality assessment with REAL-TIME WEB SEARCH capabilities.
 
-**CRITICAL INSTRUCTIONS**: Use web search to verify ALL claims and enhance the analysis.
+    **CRITICAL INSTRUCTIONS**: 
+    1. First score the ORIGINAL analysis as-is (baseline)
+    2. Use web search to find current data and create improvements  
+    3. Score the REVISED analysis after improvements
+    4. Show the improvement delta
 
-COMPANY: {company}
-TODAY'S DATE: {today_str}
-VALIDATION ATTEMPT: {attempt}
+    COMPANY: {company}
+    TODAY'S DATE: {today_str}
 
-CURRENT ANALYSIS TO VALIDATE:
-{formatted_analysis}
+    ORIGINAL ANALYSIS TO ASSESS:
+    {formatted_analysis}
 
-**MANDATORY WEB SEARCH TASKS**:
-1. Search for {company} current stock price and trading data
-2. Verify recent earnings, revenue, and financial metrics mentioned
-3. Check latest analyst price targets and ratings  
-4. Confirm recent news developments and business updates
-5. Validate any numerical claims with current market data
+    **MANDATORY DUAL ASSESSMENT PROCESS**:
 
-**VALIDATION FRAMEWORK** (Score each 0-10):
-- **Fact Accuracy**: All claims verified with current web data
-- **Market Context**: Current stock price, valuation multiples included  
-- **Investment Actionability**: Specific, measurable investment insights
-- **Timeliness**: Recent developments and current market positioning
-- **Professional Quality**: Goldman Sachs institutional standards
+    **STEP 1: BASELINE SCORING** (Score the original analysis 0-10):
+    - Fact accuracy with available data
+    - Market context completeness  
+    - Investment actionability
+    - Timeliness of information
+    - Professional quality
 
-**ENHANCEMENT REQUIREMENTS**:
-- Update ALL outdated information with current web data
-- Add specific current metrics (stock price, P/E, analyst targets)
-- Include recent developments from web search
-- Enhance vague statements with specific, actionable insights
-- Cite web sources naturally in the analysis
+    **STEP 2: WEB SEARCH ENHANCEMENT**:
+    1. Search for {company} current stock price and trading data
+    2. Verify recent earnings, revenue, and financial metrics
+    3. Check latest analyst price targets and ratings  
+    4. Confirm recent news developments and business updates
+    5. Validate any numerical claims with current market data
 
-**OUTPUT FORMAT**:
-Return JSON with this exact structure:
+    **STEP 3: REVISED SCORING** (Score the enhanced analysis 0-10):
+    - Same criteria as baseline but with web search enhancements
 
-```json
-{{
-  "overall_verdict": "pass" | "needs_revision" | "fail",
-  "overall_score": float,
-  "web_searches_performed": [
+    **OUTPUT FORMAT**:
+    Return JSON with this exact structure:
+
+    ```json
     {{
-      "query": "search query used",
-      "key_finding": "important discovery",
-      "data_updated": "specific metric updated"
+    "baseline_assessment": {{
+        "original_score": float,
+        "original_verdict": "pass" | "needs_revision" | "fail",
+        "original_issues": ["list of issues found in original"],
+        "baseline_summary": "2-3 sentence assessment of original quality"
+    }},
+    "web_searches_performed": [
+        {{
+        "query": "search query used",
+        "key_finding": "important discovery",
+        "data_updated": "specific metric updated",
+        "improvement_type": "fact_correction" | "data_refresh" | "context_addition"
+        }}
+    ],
+    "revised_assessment": {{
+        "revised_score": float,
+        "revised_verdict": "pass" | "needs_revision" | "fail", 
+        "improvements_made": ["specific improvements from web search"],
+        "remaining_issues": ["issues still present after revision"]
+    }},
+    "improvement_analysis": {{
+        "score_delta": float,
+        "improvement_percentage": float,
+        "quality_trajectory": "significant_improvement" | "moderate_improvement" | "minimal_improvement" | "no_improvement" | "degradation",
+        "web_search_effectiveness": "high" | "medium" | "low"
+    }},
+    "revised_analysis": {{
+        "executive": ["Enhanced bullets with current web-verified data"],
+        "investor": ["Updated valuation analysis with recent metrics"],
+        "catalysts": ["Current catalyst assessment with verified timelines"]
+    }},
+    "validation_metadata": {{
+        "current_stock_price": "verified price",
+        "market_cap": "current market cap", 
+        "recent_news_count": int,
+        "data_verification_count": int,
+        "baseline_date_issues": int,
+        "revised_date_freshness": "current" | "recent" | "stale"
     }}
-  ],
-  "revised_analysis": {{
-    "executive": [
-      "Enhanced bullet with current web-verified data",
-      "Investment insight with specific metrics from web search",
-      "Strategic context with recent developments"
-    ],
-    "investor": [
-      "Current valuation analysis with web-verified metrics",
-      "Updated analyst data from recent research",
-      "Market positioning with current competitive landscape"
-    ],
-    "catalysts": [
-      "Specific catalyst with current timeline and probability",
-      "Risk assessment with quantified current impact",
-      "Trading implications with current market data"
-    ]
-  }},
-  "enhancements_made": [
-    "List of specific improvements using web data"
-  ],
-  "validation_metadata": {{
-    "current_stock_price": "verified price",
-    "market_cap": "current market cap",
-    "recent_news_count": int,
-    "data_verification_count": int
-  }}
-}}
-```
+    }}
+    ```
 
-**CRITICAL**: Use web search to update the analysis with current, verified data."""
+    **SCORING CRITERIA FOR BOTH ASSESSMENTS**:
+    - 9.0-10.0: Institutional excellence with current data and actionable insights
+    - 8.0-8.9: Professional quality with good context and recent information  
+    - 7.0-7.9: Acceptable quality with some current data and clear insights
+    - 6.0-6.9: Below standard with outdated info or vague recommendations
+    - 5.0-5.9: Poor quality with significant factual or timeliness issues
+    - 0.0-4.9: Unacceptable quality requiring major revision
+
+    Focus on IMPROVEMENT MEASUREMENT - show how web search enhanced the analysis quality."""
 
     async def _call_claude_with_web_search(self, prompt: str):
         """Call Claude Sonnet 4 with web search - safe domain list."""
@@ -842,7 +855,7 @@ Return JSON with this exact structure:
                         }]
                     )
                 ),
-                timeout=290.0
+                timeout=360.0
             )
             return response
             
@@ -851,77 +864,75 @@ Return JSON with this exact structure:
             raise
 
     def _parse_web_search_response(self, response) -> Dict[str, Any]:
-        """Parse Claude's response with diagnostic logging."""
+        """Parse Claude's dual-scoring response with improvement tracking."""
         
         logger.info(f"🐛 DIAGNOSTIC: _parse_web_search_response called")
-        logger.info(f"🐛 Response type: {type(response)}")
         
         try:
-            # Extract text content
+            # Extract content (existing code)
             final_content = ""
             if hasattr(response, 'content') and isinstance(response.content, list):
-                logger.info(f"🐛 Response has {len(response.content)} content blocks")
-                for i, content_block in enumerate(response.content):
-                    if hasattr(content_block, 'type'):
-                        logger.info(f"🐛 Block {i}: type={content_block.type}")
-                        if content_block.type == "text":
-                            final_content += content_block.text
-            else:
-                final_content = str(response.content[0].text) if response.content else ""
-                logger.info(f"🐛 Extracted text directly, length: {len(final_content)}")
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == "text":
+                        final_content += content_block.text
             
-            logger.info(f"🐛 Final content length: {len(final_content)}")
-            logger.info(f"🐛 First 200 chars: {final_content[:200]}...")
-            
-            # Find JSON in response
+            # Parse JSON (existing code)
             json_start = final_content.find('{')
             json_end = final_content.rfind('}') + 1
-            
-            logger.info(f"🐛 JSON boundaries: start={json_start}, end={json_end}")
-            
-            if json_start == -1 or json_end == 0:
-                logger.warning("🐛 No JSON found in response")
-                return self._create_simple_fallback()
-            
             json_text = final_content[json_start:json_end]
-            logger.info(f"🐛 Extracted JSON length: {len(json_text)}")
-            logger.info(f"🐛 JSON text: {json_text[:500]}...")
+            result = json.loads(json_text)
             
-            # Try to parse JSON
-            try:
-                result = json.loads(json_text)
-                logger.info(f"🐛 JSON parsed successfully!")
-                logger.info(f"🐛 Parsed result keys: {list(result.keys())}")
-                logger.info(f"🐛 overall_score in result: {result.get('overall_score')} (type: {type(result.get('overall_score'))})")
-            except json.JSONDecodeError as e:
-                logger.error(f"🐛 JSON parsing failed: {e}")
-                logger.error(f"🐛 Error position: line {e.lineno if hasattr(e, 'lineno') else 'unknown'}")
-                logger.info(f"🐛 Problematic JSON: {json_text}")
-                return self._create_simple_fallback()
+            # ✅ NEW: Extract dual scoring data
+            baseline = result.get('baseline_assessment', {})
+            revised = result.get('revised_assessment', {})
+            improvement = result.get('improvement_analysis', {})
             
-            # Create safe result
-            safe_result = {
-                'overall_score': self._safe_float(result.get('overall_score', 5.0)),
-                'overall_verdict': str(result.get('overall_verdict', 'fail')),
+            original_score = self._safe_float(baseline.get('original_score', 0))
+            revised_score = self._safe_float(revised.get('revised_score', 0))
+            score_delta = revised_score - original_score
+            
+            logger.info(f"🔄 DUAL SCORING RESULTS:")
+            logger.info(f"   📊 Original score: {original_score}/10")
+            logger.info(f"   📈 Revised score: {revised_score}/10")
+            logger.info(f"   ⬆️ Improvement: +{score_delta:.1f} points")
+            logger.info(f"   🎯 Trajectory: {improvement.get('quality_trajectory', 'unknown')}")
+            
+            # ✅ NEW: Enhanced result structure with dual scoring
+            return {
+                'overall_score': revised_score,  # Use revised score as main score
+                'overall_verdict': revised.get('revised_verdict', 'unknown'),
                 'revised_analysis': result.get('revised_analysis', {}),
-                'enhancements_made': result.get('enhancements_made', []),
+                'enhancements_made': revised.get('improvements_made', []),
                 'validation_metadata': result.get('validation_metadata', {}),
-                'critical_issues': result.get('critical_issues', []),
+                'web_searches_performed': result.get('web_searches_performed', []),
+                
+                # ✅ NEW: Dual scoring data
+                'baseline_assessment': {
+                    'original_score': original_score,
+                    'original_verdict': baseline.get('original_verdict', 'unknown'),
+                    'original_issues': baseline.get('original_issues', []),
+                    'baseline_summary': baseline.get('baseline_summary', '')
+                },
+                'improvement_analysis': {
+                    'score_delta': score_delta,
+                    'improvement_percentage': improvement.get('improvement_percentage', 0),
+                    'quality_trajectory': improvement.get('quality_trajectory', 'unknown'),
+                    'web_search_effectiveness': improvement.get('web_search_effectiveness', 'unknown'),
+                    'original_score': original_score,
+                    'revised_score': revised_score
+                },
+                'critical_issues': baseline.get('original_issues', []),
                 'web_search_metadata': {
-                    'searches_performed': 1,
-                    'web_search_enabled': True
+                    'searches_performed': len(result.get('web_searches_performed', [])),
+                    'web_search_enabled': True,
+                    'dual_scoring_enabled': True
                 }
             }
             
-            logger.info(f"🐛 Created safe result with score: {safe_result['overall_score']}")
-            return safe_result
-            
         except Exception as e:
-            logger.error(f"🐛 Error parsing response: {e}")
-            import traceback
-            logger.error(f"🐛 Parse traceback: {traceback.format_exc()}")
+            logger.error(f"🐛 Error parsing dual-scoring response: {e}")
             return self._create_simple_fallback()
-
+    
     def _safe_float(self, value):
         """Safely convert value to float with logging."""
         logger.info(f"🐛 _safe_float called with: {value} (type: {type(value)})")
@@ -999,7 +1010,8 @@ Return JSON with this exact structure:
 
 class QualityValidationEngine:
     """
-    Updated quality validation engine with REAL Claude Sonnet 4 web search.
+    SIMPLIFIED quality validation engine - EXACTLY ONE web search call.
+    No retries, no complex logic - just one call and proper logging.
     """
     
     def __init__(self):
@@ -1008,224 +1020,195 @@ class QualityValidationEngine:
         
         if self.anthropic_api_key:
             self.web_search_engine = ClaudeWebSearchEngine(self.anthropic_api_key)
-            logger.info("✅ Enhanced Quality Validation with Web Search initialized")
+            logger.info("✅ SIMPLIFIED Quality Validation with Web Search initialized")
         else:
-            logger.warning("⚠️ Enhanced quality validation disabled - missing Anthropic API key")
+            logger.warning("⚠️ Quality validation disabled - missing Anthropic API key")
 
-        self.rate_limit_delay = 30
-        self.max_retries = 2
-        self.retry_delays = [0, 30, 30]
-
-    async def _run_validation_with_retries(self, 
-                                 company: str, 
-                                 analysis: Dict[str, List[str]], 
-                                 articles: List[Dict],
-                                 attempt: int = 1) -> Dict[str, Any]:
-        """Validation with diagnostic logging - FIXED VERSION."""
-        try:
-            logger.info(f"🐛 DIAGNOSTIC: _run_validation_with_retries called with attempt={attempt}")
-            
-            # Add delay between attempts
-            if attempt > 1:
-                delay = 15
-                logger.info(f"⏱️ Waiting {delay}s before attempt {attempt}...")
-                await asyncio.sleep(delay)
-            
-            logger.info(f"🔍 Quality validation attempt {attempt} for {company}")
-            
-            # Try validation with rate limit handling
-            try:
-                logger.info(f"🐛 About to call web_search_engine.validate_with_web_search")
-                validation_result = await self.web_search_engine.validate_with_web_search(
-                    company, analysis, articles, attempt
-                )
-                logger.info(f"🐛 Got validation_result type: {type(validation_result)}")
-                logger.info(f"🐛 validation_result keys: {list(validation_result.keys()) if isinstance(validation_result, dict) else 'Not a dict'}")
-                
-            except Exception as e:
-                logger.error(f"🐛 Exception in validate_with_web_search: {e}")
-                if "rate_limit" in str(e).lower() or "429" in str(e):
-                    logger.warning(f"Rate limit hit on attempt {attempt}")
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(90)
-                        validation_result = await self._run_validation_with_retries(company, analysis, articles, attempt + 1)
-
-                        logger.info(f"📊 Validation summary:")
-                        logger.info(f"    • Score: {validation_result.get('overall_score')}")
-                        logger.info(f"    • Verdict: {validation_result.get('overall_verdict')}")
-                        return await self._run_validation_with_retries(company, analysis, articles, attempt + 1)
-                    else:
-                        logger.error(f"Rate limited after {attempt} attempts")
-                        return self._create_rate_limit_fallback_result(analysis, attempt)
-                else:
-                    raise e
-            
-            # ✅ FIX: Extract score and verdict correctly
-            overall_score = validation_result.get('overall_score', 0)
-            verdict = validation_result.get('overall_verdict', 'fail')
-            
-            # ✅ FIX: Handle nested score if it's in a dict
-            if isinstance(overall_score, dict):
-                overall_score = overall_score.get('overall_score', 0)
-            
-            # ✅ FIX: Ensure score is a float
-            try:
-                overall_score = float(overall_score) if overall_score else 0
-            except (ValueError, TypeError):
-                overall_score = 0
-            
-            logger.info(f"🐛 Extracted overall_score: {overall_score} (type: {type(overall_score)})")
-            logger.info(f"🐛 Extracted verdict: {verdict}")
-            
-            logger.info(f"✅ Validation attempt {attempt} completed - Score: {overall_score}, Verdict: {verdict}")
-            
-            # ✅ FIX: Call retry logic with correct parameters
-            logger.info(f"🐛 About to call _should_retry_with_fixed_logic with score={overall_score}, verdict={verdict}, attempt={attempt}")
-            should_retry, retry_reason = self._should_retry_with_fixed_logic(overall_score, verdict, attempt)
-            logger.info(f"🐛 Retry decision: should_retry={should_retry}, reason='{retry_reason}'")
-            
-            if should_retry:
-                logger.info(f"⚠️ Score {score} / verdict '{verdict}' would normally trigger retry, but retry is disabled.")
-                return validation_result  # Return the result anyway
-
-            
-            logger.info(f"✅ Quality validation COMPLETE for {company}: {retry_reason}")
-            return self._create_validated_result(validation_result, attempt)
-            
-        except Exception as e:
-            logger.error(f"❌ Quality validation failed for {company}: {e}")
-            logger.error(f"🐛 Exception type: {type(e)}")
-            import traceback
-            logger.error(f"🐛 Traceback: {traceback.format_exc()}")
-            return self._create_fallback_result(analysis, str(e))
-    
-    async def validate_and_enhance_analysis(self, 
-                                        company: str, 
-                                        analysis: Dict[str, List[str]], 
-                                        articles: List[Dict],
-                                        attempt: int = 1,
-                                        max_retries: int = 2) -> Dict[str, Any]:
+    async def validate_and_enhance_analysis_SINGLE_CALL(self, 
+                                                       company: str, 
+                                                       analysis: Dict[str, List[str]], 
+                                                       articles: List[Dict]) -> Dict[str, Any]:
         """
-        Main validation pipeline with web search and retry logic - FIXED VERSION.
+        SIMPLIFIED: Exactly ONE web search validation call.
+        No retries, clean logging, proper error handling.
         """
         if not self.web_search_engine:
             return self._create_unvalidated_result(analysis)
         
+        logger.info(f"🔍 SINGLE web search validation for {company}")
+        
         try:
-            logger.info(f"🔍 Web search validation for {company} (attempt {attempt})")
-
-            validation_result = await self._run_validation_with_retries(company, analysis, articles, attempt + 1)
-
-            logger.info(f"📊 Validation summary:")
-            logger.info(f"    • Score: {validation_result.get('overall_score')}")
-            logger.info(f"    • Verdict: {validation_result.get('overall_verdict')}")
+            # ✅ EXACTLY ONE CALL - no retries, no duplicates
+            validation_result = await self.web_search_engine.validate_with_web_search(
+                company, analysis, articles, attempt=1
+            )
             
-            # ✅ FIX: Use the corrected retry method directly
-            return await self._run_validation_with_retries(company, analysis, articles, attempt)
+            # ✅ DETAILED LOGGING of what we got back
+            overall_score = validation_result.get('overall_score', 0)
+            verdict = validation_result.get('overall_verdict', 'unknown')
+            enhancements_made = validation_result.get('enhancements_made', [])
+            web_searches = validation_result.get('web_searches_performed', [])
+            
+            logger.info(f"✅ SINGLE validation completed for {company}:")
+            logger.info(f"   📊 Score: {overall_score}/10")
+            logger.info(f"   🎯 Verdict: {verdict}")
+            logger.info(f"   🔍 Web searches performed: {len(web_searches)}")
+            logger.info(f"   ⚡ Enhancements made: {len(enhancements_made)}")
+            
+            # ✅ LOG SPECIFIC IMPROVEMENTS
+            if enhancements_made:
+                logger.info(f"   🚀 Key improvements:")
+                for i, enhancement in enumerate(enhancements_made[:3], 1):
+                    logger.info(f"      {i}. {enhancement}")
+            
+            # ✅ LOG WEB SEARCH INSIGHTS  
+            if web_searches:
+                logger.info(f"   🌐 Web search insights:")
+                for i, search in enumerate(web_searches[:3], 1):
+                    query = search.get('query', 'N/A')
+                    finding = search.get('key_finding', 'N/A')
+                    logger.info(f"      {i}. Query: '{query}' → {finding}")
+            
+            # ✅ DETERMINE SUCCESS
+            validation_passed = overall_score >= 7.0 and verdict != 'fail'
+            
+            logger.info(f"   ✅ Final result: {'PASSED' if validation_passed else 'FAILED'} "
+                       f"(threshold: 7.0, got: {overall_score})")
+            
+            return self._create_enhanced_validated_result(
+                validation_result, overall_score, validation_passed, company
+            )
             
         except Exception as e:
-            logger.error(f"❌ Web search validation failed for {company}: {e}")
-            return self._create_fallback_result(analysis, str(e))
+            logger.error(f"❌ SINGLE web search validation failed for {company}: {e}")
+            logger.error(f"   Exception type: {type(e).__name__}")
+            
+            # ✅ CHECK if it's a rate limit specifically
+            if "rate_limit" in str(e).lower() or "429" in str(e):
+                logger.error(f"   🚨 RATE LIMIT detected - web search used 210k+ hidden tokens")
+                return self._create_rate_limit_result(analysis, company)
+            else:
+                return self._create_fallback_result(analysis, str(e))
 
-    async def _validate_with_rate_limit_handling(self, 
-                                               company: str, 
-                                               analysis: Dict[str, List[str]], 
-                                               articles: List[Dict],
-                                               attempt: int) -> Dict[str, Any]:
-        """Run validation with rate limit retry logic."""
+    def _create_enhanced_validated_result(self, validation_result: Dict, 
+                                    score: float, passed: bool, company: str) -> Dict[str, Any]:
+        """Create result with dual scoring and improvement tracking."""
         
-        max_rate_limit_retries = 3
+        # Extract dual scoring data
+        baseline = validation_result.get('baseline_assessment', {})
+        improvement = validation_result.get('improvement_analysis', {})
         
-        for rate_retry in range(max_rate_limit_retries):
-            try:
-                # Run the web search validation
-                result = await self.web_search_engine.validate_with_web_search(
-                    company, analysis, articles, attempt
-                )
-                return result
-                
-            except Exception as e:
-                # Check if it's a rate limit error
-                if "rate_limit_error" in str(e) or "429" in str(e):
-                    if rate_retry < max_rate_limit_retries - 1:
-                        wait_time = (rate_retry + 1) * 30  # 30, 60, 90 seconds
-                        logger.warning(f"⚠️ Rate limit hit, waiting {wait_time}s before retry {rate_retry + 1}...")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    else:
-                        logger.error(f"❌ Rate limit exceeded after {max_rate_limit_retries} attempts")
-                        # Return a fallback result instead of failing completely
-                        return self._create_rate_limit_fallback_result(analysis, attempt)
-                else:
-                    # Non-rate-limit error, re-raise
-                    raise e
+        original_score = improvement.get('original_score', 0)
+        revised_score = improvement.get('revised_score', score)
+        score_delta = revised_score - original_score
         
-        # Should never reach here
-        return self._create_rate_limit_fallback_result(analysis, attempt)
-    
-    def _create_rate_limit_fallback_result(self, analysis: Dict[str, List[str]], attempt: int) -> Dict[str, Any]:
-        """Create a fallback result when rate limited."""
+        # Use enhanced analysis if improvements were made
+        revised_analysis = validation_result.get('revised_analysis', {})
+        web_searches = validation_result.get('web_searches_performed', [])
+        enhancements = validation_result.get('enhancements_made', [])
+        
+        # ✅ IMPROVED LOGIC: Use enhanced if we have meaningful improvements
+        meaningful_improvement = score_delta >= 0.5 or len(web_searches) >= 3
+        
+        if revised_analysis and meaningful_improvement:
+            final_analysis = revised_analysis
+            used_enhanced = True
+            logger.info(f"   📝 Using ENHANCED analysis for {company}")
+            logger.info(f"   📊 Quality improvement: {original_score:.1f} → {revised_score:.1f} (+{score_delta:.1f})")
+        else:
+            final_analysis = {}
+            used_enhanced = False
+            logger.warning(f"   📝 Using ORIGINAL analysis for {company} (insufficient improvement)")
+        
+        # ✅ NEW: Enhanced pass/fail logic considering improvement
+        if revised_score >= 7.0:
+            validation_passed = True
+            pass_reason = "revised_analysis_meets_threshold"
+        elif score_delta >= 1.0 and revised_score >= 6.0:
+            validation_passed = True  
+            pass_reason = "significant_improvement_with_acceptable_quality"
+        else:
+            validation_passed = False
+            pass_reason = "insufficient_quality_and_improvement"
+        
         return {
-            'revised_analysis': analysis,
-            'overall_score': 6.5 if attempt == 1 else 7.0,  # Give decent score to avoid infinite retries
-            'overall_verdict': 'pass',  # Accept the analysis due to rate limiting
-            'web_search_metadata': {
-                'searches_performed': 0, 
-                'web_search_enabled': True,
-                'rate_limited': True
-            },
-            'enhancements_made': [f"Rate limited on attempt {attempt} - using original analysis"],
-            'validation_metadata': {'rate_limited': True}
-        }
-  
-    def _should_retry_with_fixed_logic(self, overall_score: float, verdict: str, attempt: int) -> tuple[bool, str]:
-        """Retry logic with diagnostic logging - FIXED VERSION."""
-        
-        logger.info(f"🐛 DIAGNOSTIC: _should_retry_with_fixed_logic called")
-        logger.info(f"🐛 overall_score: {overall_score} (type: {type(overall_score)})")
-        logger.info(f"🐛 verdict: {verdict}")
-        logger.info(f"🐛 Attempt number: {attempt}")
-        logger.info(f"🐛 Max retries: {self.max_retries}")
-        
-        # Don't retry if max attempts reached
-        if attempt >= self.max_retries:
-            logger.info(f"🐛 DECISION: No retry - max attempts reached ({attempt} >= {self.max_retries})")
-            return False, f"Max attempts reached"
-        
-        # ✅ FIX: Ensure score is a float
-        try:
-            score_value = float(overall_score)
-            logger.info(f"🐛 Score as float: {score_value}")
-        except (ValueError, TypeError) as e:
-            logger.error(f"🐛 Score conversion failed: {e}, defaulting to 0.0")
-            score_value = 0.0
-        
-        # ✅ FIX: Proper retry logic
-        if score_value < 7.0 or verdict == "needs_revision":
-            logger.info(f"🐛 DECISION: RETRY - score {score_value} < 7.0 or verdict '{verdict}'")
-            return True, f"Below threshold (score: {score_value}) or needs revision"
-        
-        logger.info(f"🐛 DECISION: NO RETRY - score {score_value} >= 7.0 and verdict '{verdict}'")
-        return False, f"Quality acceptable (score: {score_value})"
-
-    def _create_validated_result(self, validation_result: Dict, attempt: int) -> Dict[str, Any]:
-        """Create enhanced validation result."""
-        return {
-            'analysis': validation_result.get('revised_analysis', {}),
+            'analysis': final_analysis,
             'quality_validation': {
                 'enabled': True,
-                'passed': validation_result.get('overall_score', 0) >= 7.0,
-                'score': validation_result.get('overall_score', 0),
+                'passed': validation_passed,
+                'score': float(revised_score),
                 'verdict': validation_result.get('overall_verdict', 'unknown'),
-                'attempt': attempt,
-                'web_search_enabled': True,
-                'web_searches_performed': validation_result.get('web_search_metadata', {}).get('searches_performed', 0),
-                'enhancements_made': validation_result.get('enhancements_made', []),
-                'validation_metadata': validation_result.get('validation_metadata', {}),
-                'quality_grade': self._calculate_quality_grade(validation_result.get('overall_score', 0))
+                
+                # ✅ NEW: Dual scoring transparency
+                'baseline_score': float(original_score),
+                'revised_score': float(revised_score), 
+                'improvement_delta': float(score_delta),
+                'quality_trajectory': improvement.get('quality_trajectory', 'unknown'),
+                'web_search_effectiveness': improvement.get('web_search_effectiveness', 'unknown'),
+                
+                'web_searches_performed': len(web_searches),
+                'enhancements_made': enhancements,
+                'used_enhanced_analysis': used_enhanced,
+                'pass_reason': pass_reason,
+                
+                # ✅ NEW: Improvement details
+                'original_issues': baseline.get('original_issues', []),
+                'improvements_applied': len(enhancements),
+                'baseline_summary': baseline.get('baseline_summary', ''),
+                
+                'single_call_validation': True,
+                'dual_scoring_enabled': True
             },
             'success': True,
-            'enhanced': True
+            'enhanced': used_enhanced
+        }
+    
+    def _create_improvement_summary(self, validation_result: Dict) -> Dict[str, Any]:
+        """Create summary of improvements made."""
+        enhancements = validation_result.get('enhancements_made', [])
+        web_searches = validation_result.get('web_searches_performed', [])
+        
+        return {
+            'enhancements_count': len(enhancements),
+            'web_searches_count': len(web_searches),
+            'top_enhancements': enhancements[:3],
+            'key_data_updates': [
+                search.get('data_updated', 'N/A') 
+                for search in web_searches[:3] 
+                if search.get('data_updated')
+            ]
+        }
+    
+    def _create_web_search_summary(self, validation_result: Dict) -> Dict[str, Any]:
+        """Create summary of web search results."""
+        searches = validation_result.get('web_searches_performed', [])
+        
+        return {
+            'searches_performed': len(searches),
+            'search_queries': [s.get('query', 'N/A') for s in searches],
+            'key_findings': [s.get('key_finding', 'N/A') for s in searches],
+            'data_freshness_updates': sum(1 for s in searches if 'current' in s.get('key_finding', '').lower())
+        }
+    
+    def _create_rate_limit_result(self, analysis: Dict[str, List[str]], company: str) -> Dict[str, Any]:
+        """Create result when rate limited due to web search tokens."""
+        logger.warning(f"   ⚠️ Rate limited on {company} - web search adds ~210k hidden tokens")
+        
+        return {
+            'analysis': analysis,
+            'quality_validation': {
+                'enabled': True,
+                'passed': False,
+                'score': None,
+                'verdict': 'rate_limited',
+                'web_search_enabled': True,
+                'rate_limited': True,
+                'error': 'Rate limited due to web search hidden tokens (~210k)',
+                'message': 'Web search validation failed - using original analysis',
+                'single_call_validation': True
+            },
+            'success': True,
+            'enhanced': False
         }
     
     def _create_unvalidated_result(self, analysis: Dict[str, List[str]]) -> Dict[str, Any]:
@@ -1236,7 +1219,8 @@ class QualityValidationEngine:
                 'enabled': False,
                 'passed': None,
                 'score': None,
-                'message': 'Web search validation disabled - missing Anthropic API key'
+                'message': 'Web search validation disabled - missing Anthropic API key',
+                'single_call_validation': True
             },
             'success': True,
             'enhanced': False
@@ -1252,7 +1236,8 @@ class QualityValidationEngine:
                 'score': None,
                 'error': error,
                 'web_search_enabled': True,
-                'message': 'Web search validation failed - using original analysis'
+                'message': 'Web search validation failed - using original analysis',
+                'single_call_validation': True
             },
             'success': True,
             'enhanced': False
@@ -2549,48 +2534,58 @@ async def _run_comprehensive_analysis(company: str, days_back: int,
     logger.info("📝 Phase 5: Analysis generation...")
     initial_summaries = generate_enhanced_analysis(company, final_articles)
     
-    # Phase 6: Optional quality validation
+   # Phase 6: SIMPLIFIED quality validation - EXACTLY ONE CALL
     final_summaries = initial_summaries
     quality_info = {'enabled': enable_quality_validation, 'passed': None, 'score': None}
     
     if enable_quality_validation and final_articles:
-        logger.info("🔍 Phase 6: Quality validation...")
+        logger.info("🔍 Phase 6: SINGLE CALL quality validation...")
+        
         quality_engine = QualityValidationEngine()
         
         try:
-            quality_result = await quality_engine.validate_and_enhance_analysis(
+            # ✅ EXACTLY ONE CALL - no retries
+            quality_result = await quality_engine.validate_and_enhance_analysis_SINGLE_CALL(
                 company, initial_summaries, final_articles
             )
-            final_summaries = quality_result['analysis']
+            
+            # ✅ FIXED: Check if enhanced analysis was actually used
+            enhanced_analysis = quality_result['analysis']
             quality_info = quality_result['quality_validation']
             
-            # ✅ Safe enhanced logging of final quality results
-            try:
-                # Simple quality validation logging
-                logger.info(f"Quality validation completed for {company}")
-                if quality_info.get('score'):
-                    logger.info(f"Quality score: {quality_info.get('score')}")
+            if enhanced_analysis and quality_info.get('used_enhanced_analysis'):
+                final_summaries = enhanced_analysis
+                logger.info(f"🎉 Using ENHANCED analysis with web search improvements for {company}")
+            else:
+                final_summaries = initial_summaries
+                logger.info(f"📄 Using ORIGINAL analysis for {company} (no enhancements available)")
+            
+            # ✅ DETAILED SUCCESS LOGGING
+            if quality_info.get('web_searches_performed', 0) > 0:
+                web_count = quality_info['web_searches_performed']
+                enhancement_count = len(quality_info.get('enhancements_made', []))
+                score = quality_info.get('score', 'N/A')
                 
-                # Log if rate limited
-                if quality_info.get('validation_metadata', {}).get('rate_limited'):
-                    logger.warning(f"⚠️ Analysis was rate limited - consider API upgrade for full validation")
-                    
-            except Exception as log_error:
-                logger.error(f"Error in quality summary logging: {log_error}")
-                logger.info(f"✅ Quality validation completed for {company} (summary logging error)")
-            
-            # Log if rate limited
-            if quality_info.get('validation_metadata', {}).get('rate_limited'):
-                logger.warning(f"⚠️ Analysis was rate limited - consider API upgrade for full validation")
-            
+                logger.info(f"🌐 Web search validation results for {company}:")
+                logger.info(f"   📊 Quality score: {score}/10")
+                logger.info(f"   🔍 Web searches: {web_count}")
+                logger.info(f"   ⚡ Enhancements: {enhancement_count}")
+                logger.info(f"   📝 Analysis used: {quality_info.get('analysis_source', 'unknown')}")
+                
+                # ✅ Log key improvements
+                improvements = quality_info.get('improvement_summary', {})
+                if improvements.get('top_enhancements'):
+                    logger.info(f"   🚀 Key improvements:")
+                    for i, enhancement in enumerate(improvements['top_enhancements'], 1):
+                        logger.info(f"      {i}. {enhancement}")
+                        
         except Exception as quality_error:
-            logger.error(f"❌ Quality validation failed: {quality_error}")
-            logger.error(f"Exception type: {type(quality_error).__name__}")
+            logger.error(f"❌ Quality validation ERROR for {company}: {quality_error}")
+            final_summaries = initial_summaries  # ✅ Always fall back to original
             quality_info = {
-                'enabled': True,
-                'passed': False,
-                'error': str(quality_error),
-                'score': None
+                'enabled': True, 'passed': False, 'error': str(quality_error), 
+                'score': None, 'single_call_validation': True,
+                'analysis_source': 'original', 'enhancement_reason': 'validation_error'
             }
     else:
         logger.info("⚡ Phase 6: Quality validation disabled")
