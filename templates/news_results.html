@@ -110,6 +110,50 @@
         .metric-card .small {
             color: #6c757d !important; /* ✅ Fix: Ensure small text is visible gray */
         }
+
+        .badge.bg-purple { 
+            background-color: #6f42c1 !important; 
+        }
+
+        .source-badge {
+            font-size: 0.65rem;
+            padding: 0.15rem 0.3rem;
+            margin-left: 0.2rem;
+            text-decoration: none !important;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.15rem;
+            white-space: nowrap;
+            vertical-align: middle;
+            border-radius: 3px;
+        }
+
+        .source-badge:hover {
+            opacity: 0.8;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .bg-purple { 
+            background-color: #6f42c1 !important; 
+            color: white !important;
+        }
+
+        /* Ensure badges don't break awkwardly */
+        .insight-bullet {
+            line-height: 1.6;
+            word-wrap: break-word;
+        }
+
+        /* Ensure badges don't break line flow */
+        .insight-bullet .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
         
         @media (max-width: 768px) {
             .back-button {
@@ -221,7 +265,7 @@
                                 Target: 8.0+ (Institutional Grade)
                             </small>
                             {% endif %}
-                            
+
                              <!-- NEW: Show iterative improvements -->
                             {% if quality_validation.improvement_analysis %}
                             <small>Iterations: {{ quality_validation.improvement_analysis.attempt }}, 

@@ -2036,6 +2036,84 @@ def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Dict[str, 
         logger.error(f"OpenAI analysis failed: {openai_error}")
         return create_error_summaries(company, str(openai_error))
 
+def process_analysis_source_links(analysis: Dict[str, List[str]], articles: List[Dict]) -> Dict[str, List[str]]:
+    """Convert existing <cite index="X,Y,Z"> tags to clickable HTML badges."""
+    import re
+    
+    processed_analysis = {}
+    
+    for section_key, bullets in analysis.items():
+        processed_bullets = []
+        
+        for bullet in bullets:
+            # Find existing cite tags: <cite index="11-1,11-10">content</cite>
+            cite_pattern = r'<cite index="([^"]+)">([^<]+)</cite>'
+            
+            def replace_cite(match):
+                indices_str = match.group(1)
+                cited_text = match.group(2)
+                
+                # Parse article numbers (format can be "11-1,11-10" or just "1,3,7")
+                article_numbers = []
+                for index_part in indices_str.split(','):
+                    index_part = index_part.strip()
+                    if '-' in index_part:
+                        # Handle format like "11-1" - take the first number
+                        article_numbers.append(int(index_part.split('-')[0]))
+                    elif index_part.isdigit():
+                        article_numbers.append(int(index_part))
+                
+                # Remove duplicates and limit to 3 sources
+                article_numbers = list(set(article_numbers))[:3]
+                
+                # Build source badges HTML
+                source_badges = []
+                for num in article_numbers:
+                    article_idx = num - 1  # Convert to 0-based index
+                    if 0 <= article_idx < len(articles):
+                        article = articles[article_idx]
+                        source = article.get('source', 'Unknown')
+                        link = article.get('link', '#')
+                        
+                        # Determine badge style based on source type
+                        if article.get('source_type') == 'alphavantage_premium':
+                            badge_class = 'bg-purple'
+                            icon = '<i class="fas fa-brain"></i>'
+                        elif article.get('source_type') == 'nyt_api':
+                            badge_class = 'bg-warning'
+                            icon = '<i class="fas fa-newspaper"></i>'
+                        elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
+                            badge_class = 'bg-success'
+                            icon = '<i class="fas fa-crown"></i>'
+                        else:
+                            badge_class = 'bg-secondary'
+                            icon = '<i class="fas fa-link"></i>'
+                        
+                        # Create compact badge HTML
+                        source_badges.append(
+                            f'<a href="{link}" target="_blank" rel="noopener" '
+                            f'class="badge {badge_class} text-decoration-none source-badge" '
+                            f'title="Source: {source}">'
+                            f'{icon} {source[:15]}{"..." if len(source) > 15 else ""}'
+                            f'</a>'
+                        )
+                
+                # Return cited text with badges
+                if source_badges:
+                    badges_html = ' '.join(source_badges)
+                    return f'{cited_text} {badges_html}'
+                else:
+                    # No valid sources found, return just the text
+                    return cited_text
+            
+            # Process all cite tags in the bullet
+            processed_bullet = re.sub(cite_pattern, replace_cite, bullet)
+            processed_bullets.append(processed_bullet)
+        
+        processed_analysis[section_key] = processed_bullets
+    
+    return processed_analysis
+
 def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
     """Generate analysis using Claude Sonnet 4."""
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -2085,16 +2163,16 @@ def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, Li
     # Create prompt
     prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors who value both analytical precision AND clear, compelling narratives. Your analysis will be read by portfolio managers making investment decisions.
 
-COMPREHENSIVE DATA INTELLIGENCE ({len(article_text_for_prompt)} articles with FULL context):
+COMPREHENSIVE DATA INTELLIGENCE ({len(articles[:30])} articles with FULL context):
 {article_text_for_prompt}
 
 {article_source_info_for_prompt}
 
 SOURCE QUALITY METRICS (for your awareness):
-• Total Articles Used: {len(articles[:30])}
-• Premium Sources (Bloomberg/Reuters/WSJ/FT/NYT/CNBC/MarketWatch): {premium_count} ({premium_count/len(articles[:30])*100:.1f}% if articles else 0%)
-• AlphaVantage (Full Content + Sentiment): {alphavantage_count}
-• Source Distribution: {source_type_counts}
+- Total Articles Used: {len(articles[:30])}
+- Premium Sources (Bloomberg/Reuters/WSJ/FT/NYT/CNBC/MarketWatch): {premium_count} ({premium_count/len(articles[:30])*100:.1f}% if articles else 0%)
+- AlphaVantage (Full Content + Sentiment): {alphavantage_count}
+- Source Distribution: {source_type_counts}
 
 ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 
@@ -2105,7 +2183,7 @@ ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 
 **CRITICAL WRITING REQUIREMENTS:**
 1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
-2. **Explicit Source Attribution**: Always cite sources using format "according to [source]", "as reported by [source]", "per [source]"
+2. **Explicit Source Attribution**: Always cite sources using [Sources: X,Y,Z] format at the end of each bullet
 3. **Accessible Language**: Maintain analytical precision but use clear, readable language that flows naturally
 4. **Quantified Insights**: Include specific metrics and probability estimates, but weave them into compelling narratives
 5. **Professional Tone**: Write like you're briefing a client, not generating a technical report
@@ -2113,44 +2191,46 @@ ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 **EXECUTIVE SUMMARY** (Strategic & Financial Impact - Write as compelling investment thesis)
 Create 4-5 bullets that tell the strategic story of {company} with quantified impacts and clear source attribution:
 
-• Start each bullet with strategic context, then layer in specific financial metrics
-• Include timeline estimates and probability assessments naturally woven into the narrative
-• Always cite your sources explicitly (e.g., "according to reuters.com", "as highlighted by cnbc.com")
-• Use sophisticated tags but make the content accessible: [STRATEGY], [FINANCIAL_IMPACT], [EXECUTION_RISK], [VALUE_CREATION], [MANAGEMENT_QUALITY]
-• Example style: "[STRATEGY] {company}'s expansion into [specific area] represents a significant strategic shift that could drive [specific financial impact with range] over [timeline], with [confidence level] probability of success according to analysis from [specific sources]. This initiative builds on [context from other sources]..."
+- Start each bullet with strategic context, then layer in specific financial metrics
+- Include timeline estimates and probability assessments naturally woven into the narrative
+- Always end with source references: [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
+- Use sophisticated tags but make the content accessible: [STRATEGY], [FINANCIAL_IMPACT], [EXECUTION_RISK], [VALUE_CREATION], [MANAGEMENT_QUALITY]
+- Example style: "[STRATEGY] {company}'s expansion into [specific area] represents a significant strategic shift that could drive [specific financial impact with range] over [timeline], with [confidence level] probability of success based on management guidance and market analysis [Sources: 1,5,8]"
 
 **INVESTOR INSIGHTS** (Valuation & Market Dynamics - Write as investment analysis narrative)
 Create 4-5 bullets that weave valuation analysis into compelling market stories:
 
-• Integrate valuation metrics (P/E, EV/EBITDA) into broader market positioning narrative
-• Connect analyst consensus and price targets to underlying business drivers, citing specific sources
-• Correlate sentiment analysis with fundamental developments in a readable way
-• Include competitive positioning as part of investment thesis, not isolated data points
-• Use tags: [VALUATION], [PEER_COMPARISON], [SENTIMENT_ANALYSIS], [TECHNICAL], [INSTITUTIONAL_FLOW]
-• Example style: "[VALUATION] Trading at [specific metrics] versus peers, {company} appears [undervalued/fairly valued/overvalued] based on [specific analysis methodology]. Recent analyst updates from [sources] suggest [price target range] reflecting [specific business drivers], with sentiment analysis from [AlphaVantage/other sources] indicating [market sentiment context]..."
+- Integrate valuation metrics (P/E, EV/EBITDA) into broader market positioning narrative
+- Connect analyst consensus and price targets to underlying business drivers
+- Correlate sentiment analysis with fundamental developments in a readable way
+- Include competitive positioning as part of investment thesis, not isolated data points
+- Always end with source references: [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
+- Use tags: [VALUATION], [PEER_COMPARISON], [SENTIMENT_ANALYSIS], [TECHNICAL], [INSTITUTIONAL_FLOW]
+- Example style: "[VALUATION] Trading at [specific metrics] versus peers, {company} appears [undervalued/fairly valued/overvalued] based on [specific analysis methodology]. Recent analyst updates suggest [price target range] reflecting [specific business drivers], with sentiment analysis indicating [market sentiment context] [Sources: 3,7,12]"
 
 **CATALYSTS & RISKS** (Probability-Weighted Analysis with Investment Context)
 Create 4-5 bullets that present catalysts and risks as investment decision factors:
 
-• Frame each catalyst/risk in terms of investment impact and timeline, not just technical probability
-• Provide specific dates and probability estimates but explain the investment rationale
-• Connect technical analysis and options flow to fundamental business developments
-• Always attribute risk assessments to specific sources and analysis
-• Use tags: [CATALYST], [EVENT_RISK], [REGULATORY], [MACRO_SENSITIVITY], [TECHNICAL_LEVELS]
-• Example style: "[CATALYST] The upcoming [specific event/announcement] scheduled for [date] presents a [upside/downside] catalyst with [probability estimate] likelihood of [specific financial impact], as indicated by [source citations]. This catalyst is particularly significant because [business context], with options market positioning of [technical details] suggesting [market expectations]..."
+- Frame each catalyst/risk in terms of investment impact and timeline, not just technical probability
+- Provide specific dates and probability estimates but explain the investment rationale
+- Connect technical analysis and options flow to fundamental business developments
+- Always end with source references: [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
+- Use tags: [CATALYST], [EVENT_RISK], [REGULATORY], [MACRO_SENSITIVITY], [TECHNICAL_LEVELS]
+- Example style: "[CATALYST] The upcoming [specific event/announcement] scheduled for [date] presents a [upside/downside] catalyst with [probability estimate] likelihood of [specific financial impact]. This catalyst is particularly significant because [business context], with options market positioning suggesting [market expectations] [Sources: 5,9,15]"
 
 **ENHANCED REQUIREMENTS FOR SUPERIOR READABILITY:**
 
-1. **Source Attribution Excellence**: Every factual claim must cite its source explicitly
-   - Use natural language: "according to marketwatch.com", "as reported by reuters.com", "per bloomberg analysis"
-   - When multiple sources support a point: "confirmed across reuters.com and cnbc.com reports"
-   - When sources conflict: "while reuters.com suggests X, bloomberg.com indicates Y, suggesting [your analysis]"
+1. **Source Attribution Excellence**: Every bullet must end with [Sources: X,Y,Z] references
+   - Use article numbers 1-{len(articles[:30])} from the provided list
+   - Include 1-3 most relevant article numbers per bullet
+   - When multiple sources support a point, list them: [Sources: 2,7,11]
+   - When sources provide context, reference them appropriately
 
 2. **Narrative Flow Mastery**: 
    - Begin each bullet with strategic context before diving into metrics
    - Connect quantitative insights to broader business implications
    - Use transition phrases to create smooth flow between technical and strategic points
-   - End bullets with forward-looking implications
+   - End bullets with forward-looking implications and source references
 
 3. **Quantification with Context**:
    - Always provide ranges and confidence intervals: "15-25% upside with 70% confidence"
@@ -2164,7 +2244,7 @@ Create 4-5 bullets that present catalysts and risks as investment decision facto
    - Maintain analytical rigor while ensuring accessibility
 
 **CROSS-SOURCE VALIDATION REQUIREMENTS**:
-- When multiple sources provide similar information, synthesize and cite all relevant sources
+- When multiple sources provide similar information, synthesize and reference all relevant sources
 - When sources conflict, acknowledge differences and provide your analytical view
 - Highlight unique insights from premium sources (Bloomberg, Reuters, WSJ)
 - Leverage AlphaVantage sentiment data as supporting evidence for fundamental themes
@@ -2172,13 +2252,15 @@ Create 4-5 bullets that present catalysts and risks as investment decision facto
 **FINAL QUALITY CHECK**:
 Each bullet should pass these tests:
 ✓ Does it tell a clear story that advances the investment thesis?
-✓ Are all factual claims explicitly attributed to sources?
+✓ Does it end with [Sources: X,Y,Z] referencing supporting articles?
 ✓ Would a portfolio manager understand the investment implications?
 ✓ Is the language accessible while maintaining analytical depth?
 ✓ Do the quantified estimates have proper context and confidence levels?
 
-Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling and transparent source attribution."""
+**SOURCE REFERENCE EXAMPLES:**
+{article_source_info_for_prompt}
 
+Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling and transparent source attribution using [Sources: X,Y,Z] format."""
     response = anthropic_client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=7500,
@@ -2186,10 +2268,16 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
         messages=[{"role": "user", "content": prompt}]
     )
     
-    analysis_text_response = response.content[0].text # analysis_text is already used
+    analysis_text_response = response.content[0].text
     logger.info(f"Claude Sonnet 4 analysis generated: {len(analysis_text_response)} chars")
 
-    return parse_analysis_response(analysis_text_response)
+    # Parse the initial response
+    initial_analysis = parse_analysis_response(analysis_text_response)
+    
+    # ✅ NEW: Process source links
+    final_analysis = process_analysis_source_links(initial_analysis, articles)
+    
+    return final_analysis
 
 def generate_openai_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
     """Generate analysis using OpenAI as fallback."""
