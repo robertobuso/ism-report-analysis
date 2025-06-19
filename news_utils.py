@@ -745,6 +745,9 @@ class ClaudeWebSearchEngine:
         
         return f"""You are a Managing Director at Goldman Sachs conducting a BEFORE/AFTER quality assessment with REAL-TIME WEB SEARCH capabilities.
 
+    **CRITICAL CITATION REQUIREMENT**: 
+    When providing revised analysis, EVERY bullet must end with [Sources: X,Y,Z] format using article numbers 1-{len(articles)} ONLY.
+
     **CRITICAL INSTRUCTIONS**: 
     1. First score the ORIGINAL analysis as-is (baseline)
     2. Use web search to find current data and create improvements  
@@ -756,6 +759,12 @@ class ClaudeWebSearchEngine:
 
     ORIGINAL ANALYSIS TO ASSESS:
     {formatted_analysis}
+
+    **REVISED ANALYSIS OUTPUT REQUIREMENTS**:
+    - Use EXACT format: [Sources: X,Y,Z] where X,Y,Z are numbers 1-{len(articles)}
+    - Every bullet must end with [Sources: X,Y,Z]
+    - DO NOT use <cite>, "index=", or any other citation format
+    - Example: "Revenue increased 15% [Sources: 1,5,8]"
 
     **MANDATORY DUAL ASSESSMENT PROCESS**:
 
@@ -1076,7 +1085,7 @@ class QualityValidationEngine:
                        f"(threshold: 7.0, got: {overall_score})")
             
             return self._create_enhanced_validated_result(
-                validation_result, overall_score, validation_passed, company
+                validation_result, overall_score, validation_passed, company, articles
             )
             
         except Exception as e:
@@ -1091,7 +1100,8 @@ class QualityValidationEngine:
                 return self._create_fallback_result(analysis, str(e))
 
     def _create_enhanced_validated_result(self, validation_result: Dict, 
-                                    score: float, passed: bool, company: str) -> Dict[str, Any]:
+                            score: float, passed: bool, company: str, 
+                            original_articles: List[Dict]) -> Dict[str, Any]:
         """Create result with dual scoring and improvement tracking."""
         
         # Extract dual scoring data
@@ -1111,7 +1121,11 @@ class QualityValidationEngine:
         meaningful_improvement = score_delta >= 0.5 or len(web_searches) >= 3
         
         if revised_analysis and meaningful_improvement:
-            final_analysis = revised_analysis
+            # ✅ FIX: Process citations in revised analysis before using it
+            processed_revised_analysis = self._process_revised_analysis_citations(
+                revised_analysis, original_articles
+            )
+            final_analysis = processed_revised_analysis
             used_enhanced = True
             logger.info(f"   📝 Using ENHANCED analysis for {company}")
             logger.info(f"   📊 Quality improvement: {original_score:.1f} → {revised_score:.1f} (+{score_delta:.1f})")
@@ -1163,6 +1177,113 @@ class QualityValidationEngine:
             'enhanced': used_enhanced
         }
     
+    def _process_revised_analysis_citations(self, revised_analysis: Dict[str, List[str]], 
+                                      articles: List[Dict]) -> Dict[str, List[str]]:
+        """Process citations in revised analysis from quality validation."""
+        
+        # ✅ FIX: Handle both [Sources: X,Y,Z] and <cite index="..."> formats
+        processed_analysis = {}
+        
+        for section_key, bullets in revised_analysis.items():
+            processed_bullets = []
+            
+            for bullet in bullets:
+                # Process both citation formats
+                processed_bullet = self._convert_citations_to_badges(bullet, articles)
+                processed_bullets.append(processed_bullet)
+            
+            processed_analysis[section_key] = processed_bullets
+        
+        return processed_analysis
+
+    def _convert_citations_to_badges(self, bullet: str, articles: List[Dict]) -> str:
+        """Convert any citation format to clickable badges."""
+        import re
+        
+        # ✅ FIX: Handle <cite index="33-1,33-3">text</cite> format
+        cite_pattern = r'<cite index="([^"]+)">([^<]+)</cite>'
+        
+        def replace_cite_tags(match):
+            indices_str = match.group(1)
+            cited_text = match.group(2)
+            
+            # Parse article numbers from formats like "33-1,33-3" or "1,5,8"
+            article_numbers = []
+            for index_part in indices_str.split(','):
+                index_part = index_part.strip()
+                if '-' in index_part:
+                    # Handle "33-1" format - take first number
+                    try:
+                        num = int(index_part.split('-')[0])
+                        # ✅ FIX: Map out-of-range indices to valid range
+                        if num > len(articles):
+                            num = min(num, len(articles))
+                        if 1 <= num <= len(articles):
+                            article_numbers.append(num)
+                    except (ValueError, IndexError):
+                        continue
+                elif index_part.isdigit():
+                    num = int(index_part)
+                    if 1 <= num <= len(articles):
+                        article_numbers.append(num)
+            
+            # Remove duplicates and limit to 3
+            article_numbers = list(set(article_numbers))[:3]
+            
+            # Build source badges
+            badges = []
+            for num in article_numbers:
+                article_idx = num - 1  # Convert to 0-based index
+                if 0 <= article_idx < len(articles):
+                    article = articles[article_idx]
+                    source = article.get('source', 'Unknown')
+                    link = article.get('link', '#')
+                    
+                    badges.append(
+                        f'<a href="{link}" target="_blank" rel="noopener" '
+                        f'class="badge bg-primary text-decoration-none source-badge" '
+                        f'title="Source: {source}">'
+                        f'<i class="fas fa-link"></i> {source[:12]}'
+                        f'</a>'
+                    )
+            
+            # Return text with badges
+            if badges:
+                return f'{cited_text} {" ".join(badges)}'
+            else:
+                return cited_text
+        
+        # ✅ FIX: Also handle [Sources: X,Y,Z] format for consistency
+        sources_pattern = r'\[Sources:\s*([\d,\s]+)\]'
+        
+        def replace_sources(match):
+            indices_str = match.group(1)
+            article_numbers = [int(x.strip()) for x in indices_str.split(',') 
+                            if x.strip().isdigit() and 1 <= int(x.strip()) <= len(articles)]
+            
+            badges = []
+            for num in article_numbers[:3]:
+                article_idx = num - 1
+                article = articles[article_idx]
+                source = article.get('source', 'Unknown')
+                link = article.get('link', '#')
+                
+                badges.append(
+                    f'<a href="{link}" target="_blank" rel="noopener" '
+                    f'class="badge bg-primary text-decoration-none source-badge" '
+                    f'title="Source: {source}">'
+                    f'<i class="fas fa-link"></i> {source[:12]}'
+                    f'</a>'
+                )
+            
+            return " ".join(badges)
+        
+        # Process both formats
+        bullet = re.sub(cite_pattern, replace_cite_tags, bullet)
+        bullet = re.sub(sources_pattern, replace_sources, bullet)
+        
+        return bullet
+
     def _create_improvement_summary(self, validation_result: Dict) -> Dict[str, Any]:
         """Create summary of improvements made."""
         enhancements = validation_result.get('enhancements_made', [])
@@ -2037,7 +2158,7 @@ def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Dict[str, 
         return create_error_summaries(company, str(openai_error))
 
 def process_analysis_source_links(analysis: Dict[str, List[str]], articles: List[Dict]) -> Dict[str, List[str]]:
-    """Convert existing <cite index="X,Y,Z"> tags to clickable HTML badges."""
+    """Convert [Sources: X,Y,Z] references to clickable HTML badges."""
     import re
     
     processed_analysis = {}
@@ -2046,21 +2167,17 @@ def process_analysis_source_links(analysis: Dict[str, List[str]], articles: List
         processed_bullets = []
         
         for bullet in bullets:
-            # Find existing cite tags: <cite index="11-1,11-10">content</cite>
-            cite_pattern = r'<cite index="([^"]+)">([^<]+)</cite>'
+            # ✅ FIX: Look for [Sources: X,Y,Z] pattern instead of <cite> tags
+            source_pattern = r'\[Sources:\s*([\d,\s]+)\]'
             
-            def replace_cite(match):
+            def replace_sources(match):
                 indices_str = match.group(1)
-                cited_text = match.group(2)
                 
-                # Parse article numbers (format can be "11-1,11-10" or just "1,3,7")
+                # Parse article numbers
                 article_numbers = []
                 for index_part in indices_str.split(','):
                     index_part = index_part.strip()
-                    if '-' in index_part:
-                        # Handle format like "11-1" - take the first number
-                        article_numbers.append(int(index_part.split('-')[0]))
-                    elif index_part.isdigit():
+                    if index_part.isdigit():
                         article_numbers.append(int(index_part))
                 
                 # Remove duplicates and limit to 3 sources
@@ -2098,16 +2215,14 @@ def process_analysis_source_links(analysis: Dict[str, List[str]], articles: List
                             f'</a>'
                         )
                 
-                # Return cited text with badges
+                # Return badges HTML or empty string if no valid sources
                 if source_badges:
-                    badges_html = ' '.join(source_badges)
-                    return f'{cited_text} {badges_html}'
+                    return ' '.join(source_badges)
                 else:
-                    # No valid sources found, return just the text
-                    return cited_text
+                    return ''
             
-            # Process all cite tags in the bullet
-            processed_bullet = re.sub(cite_pattern, replace_cite, bullet)
+            # Process all [Sources: X,Y,Z] patterns in the bullet
+            processed_bullet = re.sub(source_pattern, replace_sources, bullet)
             processed_bullets.append(processed_bullet)
         
         processed_analysis[section_key] = processed_bullets
@@ -2163,8 +2278,17 @@ def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, Li
     # Create prompt
     prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors who value both analytical precision AND clear, compelling narratives. Your analysis will be read by portfolio managers making investment decisions.
 
+🚨 CRITICAL: Every bullet point MUST end with [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
+
 COMPREHENSIVE DATA INTELLIGENCE ({len(articles[:30])} articles with FULL context):
 {article_text_for_prompt}
+
+**MANDATORY SOURCE CITATION FORMAT:**
+Every single bullet point must end with [Sources: X,Y,Z] where X,Y,Z are article numbers.
+Examples:
+- "Company shows strong growth in Q4 earnings [Sources: 1,5,8]"
+- "Analyst upgrades price target to $150 [Sources: 3,12]"
+- "New product launch expected in Q2 2025 [Sources: 7,15,22]"
 
 {article_source_info_for_prompt}
 
