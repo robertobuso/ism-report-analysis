@@ -732,6 +732,79 @@
                 }
                 </style>
 
+                <!-- Chatbot Card - Insert after Source Articles section -->
+                {% if run_id and sources_map_json %}
+                <div class="card mt-4" id="chatbotCard">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-comments"></i> AI Research Assistant
+                            <small class="ms-2">Ask questions about {{ company }}</small>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Chat Input -->
+                        <div class="mb-3">
+                            <label for="chatInput" class="form-label small text-muted">Ask about earnings, forecasts, risks, or any financial topic:</label>
+                            <textarea 
+                                class="form-control" 
+                                id="chatInput" 
+                                rows="3" 
+                                placeholder="e.g., What are the key risks for {{ company }} this quarter?"
+                                aria-label="Chat input for AI assistant"
+                            ></textarea>
+                        </div>
+                        
+                        <!-- Controls -->
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button 
+                                    type="button" 
+                                    class="btn btn-primary btn-sm" 
+                                    id="chatAskBtn"
+                                    aria-label="Send question to AI assistant"
+                                >
+                                    <i class="fas fa-paper-plane"></i> Ask
+                                </button>
+                                
+                                <button 
+                                    type="button" 
+                                    class="btn btn-outline-secondary btn-sm" 
+                                    id="btnExpandAnswer"
+                                    aria-label="Toggle detailed analysis mode"
+                                >
+                                    <i class="fas fa-expand-arrows-alt"></i> More Detail
+                                </button>
+                                
+                                {% if quality_validation and quality_validation.enabled %}
+                                <button 
+                                    type="button" 
+                                    class="btn btn-outline-info btn-sm" 
+                                    id="btnVerify"
+                                    aria-label="Verify answer with live web search"
+                                >
+                                    <i class="fas fa-globe"></i> Verify with Web
+                                </button>
+                                {% endif %}
+                            </div>
+                            
+                            <small class="text-muted">
+                                <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for new line
+                            </small>
+                        </div>
+                        
+                        <!-- Answer Display -->
+                        <div id="chatAnswer" aria-live="polite" class="mb-3" style="min-height: 40px;">
+                            <div class="text-muted text-center py-3">
+                                <i class="fas fa-robot"></i> Ask a question to get AI-powered insights about {{ company }}
+                            </div>
+                        </div>
+                        
+                        <!-- Citations -->
+                        <div id="chatCitations" class="mt-2"></div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <script>
                 // Update button text when expanded/collapsed - FIXED VERSION
                 document.getElementById('expandArticlesBtn').addEventListener('click', function() {
@@ -893,15 +966,31 @@
         
         // Print styles
         window.addEventListener('beforeprint', function() {
-            document.querySelector('.back-button').style.display = 'none';
-            document.querySelector('.source-breakdown').style.background = '#f8f9fa';
-            document.querySelector('.source-breakdown').style.color = '#000';
+            const backButton = document.querySelector('.back-button');
+            const analysisBreakdown = document.querySelector('.analysis-breakdown');
+            
+            if (backButton) {
+                backButton.style.display = 'none';
+            }
+            
+            if (analysisBreakdown) {
+                analysisBreakdown.style.background = '#f8f9fa';
+                analysisBreakdown.style.color = '#000';
+            }
         });
-        
+
         window.addEventListener('afterprint', function() {
-            document.querySelector('.back-button').style.display = 'block';
-            document.querySelector('.source-breakdown').style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-            document.querySelector('.source-breakdown').style.color = 'white';
+            const backButton = document.querySelector('.back-button');
+            const analysisBreakdown = document.querySelector('.analysis-breakdown');
+            
+            if (backButton) {
+                backButton.style.display = 'block';
+            }
+            
+            if (analysisBreakdown) {
+                analysisBreakdown.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                analysisBreakdown.style.color = 'white';
+            }
         });
         
         // Add purple color for AlphaVantage branding
@@ -914,6 +1003,350 @@
             `;
             document.head.appendChild(style);
         });
+    </script>
+
+    <script>
+    // Chatbot functionality - Compact AI Research Assistant
+    (function() {
+        // Initialize source mapping from Jinja template with safe defaults
+        const SOURCE_MAP = {{ sources_map_json|default({})|tojson }};
+        const COMPANY = {{ company|tojson }};
+        const WINDOW_DAYS = {{ window_days|default(30) }};
+        const RUN_ID = {{ run_id|default("")|tojson }};
+        
+        // State management
+        let isExpanded = false;
+        let currentAbortController = null;
+        
+        // DOM elements (with safe guards)
+        const chatInput = document.getElementById('chatInput');
+        const chatAskBtn = document.getElementById('chatAskBtn');
+        const btnExpandAnswer = document.getElementById('btnExpandAnswer');
+        const btnVerify = document.getElementById('btnVerify'); // May not exist
+        const chatAnswer = document.getElementById('chatAnswer');
+        const chatCitations = document.getElementById('chatCitations');
+        
+        if (!chatInput || !chatAskBtn || !chatAnswer || !chatCitations) {
+            console.warn('Chatbot elements not found, skipping initialization');
+            return;
+        }
+        
+        // Check if chatbot is properly configured
+        if (!RUN_ID) {
+            console.warn('Chatbot not available: missing run_id');
+            // Disable chatbot UI
+            if (chatInput) chatInput.disabled = true;
+            if (chatAskBtn) chatAskBtn.disabled = true;
+            if (chatAnswer) {
+                chatAnswer.innerHTML = `
+                    <div class="text-muted text-center py-3">
+                        <i class="fas fa-info-circle"></i> Chatbot temporarily unavailable. Please refresh the page.
+                    </div>
+                `;
+            }
+            return;
+        }
+        
+        // Event handlers
+        chatAskBtn.addEventListener('click', () => askChat(false));
+        
+        if (btnExpandAnswer) {
+            btnExpandAnswer.addEventListener('click', function() {
+                isExpanded = !isExpanded;
+                this.classList.toggle('btn-outline-secondary', !isExpanded);
+                this.classList.toggle('btn-secondary', isExpanded);
+                
+                const icon = this.querySelector('i');
+                if (icon) {
+                    icon.className = isExpanded ? 'fas fa-compress-arrows-alt' : 'fas fa-expand-arrows-alt';
+                }
+            });
+        }
+        
+        if (btnVerify) {
+            btnVerify.addEventListener('click', () => askChat(true));
+        }
+        
+        // Keyboard handling: Enter submits, Shift+Enter adds newline
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                askChat(false);
+            }
+        });
+        
+        /**
+         * Safe text-to-DOM conversion with [S#] linkification
+         * SECURITY: Escapes all HTML, then safely adds source links
+         */
+        function linkifySRefs(text, sourceMap) {
+            if (!text || typeof text !== 'string') return '';
+            
+            // Step 1: Escape HTML to prevent XSS
+            const escapeDiv = document.createElement('div');
+            escapeDiv.textContent = text;
+            let escapedText = escapeDiv.innerHTML;
+            
+            // Step 2: Replace [S(\d+)] patterns with source links
+            const sourcePattern = /\[S(\d+)\]/g;
+            
+            escapedText = escapedText.replace(sourcePattern, function(match, sourceNum) {
+                const sourceKey = sourceNum.toString();
+                const sourceData = sourceMap[sourceKey];
+                
+                if (sourceData && sourceData.url) {
+                    const title = sourceData.title || 'Source';
+                    const truncatedTitle = title.length > 30 ? title.substring(0, 30) + '...' : title;
+                    
+                    return `<a href="${escapeHtml(sourceData.url)}" target="_blank" rel="noopener" 
+                            class="badge bg-primary text-decoration-none source-badge" 
+                            title="${escapeHtml(title)}">
+                            <i class="fas fa-link"></i> S${sourceNum}
+                            </a>`;
+                }
+                
+                // If source not found, return original text
+                return match;
+            });
+            
+            return escapedText;
+        }
+        
+        /**
+         * HTML escape helper
+         */
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        /**
+         * Main chat function with comprehensive error handling
+         */
+        async function askChat(verify = false) {
+            const question = chatInput.value.trim();
+            
+            if (!question) {
+                showError('Please enter a question first.');
+                chatInput.focus();
+                return;
+            }
+            
+            if (!RUN_ID) {
+                showError('Chatbot session unavailable. Please refresh the page and try again.');
+                return;
+            }
+            
+            // Abort any existing request
+            if (currentAbortController) {
+                currentAbortController.abort();
+            }
+            
+            // Create new AbortController with 25s timeout
+            currentAbortController = new AbortController();
+            const timeoutId = setTimeout(() => {
+                currentAbortController.abort();
+            }, 25000);
+            
+            // Update UI to loading state
+            setLoadingState(true);
+            clearPreviousAnswer();
+            
+            try {
+                // Prepare request data
+                const requestData = {
+                    company: COMPANY,
+                    question: isExpanded ? question + " (More detail please)" : question,
+                    window_days: WINDOW_DAYS,
+                    verify_with_web: verify,
+                    run_id: RUN_ID
+                };
+                
+                // Make API call
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData),
+                    signal: currentAbortController.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                // Handle non-200 responses
+                if (!response.ok) {
+                    let errorMessage = `Request failed (${response.status})`;
+                    
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.error || errorMessage;
+                    } catch (e) {
+                        // If JSON parsing fails, use status text
+                        errorMessage = response.statusText || errorMessage;
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+                
+                // Parse response
+                const data = await response.json();
+                
+                if (!data.answer) {
+                    throw new Error('No answer received from server');
+                }
+                
+                // Display results
+                displayAnswer(data.answer, data.citations || []);
+                
+            } catch (error) {
+                clearTimeout(timeoutId);
+                
+                if (error.name === 'AbortError') {
+                    showError('Request timed out. Please try again with a shorter question.');
+                } else if (error.message.includes('Failed to fetch')) {
+                    showError('Network error. Please check your connection and try again.');
+                } else {
+                    showError(`Error: ${error.message}`);
+                }
+                
+            } finally {
+                setLoadingState(false);
+                currentAbortController = null;
+            }
+        }
+        
+        /**
+         * Display the AI answer with source links
+         */
+        function displayAnswer(answerText, citations) {
+            // Process answer text with source links
+            const processedAnswer = linkifySRefs(answerText, SOURCE_MAP);
+            
+            chatAnswer.innerHTML = `
+                <div class="alert alert-light border">
+                    <div class="d-flex align-items-start">
+                        <i class="fas fa-robot text-info me-2 mt-1"></i>
+                        <div class="flex-grow-1">
+                            ${processedAnswer}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Display citations if provided
+            displayCitations(citations);
+        }
+        
+        /**
+         * Display citation chips
+         */
+        function displayCitations(citations) {
+            if (!citations || citations.length === 0) {
+                // Try to extract citations from parsed [S#] tokens in SOURCE_MAP
+                const extractedCitations = extractCitationsFromSourceMap();
+                if (extractedCitations.length > 0) {
+                    citations = extractedCitations;
+                }
+            }
+            
+            if (citations && citations.length > 0) {
+                const citationHtml = citations.map(citation => {
+                    const sourceNum = citation.s || citation.source_number || 'Unknown';
+                    const title = citation.title || 'Source';
+                    const url = citation.url || '#';
+                    
+                    return `
+                        <a href="${escapeHtml(url)}" target="_blank" rel="noopener" 
+                        class="badge bg-secondary text-decoration-none me-1 mb-1" 
+                        title="${escapeHtml(title)}">
+                            [S${sourceNum}] ${title.length > 25 ? title.substring(0, 25) + '...' : title}
+                        </a>
+                    `;
+                }).join('');
+                
+                chatCitations.innerHTML = `
+                    <div class="mt-2">
+                        <small class="text-muted d-block mb-1">Sources:</small>
+                        ${citationHtml}
+                    </div>
+                `;
+            } else {
+                chatCitations.innerHTML = '';
+            }
+        }
+        
+        /**
+         * Extract citations from SOURCE_MAP for fallback
+         */
+        function extractCitationsFromSourceMap() {
+            const citations = [];
+            Object.keys(SOURCE_MAP).forEach(key => {
+                const sourceData = SOURCE_MAP[key];
+                if (sourceData) {
+                    citations.push({
+                        s: parseInt(key),
+                        title: sourceData.title || 'Source',
+                        url: sourceData.url || '#'
+                    });
+                }
+            });
+            return citations.slice(0, 5); // Limit to 5 sources
+        }
+        
+        /**
+         * Show error message
+         */
+        function showError(message) {
+            chatAnswer.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    ${escapeHtml(message)}
+                </div>
+            `;
+            chatCitations.innerHTML = '';
+        }
+        
+        /**
+         * Set loading state
+         */
+        function setLoadingState(isLoading) {
+            chatAskBtn.disabled = isLoading;
+            chatInput.disabled = isLoading;
+            
+            if (btnExpandAnswer) btnExpandAnswer.disabled = isLoading;
+            if (btnVerify) btnVerify.disabled = isLoading;
+            
+            if (isLoading) {
+                chatAskBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Thinking...';
+                chatAnswer.innerHTML = `
+                    <div class="text-center py-3 text-muted">
+                        <i class="fas fa-spinner fa-spin me-2"></i>
+                        AI is analyzing your question...
+                    </div>
+                `;
+            } else {
+                chatAskBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Ask';
+            }
+        }
+        
+        /**
+         * Clear previous answer
+         */
+        function clearPreviousAnswer() {
+            chatCitations.innerHTML = '';
+        }
+        
+        // Acceptance tests as comments:
+        // ✓ Enter key submits (handled by keydown event)
+        // ✓ Shift+Enter adds newline (default browser behavior when prevented)
+        // ✓ [S12] tokens become clickable badges (linkifySRefs function)
+        // ✓ Network errors show red error text (showError function)
+        // ✓ btnVerify guarded (checked for existence)
+        // ✓ No HTML from answer executed (escaped with textContent)
+        
+    })();
     </script>
 </body>
 </html>

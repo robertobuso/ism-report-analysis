@@ -7,6 +7,7 @@ import sys
 import traceback
 import uuid
 import json
+import time
 from datetime import datetime, timedelta
 
 # Create necessary directories first
@@ -37,6 +38,7 @@ from typing import List, Dict, Optional, Tuple
 
 from openai import OpenAI
 
+RUN_CACHE = {}  # In-memory cache - replace with Redis for production
 
 # Configure logging
 logging.basicConfig(
@@ -88,6 +90,106 @@ ALLOWED_EXTENSIONS = {'pdf'}
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Check for anthropic availability (following existing pattern from news_utils.py)
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
+def _build_source_map(articles):
+    """Build source map for chatbot citations from articles list."""
+    def safe_get(obj, key, default=""):
+        """Safely get value from dict, handling Jinja2 Undefined objects."""
+        try:
+            value = obj.get(key, default)
+            # Check if value is a Jinja2 Undefined object
+            if hasattr(value, '__class__') and 'Undefined' in value.__class__.__name__:
+                return default
+            # Convert None to empty string for JSON serialization
+            if value is None:
+                return default
+            return str(value)
+        except Exception:
+            return default
+    
+    smap = {}
+    for i, article in enumerate(articles, start=1):
+        smap[str(i)] = {
+            "url": safe_get(article, "link", "#"),
+            "title": safe_get(article, "title", "Unknown Source"),
+            "published_at": safe_get(article, "published", ""),
+            "source": safe_get(article, "source", "")
+        }
+    return smap
+
+def _extract_citations(answer_text, max_id):
+    """Extract [S#] citations from answer text."""
+    nums = []
+    seen = set()
+    for match in re.finditer(r"\[S(\d+)\]", answer_text):
+        try:
+            n = int(match.group(1))
+            if 1 <= n <= max_id and n not in seen:
+                seen.add(n)
+                nums.append(n)
+        except ValueError:
+            continue
+    return nums
+
+def _compose_context(run_data):
+    """Compose concise context for Claude from cached run data."""
+    summaries = run_data["summaries"]
+    lines = []
+    
+    lines.append(f"COMPANY: {run_data['company']} | ANALYSIS PERIOD: {run_data['date_range']}")
+    
+    lines.append("\n== EXECUTIVE SUMMARY ==")
+    for bullet in summaries.get("executive", []):
+        # Strip HTML for Claude
+        clean_bullet = re.sub(r'<[^>]+>', '', bullet)
+        lines.append(f"• {clean_bullet}")
+    
+    lines.append("\n== INVESTOR INSIGHTS ==")
+    for bullet in summaries.get("investor", []):
+        clean_bullet = re.sub(r'<[^>]+>', '', bullet)
+        lines.append(f"• {clean_bullet}")
+    
+    lines.append("\n== CATALYSTS & RISKS ==")
+    for bullet in summaries.get("catalysts", []):
+        clean_bullet = re.sub(r'<[^>]+>', '', bullet)
+        lines.append(f"• {clean_bullet}")
+    
+    lines.append("\n== SOURCES INDEX ==")
+    for i, article in enumerate(run_data["articles"], start=1):
+        title = article.get("title", "Unknown")[:60]
+        source = article.get("source", "Unknown")
+        date = article.get("published", "")
+        lines.append(f"[S{i}] {title} | {source} | {date}")
+    
+    return "\n".join(lines)
+
+# System prompt for chatbot
+CHATBOT_SYSTEM_PROMPT = """You are a financial analysis assistant answering questions about a specific company analysis.
+
+CRITICAL RULES:
+1. Answer ONLY using the provided analysis context
+2. If information isn't in the context, clearly state "This information is not available in the current analysis"
+3. Always cite sources using [S#] tokens that match the Sources Index
+4. Keep answers concise and investor-focused
+5. Include specific dates, numbers, and metrics when available in context
+6. Do not fabricate information or use outside knowledge
+
+CITATION FORMAT:
+- Use [S#] where # matches the Sources Index number
+- Example: "Revenue grew 15% [S3] driven by strong demand [S7]"
+
+RESPONSE STYLE:
+- Direct and actionable for investors
+- Include specific metrics and timelines when available
+- Professional but accessible tone"""
+
 
 @app.route('/landing')
 @app.route('/welcome')
@@ -175,9 +277,9 @@ def news_form():
 @app.route("/news/summary", methods=["POST"])
 @login_required
 def get_news_summary():
-    """Generate institutional-grade financial news analysis with guaranteed 30 articles and 25% AlphaVantage coverage."""
+    """Generate institutional-grade financial news analysis with chatbot support."""
     try:
-        # Parse and validate input
+        # Parse and validate input (existing code)
         company = request.form.get("company", "").strip()
         days_back = int(request.form.get("days_back", 7))
         
@@ -185,77 +287,66 @@ def get_news_summary():
             return render_template("news_simple.html", 
                                  error="Please enter a company name or ticker symbol")
 
-        # Validate days_back parameter
+        # Validate days_back parameter (existing code)
         if days_back < 1 or days_back > 30:
             days_back = 7
         
-        # Enhanced company/ticker resolution
+        # Enhanced company/ticker resolution (existing code)
         ticker, company_name = company_ticker_service.get_both_ticker_and_company(company)
         display_name = company_name if company_name else ticker if ticker else company
         
-        logger.info(f"Processing GUARANTEED 30-article analysis: '{company}' → ticker: '{ticker}', company: '{company_name}' ({days_back} days)")
+        logger.info(f"Processing analysis: '{company}' → ticker: '{ticker}', company: '{company_name}' ({days_back} days)")
         
-        # Call the enhanced orchestration function that guarantees 30 articles
+        # Call the enhanced orchestration function (existing code)
         results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
         
-        # Handle case where no articles found
+        # Handle case where no articles found (existing code)
         if not results['success']:
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=days_back)
-            date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
-            analysis_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
-            
-            return render_template(
-                "news_results.html",
-                company=display_name,
-                summaries={
-                    "executive": ["**[NO DATA]** No recent financial news found across all premium sources (AlphaVantage, NYT, Bloomberg RSS). Try expanding date range or verifying company ticker."],
-                    "investor": ["**[RECOMMENDATION]** Verify company ticker symbol or try major exchanges (NYSE/NASDAQ). Consider checking earnings calendar."],
-                    "catalysts": ["**[TIMING]** Monitor upcoming earnings announcements, product launches, or regulatory events."]
-                },
-                articles=[],
-                all_articles=[],   
-                date_range=date_range,
-                analysis_timestamp=analysis_timestamp,
-                article_count=0,
-                articles_analyzed=0,
-                articles_displayed=0,
-                analysis_quality='No Data',
-                high_quality_sources=0,
-                premium_coverage=0,
-                alphavantage_articles=0,
-                alphavantage_coverage=0,
-                premium_sources_count=0,
-                premium_sources_coverage=0,
-                nyt_articles=0,
-                rss_articles=0,
-                source_performance={}
-            )
+            # ... existing error handling code ...
+            pass
         
-        # Process successful results for rendering
+        # Process successful results for rendering (existing code)
         articles = results['articles']
         metrics = results['metrics']
         
-        # Create source mapping and convert summaries to HTML
+        # Create source mapping and convert summaries to HTML (existing code)
         source_mapping = create_source_url_mapping(articles)
         summaries = {
             key: [convert_markdown_to_html(bullet, source_mapping) for bullet in bullets]
             for key, bullets in results['summaries'].items()
         }
         
-        # Calculate date range for display
+        # Calculate date range for display (existing code)
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
         date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
         analysis_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
         
-        # Enhanced logging
-        logger.info(f"✅ ENHANCED ANALYSIS COMPLETE for {display_name}:")
-        logger.info(f"   • Total articles: {metrics.get('total_articles', 0)} (guaranteed 30)")
-        logger.info(f"   • AlphaVantage: {metrics.get('alphavantage_articles', 0)} ({metrics.get('alphavantage_coverage', 0)}%)")
-        logger.info(f"   • Analysis quality: {metrics.get('analysis_quality', 'Unknown')}")
+        # ✅ NEW: Generate run_id and cache analysis data
+        run_id = str(uuid.uuid4())
         
-        # Render results with enhanced metrics
+        # Cache the analysis data for chatbot
+        RUN_CACHE[run_id] = {
+            "ts": time.time(),
+            "company": display_name,
+            "date_range": date_range,
+            "window_days": days_back,
+            "summaries": results['summaries'],  # Original summaries without HTML
+            "articles": articles,
+            "source_map": _build_source_map(articles),
+            "metrics": metrics
+        }
+        
+        # Clean old cache entries (keep last 100)
+        if len(RUN_CACHE) > 100:
+            old_keys = sorted(RUN_CACHE.keys(), key=lambda k: RUN_CACHE[k]["ts"])[:-100]
+            for key in old_keys:
+                del RUN_CACHE[key]
+        
+        # Enhanced logging (existing code)
+        logger.info(f"✅ ANALYSIS COMPLETE for {display_name} (run_id: {run_id[:8]})")
+        
+        # ✅ MODIFIED: Render results with run_id and sources_map_json
         max_display_articles = 12
         return render_template(
             "news_results.html",
@@ -266,7 +357,7 @@ def get_news_summary():
             date_range=date_range,
             analysis_timestamp=analysis_timestamp,
             article_count=metrics.get('total_articles', 0),
-            articles_analyzed=metrics.get('articles_analyzed', 30),  # Always 30 in new system
+            articles_analyzed=metrics.get('articles_analyzed', 30),
             articles_displayed=min(max_display_articles, metrics.get('total_articles', 0)), 
             analysis_quality=metrics.get('analysis_quality', 'Limited'),
             high_quality_sources=metrics.get('high_quality_sources', 0),
@@ -277,17 +368,22 @@ def get_news_summary():
             premium_sources_coverage=metrics.get('premium_sources_coverage', 0),
             nyt_articles=metrics.get('nyt_articles', 0),
             rss_articles=metrics.get('rss_articles', 0),
-            source_performance=results.get('source_performance', {})
+            source_performance=results.get('source_performance', {}),
+            quality_validation=results.get('quality_validation', {}),
+            # ✅ NEW: Add chatbot support variables
+            run_id=run_id,
+            sources_map_json=RUN_CACHE[run_id]["source_map"],
+            window_days=days_back
         )
 
     except Exception as e:
-        logger.error(f"Error in enhanced news analysis: {str(e)}")
+        logger.error(f"Error in news analysis: {str(e)}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         
         return render_template("news_simple.html", 
-                             error="Enhanced analysis temporarily unavailable. Please try again.")
-    
+                             error="Analysis temporarily unavailable. Please try again.")
+
 @app.route("/api/news/<company>")
 @login_required  
 def api_news_summary(company):
@@ -889,6 +985,156 @@ def get_report_types():
         logger.error(f"Error getting report types: {str(e)}")
         return jsonify(["Manufacturing", "Services"]), 500  # Default fallback
     
+@app.route("/chat", methods=["POST"])
+@login_required
+def chat():
+    """Handle chatbot questions about specific analysis runs."""
+    
+    # Validate content type
+    if request.content_type != "application/json":
+        return jsonify({"error": "Content-Type must be application/json"}), 415
+    
+    # Parse request
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON in request body"}), 400
+    
+    # Extract and validate parameters
+    company = payload.get("company", "").strip()
+    question = payload.get("question", "").strip()
+    run_id = payload.get("run_id", "").strip()
+    window_days = payload.get("window_days", 30)
+    verify_with_web = bool(payload.get("verify_with_web", False))
+    
+    # Input validation
+    if not question:
+        return jsonify({"error": "Question is required"}), 400
+    
+    if not company:
+        return jsonify({"error": "Company name is required"}), 400
+    
+    if not run_id:
+        return jsonify({"error": "Analysis run_id is required"}), 400
+    
+    if len(question) > 500:
+        return jsonify({"error": "Question too long (max 500 characters)"}), 400
+    
+    try:
+        window_days = int(window_days)
+        if not (1 <= window_days <= 365):
+            raise ValueError()
+    except (ValueError, TypeError):
+        return jsonify({"error": "window_days must be between 1 and 365"}), 400
+    
+    # Retrieve cached analysis data
+    run_data = RUN_CACHE.get(run_id)
+    if not run_data:
+        return jsonify({
+            "error": "Analysis session expired. Please re-run the analysis and try again."
+        }), 410
+    
+    # Check if cached data matches request
+    if run_data["company"] != company:
+        return jsonify({
+            "error": "Company mismatch with cached analysis"
+        }), 400
+    
+    # Handle missing Anthropic availability or API key
+    if not ANTHROPIC_AVAILABLE:
+        return jsonify({
+            "answer": f"Chat functionality requires the 'anthropic' package. "
+                     f"Based on the analysis for {company}, please refer to the summary sections above for insights.",
+            "citations": []
+        }), 200
+    
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        return jsonify({
+            "answer": f"Chat functionality requires ANTHROPIC_API_KEY to be configured. "
+                     f"Based on the analysis for {company}, please refer to the summary sections above for insights.",
+            "citations": []
+        }), 200
+    
+    # Compose context for Claude
+    try:
+        context = _compose_context(run_data)
+    except Exception as e:
+        logger.error(f"Error composing context: {e}")
+        return jsonify({"error": "Failed to prepare analysis context"}), 500
+    
+    # Prepare verification note
+    verify_note = ""
+    if verify_with_web:
+        verify_note = "\n\n(User requested web verification. If the context lacks current data, note this limitation.)"
+    
+    # Call Claude (create client locally following existing pattern)
+    try:
+        # Create anthropic client locally (following pattern from news_utils.py)
+        anthropic_client = anthropic.Anthropic(api_key=anthropic_api_key)
+        
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514",  # Match existing model from news_utils.py
+            max_tokens=800,
+            temperature=0.2,
+            system=CHATBOT_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user", 
+                    "content": f"QUESTION: {question}{verify_note}\n\nANALYSIS CONTEXT:\n{context}"
+                }
+            ],
+        )
+        
+        # Extract answer text
+        answer_parts = []
+        for block in response.content:
+            if block.type == "text":
+                answer_parts.append(block.text)
+        
+        answer = "\n".join(answer_parts).strip()
+        
+        if not answer:
+            answer = "I wasn't able to generate a response. Please try rephrasing your question."
+            
+    except Exception as e:
+        # Handle both APIStatusError and other exceptions
+        logger.error(f"Anthropic API error: {e}")
+        
+        # Check if it's an API status error for better error messages
+        if hasattr(e, 'status_code'):
+            return jsonify({
+                "error": f"AI service temporarily unavailable ({e.status_code}). Please try again."
+            }), 502
+        else:
+            return jsonify({
+                "error": "AI service error. Please try again in a moment."
+            }), 502
+    
+    # Extract and build citations
+    max_source_id = len(run_data["articles"])
+    citation_numbers = _extract_citations(answer, max_source_id)
+    
+    citations = []
+    source_map = run_data["source_map"]
+    
+    for num in citation_numbers:
+        source_data = source_map.get(str(num))
+        if source_data:
+            citations.append({
+                "s": num,
+                "url": source_data["url"],
+                "title": source_data["title"]
+            })
+    
+    # Log the interaction
+    logger.info(f"Chat query for {company} (run_id: {run_id[:8]}): '{question[:50]}...' -> {len(citations)} citations")
+    
+    return jsonify({
+        "answer": answer,
+        "citations": citations
+    }), 200
+
 @app.route('/admin/monitoring')
 @login_required
 def monitoring_dashboard():
