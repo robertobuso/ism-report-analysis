@@ -154,6 +154,25 @@
             white-space: nowrap;
             vertical-align: middle;
         }
+ 
+        .formatted-response p {
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+        }
+
+        .formatted-response p:last-child {
+            margin-bottom: 0;
+        }
+
+        .formatted-response strong {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .formatted-response em {
+            font-style: italic;
+            color: #5a6c7d;
+        }
         
         @media (max-width: 768px) {
             .back-button {
@@ -1015,8 +1034,10 @@
         const RUN_ID = {{ run_id|default("")|tojson }};
         
         // State management
+        // State management
         let isExpanded = false;
         let currentAbortController = null;
+        let conversationHistory = [];
         
         // DOM elements (with safe guards)
         const chatInput = document.getElementById('chatInput');
@@ -1076,40 +1097,53 @@
         });
         
         /**
-         * Safe text-to-DOM conversion with [S#] linkification
-         * SECURITY: Escapes all HTML, then safely adds source links
+         * Convert markdown to HTML and linkify [S#] references
          */
-        function linkifySRefs(text, sourceMap) {
+        function processMarkdownAndLinks(text, sourceMap) {
             if (!text || typeof text !== 'string') return '';
             
             // Step 1: Escape HTML to prevent XSS
             const escapeDiv = document.createElement('div');
             escapeDiv.textContent = text;
-            let escapedText = escapeDiv.innerHTML;
+            let processedText = escapeDiv.innerHTML;
             
-            // Step 2: Replace [S(\d+)] patterns with source links
+            // Step 2: Convert markdown formatting to HTML
+            // Bold: **text** -> <strong>text</strong>
+            processedText = processedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Italic: *text* -> <em>text</em>
+            processedText = processedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // Lists: - item -> • item (bullet points)
+            processedText = processedText.replace(/^- (.+)$/gm, '• $1');
+            
+            // Line breaks: preserve paragraph breaks
+            processedText = processedText.replace(/\n\n/g, '</p><p>');
+            processedText = processedText.replace(/\n/g, '<br>');
+            
+            // Wrap in paragraph tags if not already
+            if (!processedText.startsWith('<p>')) {
+                processedText = '<p>' + processedText + '</p>';
+            }
+            
+            // Step 3: Replace [S(\d+)] patterns with source links
             const sourcePattern = /\[S(\d+)\]/g;
-            
-            escapedText = escapedText.replace(sourcePattern, function(match, sourceNum) {
+            processedText = processedText.replace(sourcePattern, function(match, sourceNum) {
                 const sourceKey = sourceNum.toString();
                 const sourceData = sourceMap[sourceKey];
                 
                 if (sourceData && sourceData.url) {
                     const title = sourceData.title || 'Source';
-                    const truncatedTitle = title.length > 30 ? title.substring(0, 30) + '...' : title;
-                    
                     return `<a href="${escapeHtml(sourceData.url)}" target="_blank" rel="noopener" 
                             class="badge bg-primary text-decoration-none source-badge" 
                             title="${escapeHtml(title)}">
                             <i class="fas fa-link"></i> S${sourceNum}
                             </a>`;
                 }
-                
-                // If source not found, return original text
                 return match;
             });
             
-            return escapedText;
+            return processedText;
         }
         
         /**
@@ -1122,7 +1156,7 @@
         }
         
         /**
-         * Main chat function with comprehensive error handling
+         * Main chat function with conversation history and comprehensive error handling
          */
         async function askChat(verify = false) {
             const question = chatInput.value.trim();
@@ -1138,26 +1172,34 @@
                 return;
             }
             
+            // Add user question to conversation history
+            conversationHistory.push({
+                role: 'user',
+                content: question,
+                timestamp: new Date().toISOString()
+            });
+            
             // Abort any existing request
             if (currentAbortController) {
                 currentAbortController.abort();
             }
             
-            // Create new AbortController with 25s timeout
+            // Create new AbortController with 60s timeout (increased for web search)
             currentAbortController = new AbortController();
             const timeoutId = setTimeout(() => {
                 currentAbortController.abort();
-            }, 25000);
+            }, 60000);
             
             // Update UI to loading state
             setLoadingState(true);
             clearPreviousAnswer();
             
             try {
-                // Prepare request data
+                // Prepare request data with conversation history
                 const requestData = {
                     company: COMPANY,
                     question: isExpanded ? question + " (More detail please)" : question,
+                    conversation_history: conversationHistory, // ✅ ADD THIS LINE
                     window_days: WINDOW_DAYS,
                     verify_with_web: verify,
                     run_id: RUN_ID
@@ -1183,7 +1225,6 @@
                         const errorData = await response.json();
                         errorMessage = errorData.error || errorMessage;
                     } catch (e) {
-                        // If JSON parsing fails, use status text
                         errorMessage = response.statusText || errorMessage;
                     }
                     
@@ -1197,11 +1238,27 @@
                     throw new Error('No answer received from server');
                 }
                 
+                // Add assistant response to conversation history
+                conversationHistory.push({
+                    role: 'assistant', 
+                    content: data.answer,
+                    timestamp: new Date().toISOString(),
+                    citations: data.citations || []
+                });
+                
                 // Display results
                 displayAnswer(data.answer, data.citations || []);
                 
+                // Clear input for next question
+                chatInput.value = '';
+                
             } catch (error) {
                 clearTimeout(timeoutId);
+                
+                // Remove the failed user message from history
+                if (conversationHistory.length > 0 && conversationHistory[conversationHistory.length - 1].role === 'user') {
+                    conversationHistory.pop();
+                }
                 
                 if (error.name === 'AbortError') {
                     showError('Request timed out. Please try again with a shorter question.');
@@ -1216,19 +1273,18 @@
                 currentAbortController = null;
             }
         }
-        
         /**
-         * Display the AI answer with source links
+         * Display the AI answer with formatted markdown and source links
          */
         function displayAnswer(answerText, citations) {
-            // Process answer text with source links
-            const processedAnswer = linkifySRefs(answerText, SOURCE_MAP);
+            // Process answer text with markdown formatting and source links
+            const processedAnswer = processMarkdownAndLinks(answerText, SOURCE_MAP);
             
             chatAnswer.innerHTML = `
                 <div class="alert alert-light border">
                     <div class="d-flex align-items-start">
                         <i class="fas fa-robot text-info me-2 mt-1"></i>
-                        <div class="flex-grow-1">
+                        <div class="flex-grow-1 formatted-response">
                             ${processedAnswer}
                         </div>
                     </div>
@@ -1308,8 +1364,8 @@
             chatCitations.innerHTML = '';
         }
         
-        /**
-         * Set loading state
+       /**
+         * Set loading state with progress indication
          */
         function setLoadingState(isLoading) {
             chatAskBtn.disabled = isLoading;
@@ -1320,14 +1376,43 @@
             
             if (isLoading) {
                 chatAskBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Thinking...';
+                
+                // Enhanced loading with progress indication
+                let loadingStep = 0;
+                const loadingSteps = [
+                    "Analyzing your question...",
+                    "Searching the web for latest data...", 
+                    "Processing search results...",
+                    "Generating comprehensive answer..."
+                ];
+                
                 chatAnswer.innerHTML = `
                     <div class="text-center py-3 text-muted">
                         <i class="fas fa-spinner fa-spin me-2"></i>
-                        AI is analyzing your question...
+                        <span id="loadingText">${loadingSteps[0]}</span>
                     </div>
                 `;
+                
+                // Update loading text every 10 seconds
+                const loadingInterval = setInterval(() => {
+                    loadingStep = (loadingStep + 1) % loadingSteps.length;
+                    const loadingText = document.getElementById('loadingText');
+                    if (loadingText) {
+                        loadingText.textContent = loadingSteps[loadingStep];
+                    }
+                }, 10000);
+                
+                // Store interval to clear later
+                chatAskBtn.dataset.loadingInterval = loadingInterval;
+                
             } else {
                 chatAskBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Ask';
+                
+                // Clear loading interval
+                if (chatAskBtn.dataset.loadingInterval) {
+                    clearInterval(chatAskBtn.dataset.loadingInterval);
+                    delete chatAskBtn.dataset.loadingInterval;
+                }
             }
         }
         

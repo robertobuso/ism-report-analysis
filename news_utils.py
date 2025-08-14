@@ -1013,6 +1013,84 @@ class ClaudeWebSearchEngine:
             'enhanced': False
         }
 
+    async def chat_with_web_search(self, question: str, context: str, company: str, 
+                                conversation_history: List[Dict] = None) -> Dict[str, Any]:
+        """Handle chat questions with web search capabilities and conversation history."""
+        try:
+            # Build conversation context from history
+            conversation_context = ""
+            if conversation_history:
+                # Include last 4 exchanges to maintain context but control token usage
+                recent_history = conversation_history[-8:]  # Last 4 Q&A pairs
+                for i, msg in enumerate(recent_history):
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '')
+                    if role == 'user':
+                        conversation_context += f"\nPrevious Question {(i//2)+1}: {content}"
+                    elif role == 'assistant':
+                        # Truncate previous answers to save tokens
+                        truncated_content = content[:200] + "..." if len(content) > 200 else content
+                        conversation_context += f"\nPrevious Answer {(i//2)+1}: {truncated_content}"
+            
+            # Create enhanced chat prompt with conversation history
+            chat_prompt = f"""You are a financial analysis assistant with real-time web search capabilities.
+
+    CRITICAL: When the user asks about current data, recent developments, or anything that might have changed recently, use web search to find the latest information about {company}.
+
+    COMPANY ANALYSIS CONTEXT:
+    {context}
+
+    {conversation_context}
+
+    CURRENT USER QUESTION: {question}
+
+    Instructions:
+    1. Consider the conversation history to understand context and follow-up questions
+    2. Use the existing analysis context to answer when sufficient
+    3. When recent/current data is needed, use web search to find latest information about {company}
+    4. For follow-up questions, build upon previous answers while providing new insights
+    5. Combine analysis context with any new web search findings
+    6. Provide a comprehensive answer citing both existing analysis and new findings
+
+    Focus on being helpful and thorough. Use web search when needed to provide current information."""
+
+            # Call Claude with web search enabled (rest of method unchanged)
+            loop = asyncio.get_event_loop()
+            response = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self.client.messages.create(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=1200,  # Increased for more detailed responses
+                        temperature=0.2,
+                        messages=[{"role": "user", "content": chat_prompt}],
+                        tools=[{
+                            "type": "web_search_20250305", 
+                            "name": "web_search",
+                            "max_uses": 5
+                        }]
+                    )
+                ),
+                timeout=60.0  # Increased timeout for web search
+            )
+            
+            # Extract response text (unchanged)
+            answer_text = ""
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                for content_block in response.content:
+                    if hasattr(content_block, 'type') and content_block.type == "text":
+                        answer_text += content_block.text
+            
+            return {
+                'answer': answer_text.strip(),
+                'web_search_used': True,
+                'citations': []
+            }
+            
+        except Exception as e:
+            logger.error(f"Chat with web search failed: {e}")
+            raise e
+        
 # ============================================================================
 # QUALITY VALIDATION
 # ============================================================================

@@ -21,6 +21,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
 from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
+from news_utils import ClaudeWebSearchEngine
 
 # Enhanced news analysis imports
 from news_utils import (
@@ -1004,6 +1005,7 @@ def chat():
     company = payload.get("company", "").strip()
     question = payload.get("question", "").strip()
     run_id = payload.get("run_id", "").strip()
+    conversation_history = payload.get("conversation_history", []) 
     window_days = payload.get("window_days", 30)
     verify_with_web = bool(payload.get("verify_with_web", False))
     
@@ -1070,45 +1072,77 @@ def chat():
     
     # Call Claude (create client locally following existing pattern)
     try:
-        # Create anthropic client locally (following pattern from news_utils.py)
-        anthropic_client = anthropic.Anthropic(api_key=anthropic_api_key)
+        # Use ClaudeWebSearchEngine for web search capabilities
+        web_search_engine = ClaudeWebSearchEngine(anthropic_api_key)
+
+        # Handle async call properly with conversation history
+        import asyncio
+        try:
+            # Check if we're in an async context
+            loop = asyncio.get_running_loop()
+            # Run in thread pool to avoid blocking
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run, 
+                    web_search_engine.chat_with_web_search(
+                        question, context, company, conversation_history  # ✅ ADD conversation_history
+                    )
+                )
+                chat_result = future.result(timeout=55)  # Increased timeout
+        except RuntimeError:
+            # No running loop, safe to use asyncio.run
+            chat_result = asyncio.run(
+                web_search_engine.chat_with_web_search(
+                    question, context, company, conversation_history  # ✅ ADD conversation_history
+                )
+            )
         
-        response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514",  # Match existing model from news_utils.py
-            max_tokens=800,
-            temperature=0.2,
-            system=CHATBOT_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user", 
-                    "content": f"QUESTION: {question}{verify_note}\n\nANALYSIS CONTEXT:\n{context}"
-                }
-            ],
-        )
-        
-        # Extract answer text
-        answer_parts = []
-        for block in response.content:
-            if block.type == "text":
-                answer_parts.append(block.text)
-        
-        answer = "\n".join(answer_parts).strip()
+        answer = chat_result.get('answer', 'I was unable to generate a response.')
+        citations = chat_result.get('citations', [])
         
         if not answer:
             answer = "I wasn't able to generate a response. Please try rephrasing your question."
             
     except Exception as e:
-        # Handle both APIStatusError and other exceptions
-        logger.error(f"Anthropic API error: {e}")
+        # Enhanced error handling for web search
+        logger.error(f"Chat with web search error: {e}")
         
-        # Check if it's an API status error for better error messages
-        if hasattr(e, 'status_code'):
+        # Fallback to basic Claude without web search
+        try:
+            anthropic_client = anthropic.Anthropic(api_key=anthropic_api_key)
+            
+            fallback_response = anthropic_client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=800,
+                temperature=0.2,
+                system=CHATBOT_SYSTEM_PROMPT,
+                messages=[
+                    {
+                        "role": "user", 
+                        "content": f"QUESTION: {question}{verify_note}\n\nANALYSIS CONTEXT:\n{context}"
+                    }
+                ],
+            )
+            
+            # Extract answer text from fallback
+            answer_parts = []
+            for block in fallback_response.content:
+                if block.type == "text":
+                    answer_parts.append(block.text)
+            
+            answer = "\n".join(answer_parts).strip()
+            citations = []
+            
+            if not answer:
+                answer = "I wasn't able to generate a response. Please try rephrasing your question."
+            
+            logger.info(f"Used fallback Claude (no web search) for {company}")
+            
+        except Exception as fallback_error:
+            logger.error(f"Both web search and fallback failed: {fallback_error}")
             return jsonify({
-                "error": f"AI service temporarily unavailable ({e.status_code}). Please try again."
-            }), 502
-        else:
-            return jsonify({
-                "error": "AI service error. Please try again in a moment."
+                "error": "AI service temporarily unavailable. Please try again."
             }), 502
     
     # Extract and build citations

@@ -1,0 +1,129 @@
+=== VALIDATION PROMPT DEBUG ===
+Company: AAPL
+Attempt: 1
+Timestamp: 2025-08-14 16:02:03.041608
+Characters: 18,726
+Estimated tokens: 4,681
+Lines: 118
+Words: 1,491
+==================================================
+
+You are a Managing Director at Goldman Sachs conducting a BEFORE/AFTER quality assessment with REAL-TIME WEB SEARCH capabilities.
+
+    **CRITICAL CITATION REQUIREMENT**: 
+    When providing revised analysis, EVERY bullet must end with [Sources: X,Y,Z] format using article numbers 1-18 ONLY.
+
+    **CRITICAL INSTRUCTIONS**: 
+    1. First score the ORIGINAL analysis as-is (baseline)
+    2. Use web search to find current data and create improvements  
+    3. Score the REVISED analysis after improvements
+    4. Show the improvement delta
+
+    COMPANY: AAPL
+    TODAY'S DATE: August 14, 2025
+
+    ORIGINAL ANALYSIS TO ASSESS:
+    **EXECUTIVE SUMMARY**
+1. [STRATEGY]** Apple's artificial intelligence transformation is accelerating with Apple Intelligence driving fiscal Q3 momentum and positioning the company for a potential breakout year in 2025, as Deepwater Asset Management's Gene Munster predicts AAPL could rank among the top two "Magnificent 7" performers with expectations remaining remarkably low despite the AI opportunity <a href="https://www.zacks.com/stock/news/2702957/apple-rises-9-in-a-month-buy-sell-or-hold-the-aapl-stock" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a> <a href="https://www.benzinga.com/markets/tech/25/08/47081082/gene-munster-apple-could-be-a-top-2-mag-7-stock-in-2025-says-the-bar-is-very-low-on-ai" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.zacks.com/stock/news/2702093/zacks-investment-ideas-feature-highlights-apple" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a>
+2. [FINANCIAL_IMPACT]** The company's strategic pivot is supported by a massive $600 billion U.S. investment commitment that effectively neutralizes tariff headwinds while creating substantial domestic value creation, complemented by record-breaking Q2 performance that demonstrates operational excellence across core business segments <a href="https://www.zacks.com/stock/news/2702957/apple-rises-9-in-a-month-buy-sell-or-hold-the-aapl-stock" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a> <a href="https://www.zacks.com/stock/news/2702093/zacks-investment-ideas-feature-highlights-apple" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a> <a href="https://www.zacks.com/commentary/2703784/these-3-companies-shattered-quarterly-records" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a>
+3. [VALUE_CREATION]** Apple's supply chain optimization is yielding significant returns, with key manufacturing partner Foxconn reporting 27% profit growth in Q2 driven by AI server demand, indicating that Apple's ecosystem expansion beyond traditional hardware is creating multiplicative value across its vendor network <a href="https://www.ft.com/content/4568284d-1808-4868-85f7-651398cdea99" target="_blank" rel="noopener" class="badge bg-success text-decoration-none source-badge" title="Source: ft.com"><i class="fas fa-crown"></i> ft.com</a> <a href="https://www.cnbc.com/2025/08/14/ai-demand-boosts-iphone-maker-foxconns-second-quarter-profit-by-27percent-beating-forecasts.html" target="_blank" rel="noopener" class="badge bg-secondary text-decoration-none source-badge" title="Source: cnbc.com"><i class="fas fa-link"></i> cnbc.com</a>
+4. [EXECUTION_RISK]** Recent product development victories, including the successful resolution of the Blood Oxygen feature dispute with Masimo through strategic software updates, demonstrate management's ability to navigate complex IP challenges while maintaining product differentiation and avoiding costly hardware redesigns <a href="https://www.benzinga.com/markets/tech/25/08/47131264/apple-to-reintroduce-blood-oxygen-feature-on-select-watches-following-customs-ruling" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.nytimes.com/2025/08/14/technology/apple-watch-masimo-blood-oxygen-levels.html" target="_blank" rel="noopener" class="badge bg-warning text-decoration-none source-badge" title="Source: nytimes.com"><i class="fas fa-newspaper"></i> nytimes.com</a>
+5. [MANAGEMENT_QUALITY]** CEO Tim Cook's proactive engagement with the Trump administration showcases sophisticated political risk management, with the company securing favorable regulatory positioning that could provide competitive advantages in an increasingly complex geopolitical environment <a href="https://www.fool.com/investing/2025/08/12/what-does-trumps-new-announcement-with-apple-mean/" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: fool.com"><i class="fas fa-brain"></i> fool.com</a>
+
+**INVESTOR INSIGHTS**
+1. [VALUATION]** Apple's 9% monthly gain reflects growing institutional confidence in the AI narrative, with the stock appearing attractively positioned relative to Magnificent 7 peers given the company's conservative guidance approach and substantial cash generation capabilities that provide downside protection during market volatility <a href="https://www.zacks.com/stock/news/2702957/apple-rises-9-in-a-month-buy-sell-or-hold-the-aapl-stock" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a> <a href="https://www.benzinga.com/markets/tech/25/08/47081082/gene-munster-apple-could-be-a-top-2-mag-7-stock-in-2025-says-the-bar-is-very-low-on-ai" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.fool.com/investing/2025/08/13/nvidia-and-microsoft-stocks-have-reached-a-4-trill/" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: fool.com"><i class="fas fa-brain"></i> fool.com</a>
+2. [PEER_COMPARISON]** Comprehensive competitive analysis reveals Apple maintaining strong positioning in the Technology Hardware, Storage & Peripherals sector, with the company's integrated ecosystem approach providing sustainable competitive advantages that justify premium valuations relative to hardware-focused competitors <a href="https://www.benzinga.com/insights/news/25/08/47094281/performance-comparison-apple-and-competitors-in-technology-hardware-storage-amp-peripherals-industr" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/insights/news/25/08/47126408/inquiry-into-apples-competitor-dynamics-in-technology-hardware-storage-amp-peripherals-industry" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/insights/news/25/08/47062975/in-depth-analysis-apple-versus-competitors-in-technology-hardware-storage-amp-peripherals-industry" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a>
+3. [INSTITUTIONAL_FLOW]** High-profile institutional activity continues, with congressional investment of $6.4 million across Magnificent 7 stocks highlighting continued institutional appetite for large-cap tech exposure, while Warren Buffett's potential Apple position adjustments in upcoming 13F filings remain a key sentiment driver to monitor <a href="https://www.benzinga.com/trading-ideas/long-ideas/25/08/47096009/berkshire-hathaway-13f-preview-did-buffett-trim-apple-and-will-the-mystery-stock-be-reve" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/news/politics/25/08/47070712/congressman-invests-6-4-million-in-magnificent-7-stocks-top-pick-inside" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/markets/equities/25/08/47050421/warren-buffetts-berkshire-hathaway-lags-market-by-25-since-exit-announcement-worst-gap-since-202" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a>
+4. [SENTIMENT_ANALYSIS]** Market sentiment remains constructive despite regulatory headwinds, with the successful navigation of the Epic Games legal challenge in Australia and ongoing OpenAI/App Store disputes demonstrating Apple's legal resilience while maintaining platform integrity <a href="https://www.nytimes.com/2025/08/12/technology/elon-musk-apple-openai-xai.html" target="_blank" rel="noopener" class="badge bg-warning text-decoration-none source-badge" title="Source: nytimes.com"><i class="fas fa-newspaper"></i> nytimes.com</a> <a href="https://www.benzinga.com/news/legal/25/08/47057842/epic-games-wins-partial-victory-against-apple-google-in-australian-court-what-happened" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/markets/tech/25/08/47112235/elon-musks-bid-to-dismiss-openais-harassment-lawsuit-denied-by-court-as-xai-ceo-threatens-apple-with" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a>
+5. [TECHNICAL]** The stock's recent momentum coincides with broader semiconductor sector strength driven by massive AI infrastructure spending from Meta, Microsoft, and Google exceeding $250 billion, creating a favorable technical backdrop for Apple's AI hardware ambitions <a href="https://www.benzinga.com/markets/tech/25/08/47126905/semiconductor-stocks-stay-in-focus-as-massive-ai-spending-and-china-deal-fuel-growth-hopes" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/trading-ideas/long-ideas/25/08/47087707/apple-pge-d-r-horton-and-an-industrial-stock-on-cnbcs-final-trades" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a>
+
+**CATALYSTS & RISKS**
+1. [CATALYST]** The upcoming iPhone refresh cycle presents a significant AI-driven upgrade catalyst with 70% probability of driving above-consensus unit growth in fiscal 2025, as Apple Intelligence features create compelling upgrade incentives for the installed base while expanding average selling prices through premium AI capabilities <a href="https://www.zacks.com/stock/news/2702957/apple-rises-9-in-a-month-buy-sell-or-hold-the-aapl-stock" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a> <a href="https://www.zacks.com/stock/news/2702093/zacks-investment-ideas-feature-highlights-apple" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a>
+2. [REGULATORY]** The Google antitrust ruling poses a material downside risk to Apple's high-margin services revenue, potentially impacting the estimated $15-20 billion annual payments from Google for default search positioning, though management's diversification strategy provides partial mitigation through expanding services portfolio <a href="https://www.fool.com/investing/2025/08/14/google-antitrust-ruling-could-deal-a-blow-to-apple/" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: fool.com"><i class="fas fa-brain"></i> fool.com</a>
+3. [EVENT_RISK]** Elon Musk's escalating antitrust threats regarding OpenAI preferential treatment on the App Store represent a moderate regulatory risk with 30% probability of meaningful impact, though Apple's consistent platform policies and legal precedent suggest manageable exposure <a href="https://www.nytimes.com/2025/08/12/technology/elon-musk-apple-openai-xai.html" target="_blank" rel="noopener" class="badge bg-warning text-decoration-none source-badge" title="Source: nytimes.com"><i class="fas fa-newspaper"></i> nytimes.com</a> <a href="https://www.benzinga.com/markets/tech/25/08/47112235/elon-musks-bid-to-dismiss-openais-harassment-lawsuit-denied-by-court-as-xai-ceo-threatens-apple-with" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a>
+4. [MACRO_SENSITIVITY]** Trump administration trade policies present both opportunity and risk, with Apple's $600 billion domestic investment commitment providing tariff protection while potential China tensions could impact supply chain efficiency, requiring continued diplomatic engagement <a href="https://www.zacks.com/stock/news/2702957/apple-rises-9-in-a-month-buy-sell-or-hold-the-aapl-stock" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: zacks.com"><i class="fas fa-brain"></i> zacks.com</a> <a href="https://www.fool.com/investing/2025/08/12/what-does-trumps-new-announcement-with-apple-mean/" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: fool.com"><i class="fas fa-brain"></i> fool.com</a>
+5. [TECHNICAL_LEVELS]** Options market positioning and institutional flow patterns suggest strong technical support around current levels, with the stock's outperformance relative to Berkshire Hathaway's recent underperformance indicating continued large-cap tech rotation favoring AI-exposed names through Q4 2024 <a href="https://www.benzinga.com/markets/equities/25/08/47050421/warren-buffetts-berkshire-hathaway-lags-market-by-25-since-exit-announcement-worst-gap-since-202" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a> <a href="https://www.benzinga.com/trading-ideas/long-ideas/25/08/47087707/apple-pge-d-r-horton-and-an-industrial-stock-on-cnbcs-final-trades" target="_blank" rel="noopener" class="badge bg-purple text-decoration-none source-badge" title="Source: benzinga.com"><i class="fas fa-brain"></i> benzinga.com</a>
+
+
+
+    **REVISED ANALYSIS OUTPUT REQUIREMENTS**:
+    - Use EXACT format: [Sources: X,Y,Z] where X,Y,Z are numbers 1-18
+    - Every bullet must end with [Sources: X,Y,Z]
+    - DO NOT use <cite>, "index=", or any other citation format
+    - Example: "Revenue increased 15% [Sources: 1,5,8]"
+
+    **MANDATORY DUAL ASSESSMENT PROCESS**:
+
+    **STEP 1: BASELINE SCORING** (Score the original analysis 0-10):
+    - Fact accuracy with available data
+    - Market context completeness  
+    - Investment actionability
+    - Timeliness of information
+    - Professional quality
+
+    **STEP 2: WEB SEARCH ENHANCEMENT**:
+    1. Search for AAPL current stock price and trading data
+    2. Verify recent earnings, revenue, and financial metrics
+    3. Check latest analyst price targets and ratings  
+    4. Confirm recent news developments and business updates
+    5. Validate any numerical claims with current market data
+
+    **STEP 3: REVISED SCORING** (Score the enhanced analysis 0-10):
+    - Same criteria as baseline but with web search enhancements
+
+    **OUTPUT FORMAT**:
+    Return JSON with this exact structure:
+
+    ```json
+    {
+    "baseline_assessment": {
+        "original_score": float,
+        "original_verdict": "pass" | "needs_revision" | "fail",
+        "original_issues": ["list of issues found in original"],
+        "baseline_summary": "2-3 sentence assessment of original quality"
+    },
+    "web_searches_performed": [
+        {
+        "query": "search query used",
+        "key_finding": "important discovery",
+        "data_updated": "specific metric updated",
+        "improvement_type": "fact_correction" | "data_refresh" | "context_addition"
+        }
+    ],
+    "revised_assessment": {
+        "revised_score": float,
+        "revised_verdict": "pass" | "needs_revision" | "fail", 
+        "improvements_made": ["specific improvements from web search"],
+        "remaining_issues": ["issues still present after revision"]
+    },
+    "improvement_analysis": {
+        "score_delta": float,
+        "improvement_percentage": float,
+        "quality_trajectory": "significant_improvement" | "moderate_improvement" | "minimal_improvement" | "no_improvement" | "degradation",
+        "web_search_effectiveness": "high" | "medium" | "low"
+    },
+    "revised_analysis": {
+        "executive": ["Enhanced bullets with current web-verified data"],
+        "investor": ["Updated valuation analysis with recent metrics"],
+        "catalysts": ["Current catalyst assessment with verified timelines"]
+    },
+    "validation_metadata": {
+        "current_stock_price": "verified price",
+        "market_cap": "current market cap", 
+        "recent_news_count": int,
+        "data_verification_count": int,
+        "baseline_date_issues": int,
+        "revised_date_freshness": "current" | "recent" | "stale"
+    }
+    }
+    ```
+
+    **SCORING CRITERIA FOR BOTH ASSESSMENTS**:
+    - 9.0-10.0: Institutional excellence with current data and actionable insights
+    - 8.0-8.9: Professional quality with good context and recent information  
+    - 7.0-7.9: Acceptable quality with some current data and clear insights
+    - 6.0-6.9: Below standard with outdated info or vague recommendations
+    - 5.0-5.9: Poor quality with significant factual or timeliness issues
+    - 0.0-4.9: Unacceptable quality requiring major revision
+
+    Focus on IMPROVEMENT MEASUREMENT - show how web search enhanced the analysis quality.
