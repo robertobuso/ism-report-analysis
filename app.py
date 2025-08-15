@@ -341,6 +341,39 @@ def get_news_summary():
         
         # Call the enhanced orchestration function (existing code)
         results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
+
+        # NEW: capture raw model text if news_utils returns it; else derive a fallback view
+        raw_model_text = (
+            results.get("raw_model_text")
+            or results.get("raw_llm")
+            or results.get("claude_raw")
+            or results.get("analysis_text")
+            or ""
+        )
+
+        if not raw_model_text:
+            # Fallback: show what we actually render (pre-HTML)
+            try:
+                raw_model_text = "\n".join(
+                    sum(
+                        (
+                            results["summaries"].get("executive", []),
+                            results["summaries"].get("investor", []),
+                            results["summaries"].get("catalysts", []),
+                        ),
+                        []
+                    )
+                )
+            except Exception:
+                pass
+
+        # Helpful diagnostics: how many citation-like tokens are present before rendering
+        try:
+            import re as _re
+            token_like = _re.findall(r'\[S\s*\d+\]|\[\^\d+\]|\[\d+\]|\(\s*[Ss]\s*\d+\s*\)|\{\s*[Ss]\s*\d+\s*\}', raw_model_text)
+            logger.info(f"Citation-like tokens seen in raw model text: {len(token_like)} (first 5: {token_like[:5]})")
+        except Exception:
+            pass
         
         # Handle case where no articles found
         if not results['success']:
@@ -423,7 +456,8 @@ def get_news_summary():
             rss_articles=metrics.get('rss_articles', 0),
             source_performance=results.get('source_performance', {}),
             quality_validation=results.get('quality_validation', {}),
-            # ✅ NEW: Add chatbot support variables
+            raw_model_preview=raw_model_text[:4000],
+            citations_index_map=results.get('article_index_map', {}),
             run_id=run_id,
             sources_map_json=RUN_CACHE[run_id]["source_map"],
             window_days=days_back

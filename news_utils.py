@@ -462,6 +462,12 @@ class ClaudeWebSearchEngine:
                 ),
                 timeout=360.0
             )
+
+            logger.info("CITED DOC INDEXES PER TEXT BLOCK: %s", [
+                [getattr(c, "document_index", None) for c in getattr(b, "citations", []) or []]
+                for b in getattr(response, "content", []) or []
+            ])
+
             
             # Log response details
             if hasattr(response, 'content'):
@@ -2482,6 +2488,19 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
             "content": message_content
         }]
     )
+
+    try:
+        raw = response.model_dump_json(indent=2, ensure_ascii=False)  # full, pretty JSON
+    except Exception:
+        raw = json.dumps(
+            response,
+            default=lambda o: getattr(o, "model_dump", getattr(o, "dict", lambda: getattr(o, "__dict__", str(o))))(),
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    logger.info("CLAUDE RAW RESPONSE:\n%s", raw)
+
     
     # Process response preserving Claude's native citation structure
     final_analysis = {"executive": [], "investor": [], "catalysts": []}
@@ -2727,6 +2746,18 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
             "content": message_content
         }]
     )
+
+    try:
+        raw = response.model_dump_json(indent=2, ensure_ascii=False)  # full, pretty JSON
+    except Exception:
+        raw = json.dumps(
+            response,
+            default=lambda o: getattr(o, "model_dump", getattr(o, "dict", lambda: getattr(o, "__dict__", str(o))))(),
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    logger.info("CLAUDE RAW RESPONSE:\n%s", raw)
     
     # Process response preserving Claude's native citation structure
     final_analysis = {"executive": [], "investor": [], "catalysts": []}

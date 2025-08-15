@@ -342,6 +342,19 @@
                     {% endif %}
                 </div>
                 {% endif %}
+                {% if raw_model_preview %}
+                <div class="mt-3">
+                <button class="btn btn-sm btn-outline-dark" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#rawModel"
+                        aria-expanded="false" aria-controls="rawModel">
+                    <i class="fas fa-bug me-1"></i> Debug: Show Raw Model Output
+                </button>
+                <div id="rawModel" class="collapse mt-2">
+                    <pre class="small bg-light p-2 border rounded" style="max-height:300px; overflow:auto; white-space:pre-wrap;">{{ raw_model_preview }}</pre>
+                </div>
+                </div>
+                {% endif %}
+
 
                 <!-- Enhanced Source Breakdown -->
                 <div class="source-breakdown">
@@ -1508,6 +1521,61 @@
     document.querySelectorAll('.insight-bullet').forEach(linkify);
     })();
     </script>
+    <script>
+    // Make SOURCE_MAP & optional remap available in this scope
+    window.SOURCE_MAP = {{ sources_map_json|default({})|tojson }};
+    window.INDEX_REMAP = {{ citations_index_map|default({})|tojson }};
 
+    // Turn <cite index="10-1,58-1"> into clickable [S10] [S58] badges
+    (function linkifyCiteTags() {
+        const sourceMap = window.SOURCE_MAP || {};
+        const idRemap  = window.INDEX_REMAP || {}; // maps "global" -> "local" IDs if provided
+
+        // In bullets and chatbot answers
+        const nodes = document.querySelectorAll('.insight-bullet cite[index], .formatted-response cite[index]');
+        nodes.forEach(cite => {
+        const indexAttr = (cite.getAttribute('index') || '').trim();
+        if (!indexAttr) return;
+
+        // Example: "10-1,58-1" → take the doc ids [10, 58]
+        const rawParts   = indexAttr.split(',').map(s => s.trim()).filter(Boolean);
+        const docIdsRaw  = rawParts.map(p => parseInt((p.split('-')[0] || '').trim(), 10)).filter(n => Number.isFinite(n));
+        const docIds     = Array.from(new Set(docIdsRaw)); // unique, in order
+
+        if (docIds.length === 0) return;
+
+        // Replace the <cite> element with its text, and append badges after it
+        const textSpan = document.createElement('span');
+        textSpan.innerHTML = cite.innerHTML;
+        cite.replaceWith(textSpan);
+
+        const chips = document.createElement('span');
+        chips.className = 'ms-1';
+
+        let matched = 0;
+        docIds.forEach(globalId => {
+            const localId = idRemap[String(globalId)] ?? globalId; // remap if possible
+            const src     = sourceMap[String(localId)];
+            if (!src || !src.url) {
+            // Helpful diagnostics
+            console.warn('No source mapping for citation id:', { globalId, localId });
+            return;
+            }
+            matched++;
+
+            const a = document.createElement('a');
+            a.href        = src.url;
+            a.target      = '_blank';
+            a.rel         = 'noopener';
+            a.className   = 'badge bg-primary text-decoration-none source-badge me-1';
+            a.title       = (src.title || 'Source') + (src.published_at ? ` • ${src.published_at}` : '');
+            a.textContent = `S${localId}`;
+            chips.appendChild(a);
+        });
+
+        if (matched) textSpan.insertAdjacentElement('afterend', chips);
+        });
+    })();
+    </script>
 </body>
 </html>
