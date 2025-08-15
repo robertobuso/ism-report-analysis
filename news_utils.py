@@ -398,10 +398,20 @@ class ClaudeWebSearchEngine:
             # Use same articles to maintain citation consistency
             optimized_articles = articles[:18]  # Limit count but maintain order/numbering
 
-            # Create validation prompt
-            validation_prompt = self._create_web_search_validation_prompt(
-                company, analysis, optimized_articles, attempt
-            )
+            # Try Citations API validation first, fallback to manual
+            try:
+                message_content, article_index_map = self._create_web_search_validation_prompt_with_citations(
+                    company, analysis, optimized_articles, attempt
+                )
+                uses_citations_api = True
+            except Exception as e:
+                logger.warning(f"Citations API validation failed, using manual: {e}")
+                validation_prompt = self._create_web_search_validation_prompt(
+                    company, analysis, optimized_articles, attempt
+                )
+                message_content = [{"type": "text", "text": validation_prompt}]
+                article_index_map = {}
+                uses_citations_api = False
             
             # ✅ CLEAN DEBUG: Only call methods that exist
             self._debug_log_prompt_details(validation_prompt, attempt, company)
@@ -663,7 +673,7 @@ class ClaudeWebSearchEngine:
                         model="claude-sonnet-4-20250514",
                         max_tokens=8000,
                         temperature=0.05,
-                        messages=[{"role": "user", "content": prompt}],
+                        messages=[{"role": "user", "content": message_content}],
                         tools=tools  # <- dynamic based on attempt
                     )
                 ),
@@ -842,6 +852,131 @@ class ClaudeWebSearchEngine:
 
     Focus on IMPROVEMENT MEASUREMENT - show how web search enhanced the analysis quality."""
 
+    def _create_web_search_validation_prompt_with_citations(self, 
+                                        company: str, 
+                                        analysis: Dict[str, List[str]], 
+                                        articles: List[Dict],
+                                        attempt: int) -> Tuple[List, Dict]:
+        """Create validation prompt with Citations API support."""
+        
+        # Create document blocks for validation
+        document_blocks = []
+        article_index_map = {}
+        
+        for i, article in enumerate(articles):
+            content = f"Title: {article['title']}\n"
+            content += f"Content: {article.get('snippet', '')}\n"
+            content += f"Source: {article['source']}\n"
+            content += f"Published: {article.get('published', '')}\n"
+            
+            if article.get('source_type') == 'alphavantage_premium':
+                content += f"Sentiment: {article.get('sentiment_label', 'Neutral')} ({article.get('sentiment_score', 0):.3f})\n"
+                content += f"Relevance: {article.get('relevance_score', 0):.3f}\n"
+            
+            article_index_map[i] = {
+                'article': article,
+                'url': article.get('link', '#'),
+                'source': article.get('source', 'Unknown'),
+                'title': article.get('title', 'Unknown'),
+                'source_type': article.get('source_type', 'google_search')
+            }
+            
+            document_blocks.append({
+                "type": "document",
+                "source": {
+                    "type": "text",
+                    "media_type": "text/plain", 
+                    "data": content
+                },
+                "citations": {"enabled": True},
+                "title": f"{article['source']} - {article['title'][:50]}..."
+            })
+        
+        formatted_analysis = self._format_analysis_for_review(analysis)
+        today_str = datetime.now().strftime("%B %d, %Y")
+        
+        validation_prompt = f"""You are a Managing Director at Goldman Sachs conducting quality assessment with REAL-TIME WEB SEARCH capabilities.
+
+    **CRITICAL: Use the provided source documents to support all claims. Claude's Citations API will automatically cite relevant sources.**
+
+    COMPANY: {company}
+    TODAY'S DATE: {today_str}
+
+    ORIGINAL ANALYSIS TO ASSESS:
+    {formatted_analysis}
+
+    **MANDATORY DUAL ASSESSMENT PROCESS**:
+
+    **STEP 1: BASELINE SCORING** (Score the original analysis 0-10):
+    - Fact accuracy with available data
+    - Market context completeness  
+    - Investment actionability
+    - Timeliness of information
+    - Professional quality
+
+    **STEP 2: WEB SEARCH ENHANCEMENT**:
+    1. Search for {company} current stock price and trading data
+    2. Verify recent earnings, revenue, and financial metrics
+    3. Check latest analyst price targets and ratings  
+    4. Confirm recent news developments and business updates
+    5. Validate any numerical claims with current market data
+
+    **STEP 3: REVISED SCORING** (Score the enhanced analysis 0-10):
+    - Same criteria as baseline but with web search enhancements
+
+    **OUTPUT FORMAT**:
+    Return JSON with this exact structure:
+
+    ```json
+    {{
+    "baseline_assessment": {{
+        "original_score": float,
+        "original_verdict": "pass" | "needs_revision" | "fail",
+        "original_issues": ["list of issues found in original"],
+        "baseline_summary": "2-3 sentence assessment of original quality"
+    }},
+    "web_searches_performed": [
+        {{
+        "query": "search query used",
+        "key_finding": "important discovery",
+        "data_updated": "specific metric updated",
+        "improvement_type": "fact_correction" | "data_refresh" | "context_addition"
+        }}
+    ],
+    "revised_assessment": {{
+        "revised_score": float,
+        "revised_verdict": "pass" | "needs_revision" | "fail", 
+        "improvements_made": ["specific improvements from web search"],
+        "remaining_issues": ["issues still present after revision"]
+    }},
+    "improvement_analysis": {{
+        "score_delta": float,
+        "improvement_percentage": float,
+        "quality_trajectory": "significant_improvement" | "moderate_improvement" | "minimal_improvement" | "no_improvement" | "degradation",
+        "web_search_effectiveness": "high" | "medium" | "low"
+    }},
+    "revised_analysis": {{
+        "executive": ["Enhanced bullets with current web-verified data"],
+        "investor": ["Updated valuation analysis with recent metrics"],
+        "catalysts": ["Current catalyst assessment with verified timelines"]
+    }},
+    "validation_metadata": {{
+        "current_stock_price": "verified price",
+        "market_cap": "current market cap", 
+        "recent_news_count": int,
+        "data_verification_count": int,
+        "baseline_date_issues": int,
+        "revised_date_freshness": "current" | "recent" | "stale"
+    }}
+    }}
+Focus on IMPROVEMENT MEASUREMENT - show how web search enhanced the analysis quality with proper source citations."""
+    
+        # Add the text prompt to document blocks
+        message_content = document_blocks + [{"type": "text", "text": validation_prompt}]
+
+        return message_content, article_index_map
+
+
     async def _call_claude_with_web_search(self, prompt: str):
         """Call Claude Sonnet 4 with web search - safe domain list."""
         
@@ -914,6 +1049,9 @@ class ClaudeWebSearchEngine:
                 'enhancements_made': revised.get('improvements_made', []),
                 'validation_metadata': result.get('validation_metadata', {}),
                 'web_searches_performed': result.get('web_searches_performed', []),
+                'uses_citations_api': uses_citations_api,
+                'citation_blocks': citation_blocks if uses_citations_api else [],
+                'article_index_map': article_index_map if uses_citations_api else {},
                 
                 # ✅ NEW: Dual scoring data
                 'baseline_assessment': {
@@ -1194,16 +1332,31 @@ class QualityValidationEngine:
         revised_analysis = validation_result.get('revised_analysis', {})
         web_searches = validation_result.get('web_searches_performed', [])
         enhancements = validation_result.get('enhancements_made', [])
-        
+
         # ✅ IMPROVED LOGIC: Use enhanced if we have meaningful improvements
         meaningful_improvement = score_delta >= 0.5 or len(web_searches) >= 3
-        
+
         if revised_analysis and meaningful_improvement:
-            # ✅ FIX: Process citations in revised analysis before using it
-            processed_revised_analysis = self._process_revised_analysis_citations(
-                revised_analysis, original_articles[:18]  # Use same subset as validation
-            )
-            final_analysis = processed_revised_analysis
+            # ✅ FIX: Use native citations processing for quality validation too
+            # Create article mapping for validation subset
+            validation_article_map = {}
+            for i, article in enumerate(original_articles[:18]):
+                validation_article_map[i] = {
+                    'article': article,
+                    'url': article.get('link', '#'),
+                    'source': article.get('source', 'Unknown'),
+                    'title': article.get('title', 'Unknown'),
+                    'source_type': article.get('source_type', 'google_search')
+                }
+            
+            # Process native citations if the validation used Citations API
+            if validation_result.get('uses_citations_api', False):
+                citation_blocks = validation_result.get('citation_blocks', [])
+                final_analysis = process_native_citations(revised_analysis, citation_blocks, validation_article_map)
+            else:
+                # Fallback: if validation didn't use Citations API, use manual processing
+                final_analysis = process_analysis_source_links(revised_analysis, original_articles[:18])
+            
             used_enhanced = True
             logger.info(f"   📝 Using ENHANCED analysis for {company}")
             logger.info(f"   📊 Quality improvement: {original_score:.1f} → {revised_score:.1f} (+{score_delta:.1f})")
@@ -1255,110 +1408,271 @@ class QualityValidationEngine:
             'enhanced': used_enhanced
         }
     
-    def _process_revised_analysis_citations(self, revised_analysis: Dict[str, List[str]], 
-                                      articles: List[Dict]) -> Dict[str, List[str]]:
-        """Process citations in revised analysis from quality validation."""
+    def process_native_citations(analysis: Dict[str, List[str]], citation_blocks: List, 
+                            article_index_map: Dict) -> Dict[str, List[str]]:
+        """Process Claude's native citations into HTML badges with proper article mapping."""
         
-        # ✅ FIX: Handle both [Sources: X,Y,Z] and <cite index="..."> formats
         processed_analysis = {}
         
-        for section_key, bullets in revised_analysis.items():
+        for section_key, bullets in analysis.items():
             processed_bullets = []
             
             for bullet in bullets:
-                # Process both citation formats
-                processed_bullet = self._convert_citations_to_badges(bullet, articles)
+                # Extract citations that apply to this bullet and convert to badges
+                processed_bullet = extract_and_convert_citations_for_bullet(
+                    bullet, citation_blocks, article_index_map
+                )
                 processed_bullets.append(processed_bullet)
             
             processed_analysis[section_key] = processed_bullets
         
         return processed_analysis
 
-    def _convert_citations_to_badges(self, bullet: str, articles: List[Dict]) -> str:
-        """Convert any citation format to clickable badges."""
-        import re
+    def extract_and_convert_citations_for_bullet(bullet_text: str, citation_blocks: List, 
+                                            article_index_map: Dict) -> str:
+        """Extract citations for a specific bullet and convert to HTML badges."""
         
-        # ✅ FIX: Handle <cite index="33-1,33-3">text</cite> format
-        cite_pattern = r'<cite index="([^"]+)">([^<]+)</cite>'
+        citations_for_bullet = []
         
-        def replace_cite_tags(match):
-            indices_str = match.group(1)
-            cited_text = match.group(2)
-            
-            # Parse article numbers from formats like "33-1,33-3" or "1,5,8"
-            article_numbers = []
-            for index_part in indices_str.split(','):
-                index_part = index_part.strip()
-                if '-' in index_part:
-                    # Handle "33-1" format - take first number
-                    try:
-                        num = int(index_part.split('-')[0])
-                        # Skip invalid citations instead of randomizing
-                        if 1 <= num <= len(articles):
-                            article_numbers.append(num)
-                    except (ValueError, IndexError):
-                        continue
-                elif index_part.isdigit():
-                    num = int(index_part)
-                    if 1 <= num <= len(articles):
-                        article_numbers.append(num)
-            
-            # Remove duplicates and limit to 3
-            article_numbers = list(set(article_numbers))[:3]
-            
-            # Build source badges
-            badges = []
-            for num in article_numbers:
-                article_idx = num - 1  # Convert to 0-based index
-                if 0 <= article_idx < len(articles):
-                    article = articles[article_idx]
-                    source = article.get('source', 'Unknown')
-                    link = article.get('link', '#')
+        # Find citations where the cited text appears in this bullet
+        for block in citation_blocks:
+            if not block.get('citations'):
+                continue
+                
+            for citation in block['citations']:
+                cited_text = citation.cited_text.strip()
+                
+                # Check if the cited content is referenced in this bullet
+                # Use fuzzy matching since the bullet might be paraphrased
+                if (any(word in bullet_text.lower() for word in cited_text.lower().split() if len(word) > 4) or
+                    any(word in cited_text.lower() for word in bullet_text.lower().split() if len(word) > 4)):
                     
-                    badges.append(
-                        f'<a href="{link}" target="_blank" rel="noopener" '
-                        f'class="badge bg-primary text-decoration-none source-badge" '
-                        f'title="Source: {source}">'
-                        f'<i class="fas fa-link"></i> {source[:12]}'
-                        f'</a>'
-                    )
-            
-            # Return text with badges
-            if badges:
-                return f'{cited_text} {" ".join(badges)}'
-            else:
-                return cited_text
+                    citations_for_bullet.append(citation)
         
-        # ✅ FIX: Also handle [Sources: X,Y,Z] format for consistency
-        sources_pattern = r'\[Sources:\s*([\d,\s]+)\]'
+        if not citations_for_bullet:
+            return bullet_text
         
-        def replace_sources(match):
-            indices_str = match.group(1)
-            article_numbers = [int(x.strip()) for x in indices_str.split(',') 
-                            if x.strip().isdigit() and 1 <= int(x.strip()) <= len(articles)]
+        # Convert citations to HTML badges
+        badges = []
+        seen_docs = set()
+        
+        for citation in citations_for_bullet[:3]:  # Limit to 3 citations per bullet
+            doc_index = citation.document_index
             
-            badges = []
-            for num in article_numbers[:3]:
-                article_idx = num - 1
-                article = articles[article_idx]
+            if doc_index in article_index_map and doc_index not in seen_docs:
+                article_data = article_index_map[doc_index]
+                
+                # ✅ NOW we have the original article data!
+                url = article_data['url']
+                source = article_data['source']
+                title = article_data['title']
+                source_type = article_data['source_type']
+                
+                # Create badge with proper styling
+                if source_type == 'alphavantage_premium':
+                    badge_class = 'bg-purple'
+                    icon = '<i class="fas fa-brain"></i>'
+                elif source_type == 'nyt_api':
+                    badge_class = 'bg-warning'
+                    icon = '<i class="fas fa-newspaper"></i>'
+                elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
+                    badge_class = 'bg-success'
+                    icon = '<i class="fas fa-crown"></i>'
+                else:
+                    badge_class = 'bg-secondary'
+                    icon = '<i class="fas fa-link"></i>'
+                
+                badges.append(
+                    f'<a href="{url}" target="_blank" rel="noopener" '
+                    f'class="badge {badge_class} text-decoration-none source-badge" '
+                    f'title="Source: {source} | {title[:50]}... | Cited: {citation.cited_text[:50]}...">'
+                    f'{icon} {source[:15]}'
+                    f'</a>'
+                )
+                seen_docs.add(doc_index)
+        
+        # Add badges to the end of the bullet
+        if badges:
+            return f'{bullet_text} {" ".join(badges)}'
+        else:
+            return bullet_text
+    
+    def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+        """Generate analysis using Claude Sonnet 4 with Citations API and fallback."""
+        
+        try:
+            # Try Citations API first
+            return generate_claude_analysis_with_citations(company, articles)
+        except Exception as e:
+            logger.warning(f"Citations API failed: {e}, falling back to manual system")
+            return generate_claude_analysis_manual(company, articles)
+
+    def generate_claude_analysis_manual(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+        """Fallback to original manual citation system"""
+        anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        
+        # Prepare articles as document blocks for Citations API
+        document_blocks = []
+        article_index_map = {}  # Map document index to article data
+
+        for i, article_item in enumerate(articles[:30]):
+            content = f"Title: {article_item['title']}\n"
+            content += f"Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
+            content += f"Source: {article_item['source']}\n"
+            content += f"Published: {article_item.get('published', '')}\n"
+            
+            if article_item.get('source_type') == 'alphavantage_premium':
+                content += f"Sentiment: {article_item.get('sentiment_label', 'Neutral')} ({article_item.get('sentiment_score', 0):.3f})\n"
+                content += f"Relevance: {article_item.get('relevance_score', 0):.3f}\n"
+            
+            # Store mapping for later citation processing
+            article_index_map[i] = {
+                'article': article_item,
+                'url': article_item.get('link', '#'),
+                'source': article_item.get('source', 'Unknown'),
+                'title': article_item.get('title', 'Unknown'),
+                'source_type': article_item.get('source_type', 'google_search')
+            }
+            
+            document_blocks.append({
+                "type": "document",
+                "source": {
+                    "type": "text",
+                    "media_type": "text/plain", 
+                    "data": content
+                },
+                "citations": {"enabled": True},
+                "title": f"{article_item['source']} - {article_item['title'][:50]}..."
+            })
+
+        # Create enhanced analysis prompt (your existing enhanced prompt without manual citations)
+        analysis_prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors.
+
+    **CRITICAL: Use the provided source documents to support all claims. Claude's Citations API will automatically cite relevant sources.**
+
+    ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
+
+    **CRITICAL FORMATTING REQUIREMENTS:**
+    - Use EXACTLY these section headers: "**EXECUTIVE SUMMARY**", "**INVESTOR INSIGHTS**", "**CATALYSTS & RISKS**"
+    - Start each bullet with a bullet point symbol: "•"
+    - Each section must have exactly 4-5 bullets
+
+    **CRITICAL WRITING REQUIREMENTS:**
+    1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
+    2. **Source-Grounded Analysis**: Support all claims with information from the provided documents
+    3. **Accessible Language**: Maintain analytical precision but use clear, readable language that flows naturally
+    4. **Quantified Insights**: Include specific metrics and probability estimates, but weave them into compelling narratives
+    5. **Professional Tone**: Write like you're briefing a client, not generating a technical report
+
+    **EXECUTIVE SUMMARY** (Strategic & Financial Impact)
+    Create 4-5 bullets that tell the strategic story of {company} with quantified impacts.
+
+    **INVESTOR INSIGHTS** (Valuation & Market Dynamics)
+    Create 4-5 bullets that weave valuation analysis into compelling market stories.
+
+    **CATALYSTS & RISKS** (Probability-Weighted Analysis)
+    Create 4-5 bullets that present catalysts and risks as investment decision factors.
+
+    Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling, grounded in the provided source documents."""
+
+        # Create message content with document blocks + text prompt
+        message_content = document_blocks + [{
+            "type": "text",
+            "text": analysis_prompt
+        }]
+
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-20250514", 
+            max_tokens=7500,
+            temperature=0.07,
+            messages=[{
+                "role": "user",
+                "content": message_content
+            }]
+        )
+        
+        # Process response with native citations
+        analysis_text = ""
+        citation_blocks = []
+
+        # Extract text and citations from response
+        for content_block in response.content:
+            if content_block.type == "text":
+                analysis_text += content_block.text
+                
+                # Check if this specific text block has citations
+                if hasattr(content_block, 'citations') and content_block.citations:
+                    citation_blocks.append({
+                        'text': content_block.text,
+                        'citations': content_block.citations
+                    })
+
+        logger.info(f"Found {len(citation_blocks)} text blocks with citations")
+
+        # Parse structured analysis from combined text
+        initial_analysis = parse_analysis_response(analysis_text)
+
+        # Convert native citations to HTML badges with proper article mapping
+        final_analysis = process_native_citations(initial_analysis, citation_blocks, article_index_map)
+
+        logger.info(f"Claude analysis with native citations generated: {len(analysis_text)} chars")
+        return final_analysis
+
+    def convert_native_citations_to_badges(bullet_text: str, citation_lookup: Dict, 
+                                        article_index_map: Dict) -> str:
+        """Convert native citations to HTML badges by matching text content."""
+        
+        # Find citations that might apply to this bullet
+        applicable_citations = []
+        
+        for cited_text, citations in citation_lookup.items():
+            # Check if any part of the cited text appears in this bullet
+            if any(word in bullet_text.lower() for word in cited_text.lower().split() if len(word) > 3):
+                applicable_citations.extend(citations)
+        
+        if not applicable_citations:
+            return bullet_text
+        
+        # Build source badges from citations
+        badges = []
+        seen_articles = set()
+        
+        for citation in applicable_citations[:3]:  # Limit to 3 citations
+            doc_index = citation.document_index
+            
+            if doc_index in article_index_map and doc_index not in seen_articles:
+                article = article_index_map[doc_index]
                 source = article.get('source', 'Unknown')
                 link = article.get('link', '#')
                 
+                # Determine badge style based on source type
+                if article.get('source_type') == 'alphavantage_premium':
+                    badge_class = 'bg-purple'
+                    icon = '<i class="fas fa-brain"></i>'
+                elif article.get('source_type') == 'nyt_api':
+                    badge_class = 'bg-warning'
+                    icon = '<i class="fas fa-newspaper"></i>'
+                elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
+                    badge_class = 'bg-success'
+                    icon = '<i class="fas fa-crown"></i>'
+                else:
+                    badge_class = 'bg-secondary'
+                    icon = '<i class="fas fa-link"></i>'
+                
                 badges.append(
                     f'<a href="{link}" target="_blank" rel="noopener" '
-                    f'class="badge bg-primary text-decoration-none source-badge" '
-                    f'title="Source: {source}">'
-                    f'<i class="fas fa-link"></i> {source[:12]}'
+                    f'class="badge {badge_class} text-decoration-none source-badge" '
+                    f'title="Source: {source} | Cited: {citation.cited_text[:50]}...">'
+                    f'{icon} {source[:15]}'
                     f'</a>'
                 )
-            
-            return " ".join(badges)
+                seen_articles.add(doc_index)
         
-        # Process both formats
-        bullet = re.sub(cite_pattern, replace_cite_tags, bullet)
-        bullet = re.sub(sources_pattern, replace_sources, bullet)
-        
-        return bullet
+        # Append badges to bullet text
+        if badges:
+            return f'{bullet_text} {" ".join(badges)}'
+        else:
+            return bullet_text
 
     def _create_improvement_summary(self, validation_result: Dict) -> Dict[str, Any]:
         """Create summary of improvements made."""
@@ -2233,81 +2547,6 @@ def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Dict[str, 
         logger.error(f"OpenAI analysis failed: {openai_error}")
         return create_error_summaries(company, str(openai_error))
 
-def process_analysis_source_links(analysis: Dict[str, List[str]], articles: List[Dict]) -> Dict[str, List[str]]:
-    """Convert [Sources: X,Y,Z] references to clickable HTML badges."""
-    import re
-    
-    processed_analysis = {}
-    
-    for section_key, bullets in analysis.items():
-        processed_bullets = []
-        
-        for bullet in bullets:
-            # ✅ FIX: Look for [Sources: X,Y,Z] pattern instead of <cite> tags
-            source_pattern = r'\[Sources:\s*([\d,\s]+)\]'
-            
-            def replace_sources(match):
-                indices_str = match.group(1)
-                
-                # Parse article numbers
-                article_numbers = []
-                for index_part in indices_str.split(','):
-                    index_part = index_part.strip()
-                    if index_part.isdigit():
-                        article_numbers.append(int(index_part))
-                
-                # Remove duplicates and limit to 3 sources
-                article_numbers = list(set(article_numbers))[:3]
-                
-                # Build source badges HTML
-                source_badges = []
-                for num in article_numbers:
-                    article_idx = num - 1  # Convert to 0-based index
-                    if 0 <= article_idx < len(articles):
-                        article = articles[article_idx]
-                        source = article.get('source', 'Unknown')
-                        link = article.get('link', '#')
-                        
-                        # Determine badge style based on source type
-                        if article.get('source_type') == 'alphavantage_premium':
-                            badge_class = 'bg-purple'
-                            icon = '<i class="fas fa-brain"></i>'
-                        elif article.get('source_type') == 'nyt_api':
-                            badge_class = 'bg-warning'
-                            icon = '<i class="fas fa-newspaper"></i>'
-                        elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
-                            badge_class = 'bg-success'
-                            icon = '<i class="fas fa-crown"></i>'
-                        else:
-                            badge_class = 'bg-secondary'
-                            icon = '<i class="fas fa-link"></i>'
-                        
-                        # Create compact badge HTML
-                        source_badges.append(
-                            f'<a href="{link}" target="_blank" rel="noopener" '
-                            f'class="badge {badge_class} text-decoration-none source-badge" '
-                            f'title="Source: {source}">'
-                            f'{icon} {source[:15]}{"..." if len(source) > 15 else ""}'
-                            f'</a>'
-                        )
-                    else:
-                        logger.warning(f"Skipping invalid citation {num} (range: 1-{len(articles)})")
-                        continue
-                
-                # Return badges HTML or empty string if no valid sources
-                if source_badges:
-                    return ' '.join(source_badges)
-                else:
-                    return ''
-            
-            # Process all [Sources: X,Y,Z] patterns in the bullet
-            processed_bullet = re.sub(source_pattern, replace_sources, bullet)
-            processed_bullets.append(processed_bullet)
-        
-        processed_analysis[section_key] = processed_bullets
-    
-    return processed_analysis
-
 def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
     """Generate analysis using Claude Sonnet 4."""
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -2331,51 +2570,45 @@ def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, Li
     for i, article_item in enumerate(articles[:30], 1):
         article_source_info_for_prompt += f"Article {i}: Source - {article_item.get('source', 'N/A')}, Title - \"{article_item.get('title', 'N/A')[:50]}...\"\n"
 
-    # --- PREPARE article_text_for_promptSTRING FOR THE PROMPT ---
-    article_text_for_prompt = "" # Use a different variable name for clarity
-    for i, article_item in enumerate(articles[:30], 1):
-        source_type = article_item.get('source_type', 'google_search')
+    # Prepare articles as document blocks for Citations API
+    document_blocks = []
+    article_index_map = {}  # Map document index to original article
 
-        if source_type == 'alphavantage_premium':
-            sentiment_label = article_item.get('sentiment_label', 'Neutral')
-            sentiment_score = article_item.get('sentiment_score', 0)
-            relevance_score = article_item.get('relevance_score', 0)
-            article_text_for_prompt += f"\n{i}. [ALPHAVANTAGE+SENTIMENT] {article_item['title']}\n"
-            article_text_for_prompt += f"   Source: {article_item['source']} | Sentiment: {sentiment_label} ({sentiment_score:.3f}) | Relevance: {relevance_score:.3f}\n"
-            article_text_for_prompt += f"   Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
-        elif source_type == 'nyt_api':
-            article_text_for_prompt += f"\n{i}. [NYT_PREMIUM] {article_item['title']}\n"
-            article_text_for_prompt += f"   Source: {article_item['source']} (NYT Editorial Quality)\n"
-            article_text_for_prompt += f"   Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
-        else:
-            article_text_for_prompt += f"\n{i}. [PREMIUM_SOURCE] {article_item['title']}\n"
-            article_text_for_prompt += f"   Source: {article_item['source']}\n"
-            article_text_for_prompt += f"   Content: {article_item.get('snippet', '')}\n"
-        article_text_for_prompt += f"   Link: {article_item['link']}\n"
+    for i, article_item in enumerate(articles[:30]):
+        content = f"Title: {article_item['title']}\n"
+        content += f"Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
+        content += f"Source: {article_item['source']}\n"
+        content += f"Published: {article_item.get('published', '')}\n"
+        
+        if article_item.get('source_type') == 'alphavantage_premium':
+            content += f"Sentiment: {article_item.get('sentiment_label', 'Neutral')} ({article_item.get('sentiment_score', 0):.3f})\n"
+            content += f"Relevance: {article_item.get('relevance_score', 0):.3f}\n"
+        
+        # ✅ CRITICAL: Store the original article data for citation mapping
+        article_index_map[i] = {
+            'article': article_item,
+            'url': article_item.get('link', '#'),
+            'source': article_item.get('source', 'Unknown'),
+            'title': article_item.get('title', 'Unknown'),
+            'source_type': article_item.get('source_type', 'google_search')
+        }
+        
+        document_blocks.append({
+            "type": "document",
+            "source": {
+                "type": "text",
+                "media_type": "text/plain", 
+                "data": content
+            },
+            "citations": {"enabled": True},
+            "title": f"{article_item['source']} - {article_item['title'][:50]}..."
+        })
 
     
     # Create prompt
-    prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors who value both analytical precision AND clear, compelling narratives. Your analysis will be read by portfolio managers making investment decisions.
+    analysis_prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors.
 
-🚨 CRITICAL: Every bullet point MUST end with [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
-
-COMPREHENSIVE DATA INTELLIGENCE ({len(articles[:30])} articles with FULL context):
-{article_text_for_prompt}
-
-**MANDATORY SOURCE CITATION FORMAT:**
-Every single bullet point must end with [Sources: X,Y,Z] where X,Y,Z are article numbers.
-Examples:
-- "Company shows strong growth in Q4 earnings [Sources: 1,5,8]"
-- "Analyst upgrades price target to $150 [Sources: 3,12]"
-- "New product launch expected in Q2 2025 [Sources: 7,15,22]"
-
-{article_source_info_for_prompt}
-
-SOURCE QUALITY METRICS (for your awareness):
-- Total Articles Used: {len(articles[:30])}
-- Premium Sources (Bloomberg/Reuters/WSJ/FT/NYT/CNBC/MarketWatch): {premium_count} ({premium_count/len(articles[:30])*100:.1f}% if articles else 0%)
-- AlphaVantage (Full Content + Sentiment): {alphavantage_count}
-- Source Distribution: {source_type_counts}
+**CRITICAL: Use the provided source documents to support all claims. Claude's Citations API will automatically cite relevant sources.**
 
 ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 
@@ -2386,19 +2619,18 @@ ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
 
 **CRITICAL WRITING REQUIREMENTS:**
 1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
-2. **Explicit Source Attribution**: Always cite sources using [Sources: X,Y,Z] format at the end of each bullet
+2. **Source-Grounded Analysis**: Support all claims with information from the provided documents
 3. **Accessible Language**: Maintain analytical precision but use clear, readable language that flows naturally
 4. **Quantified Insights**: Include specific metrics and probability estimates, but weave them into compelling narratives
 5. **Professional Tone**: Write like you're briefing a client, not generating a technical report
 
 **EXECUTIVE SUMMARY** (Strategic & Financial Impact - Write as compelling investment thesis)
-Create 4-5 bullets that tell the strategic story of {company} with quantified impacts and clear source attribution:
+Create 4-5 bullets that tell the strategic story of {company} with quantified impacts:
 
 - Start each bullet with strategic context, then layer in specific financial metrics
 - Include timeline estimates and probability assessments naturally woven into the narrative
-- Always end with source references: [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
 - Use sophisticated tags but make the content accessible: [STRATEGY], [FINANCIAL_IMPACT], [EXECUTION_RISK], [VALUE_CREATION], [MANAGEMENT_QUALITY]
-- Example style: "[STRATEGY] {company}'s expansion into [specific area] represents a significant strategic shift that could drive [specific financial impact with range] over [timeline], with [confidence level] probability of success based on management guidance and market analysis [Sources: 1,5,8]"
+- Example style: "[STRATEGY] {company}'s expansion into [specific area] represents a significant strategic shift that could drive [specific financial impact with range] over [timeline], with [confidence level] probability of success based on management guidance and market analysis"
 
 **INVESTOR INSIGHTS** (Valuation & Market Dynamics - Write as investment analysis narrative)
 Create 4-5 bullets that weave valuation analysis into compelling market stories:
@@ -2407,9 +2639,8 @@ Create 4-5 bullets that weave valuation analysis into compelling market stories:
 - Connect analyst consensus and price targets to underlying business drivers
 - Correlate sentiment analysis with fundamental developments in a readable way
 - Include competitive positioning as part of investment thesis, not isolated data points
-- Always end with source references: [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
 - Use tags: [VALUATION], [PEER_COMPARISON], [SENTIMENT_ANALYSIS], [TECHNICAL], [INSTITUTIONAL_FLOW]
-- Example style: "[VALUATION] Trading at [specific metrics] versus peers, {company} appears [undervalued/fairly valued/overvalued] based on [specific analysis methodology]. Recent analyst updates suggest [price target range] reflecting [specific business drivers], with sentiment analysis indicating [market sentiment context] [Sources: 3,7,12]"
+- Example style: "[VALUATION] Trading at [specific metrics] versus peers, {company} appears [undervalued/fairly valued/overvalued] based on [specific analysis methodology]. Recent analyst updates suggest [price target range] reflecting [specific business drivers], with sentiment analysis indicating [market sentiment context]"
 
 **CATALYSTS & RISKS** (Probability-Weighted Analysis with Investment Context)
 Create 4-5 bullets that present catalysts and risks as investment decision factors:
@@ -2417,37 +2648,30 @@ Create 4-5 bullets that present catalysts and risks as investment decision facto
 - Frame each catalyst/risk in terms of investment impact and timeline, not just technical probability
 - Provide specific dates and probability estimates but explain the investment rationale
 - Connect technical analysis and options flow to fundamental business developments
-- Always end with source references: [Sources: X,Y,Z] using article numbers 1-{len(articles[:30])}
 - Use tags: [CATALYST], [EVENT_RISK], [REGULATORY], [MACRO_SENSITIVITY], [TECHNICAL_LEVELS]
-- Example style: "[CATALYST] The upcoming [specific event/announcement] scheduled for [date] presents a [upside/downside] catalyst with [probability estimate] likelihood of [specific financial impact]. This catalyst is particularly significant because [business context], with options market positioning suggesting [market expectations] [Sources: 5,9,15]"
+- Example style: "[CATALYST] The upcoming [specific event/announcement] scheduled for [date] presents a [upside/downside] catalyst with [probability estimate] likelihood of [specific financial impact]. This catalyst is particularly significant because [business context], with options market positioning suggesting [market expectations]"
 
 **ENHANCED REQUIREMENTS FOR SUPERIOR READABILITY:**
 
-1. **Source Attribution Excellence**: Every bullet must end with [Sources: X,Y,Z] references
-   - Use article numbers 1-{len(articles[:30])} from the provided list
-   - Include 1-3 most relevant article numbers per bullet
-   - When multiple sources support a point, list them: [Sources: 2,7,11]
-   - When sources provide context, reference them appropriately
-
-2. **Narrative Flow Mastery**: 
+1. **Narrative Flow Mastery**: 
    - Begin each bullet with strategic context before diving into metrics
    - Connect quantitative insights to broader business implications
    - Use transition phrases to create smooth flow between technical and strategic points
-   - End bullets with forward-looking implications and source references
+   - End bullets with forward-looking implications
 
-3. **Quantification with Context**:
+2. **Quantification with Context**:
    - Always provide ranges and confidence intervals: "15-25% upside with 70% confidence"
    - Include timeline specificity: "expected by Q3 2025"
    - Connect metrics to business drivers: "driven by market share expansion in [specific segment]"
 
-4. **Professional Investment Commentary Style**:
+3. **Professional Investment Commentary Style**:
    - Write as if briefing a sophisticated investor
    - Use active voice and confident language
    - Avoid overly technical jargon without context
    - Maintain analytical rigor while ensuring accessibility
 
 **CROSS-SOURCE VALIDATION REQUIREMENTS**:
-- When multiple sources provide similar information, synthesize and reference all relevant sources
+- When multiple sources provide similar information, synthesize and reference all relevant information
 - When sources conflict, acknowledge differences and provide your analytical view
 - Highlight unique insights from premium sources (Bloomberg, Reuters, WSJ)
 - Leverage AlphaVantage sentiment data as supporting evidence for fundamental themes
@@ -2455,31 +2679,53 @@ Create 4-5 bullets that present catalysts and risks as investment decision facto
 **FINAL QUALITY CHECK**:
 Each bullet should pass these tests:
 ✓ Does it tell a clear story that advances the investment thesis?
-✓ Does it end with [Sources: X,Y,Z] referencing supporting articles?
 ✓ Would a portfolio manager understand the investment implications?
 ✓ Is the language accessible while maintaining analytical depth?
 ✓ Do the quantified estimates have proper context and confidence levels?
 
-**SOURCE REFERENCE EXAMPLES:**
-{article_source_info_for_prompt}
+Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling, grounded in the provided source documents."""
+    
+    # Create message content with document blocks + text prompt
+    message_content = document_blocks + [{
+        "type": "text",
+        "text": analysis_prompt
+    }]
 
-Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling and transparent source attribution using [Sources: X,Y,Z] format."""
     response = anthropic_client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-20250514", 
         max_tokens=7500,
         temperature=0.07,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{
+            "role": "user",
+            "content": message_content
+        }]
     )
     
-    analysis_text_response = response.content[0].text
-    logger.info(f"Claude Sonnet 4 analysis generated: {len(analysis_text_response)} chars")
+    # Process response with native citations
+    analysis_text = ""
+    citation_blocks = []
 
-    # Parse the initial response
-    initial_analysis = parse_analysis_response(analysis_text_response)
-    
-    # ✅ NEW: Process source links
-    final_analysis = process_analysis_source_links(initial_analysis, articles)
-    
+    # ✅ CORRECTED: Extract all text and citations properly
+    for content_block in response.content:
+        if content_block.type == "text":
+            analysis_text += content_block.text
+            
+            # ✅ Check if this specific text block has citations
+            if hasattr(content_block, 'citations') and content_block.citations:
+                citation_blocks.append({
+                    'text': content_block.text,
+                    'citations': content_block.citations
+                })
+
+    logger.info(f"Found {len(citation_blocks)} text blocks with citations")
+
+    # Parse structured analysis from combined text
+    initial_analysis = parse_analysis_response(analysis_text)
+
+    # ✅ Convert native citations to HTML badges with proper article mapping
+    final_analysis = process_native_citations(initial_analysis, citation_blocks, article_index_map)
+
+    logger.info(f"Claude analysis with native citations generated: {len(analysis_text)} chars")
     return final_analysis
 
 def generate_openai_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
