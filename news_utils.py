@@ -395,9 +395,9 @@ class ClaudeWebSearchEngine:
                 logger.info(f"🔄 Creating fresh client for attempt {attempt} (reset conversation context)")
                 self.client = self._create_fresh_client()
             
-            # Use adaptive article preparation
-            optimized_articles = self._prepare_articles_for_validation_ADAPTIVE(articles, company)
-            
+            # Use same articles to maintain citation consistency
+            optimized_articles = articles[:18]  # Limit count but maintain order/numbering
+
             # Create validation prompt
             validation_prompt = self._create_web_search_validation_prompt(
                 company, analysis, optimized_articles, attempt
@@ -1201,7 +1201,7 @@ class QualityValidationEngine:
         if revised_analysis and meaningful_improvement:
             # ✅ FIX: Process citations in revised analysis before using it
             processed_revised_analysis = self._process_revised_analysis_citations(
-                revised_analysis, original_articles
+                revised_analysis, original_articles[:18]  # Use same subset as validation
             )
             final_analysis = processed_revised_analysis
             used_enhanced = True
@@ -1293,9 +1293,7 @@ class QualityValidationEngine:
                     # Handle "33-1" format - take first number
                     try:
                         num = int(index_part.split('-')[0])
-                        # ✅ FIX: Map out-of-range indices to valid range
-                        if num > len(articles):
-                            num = min(num, len(articles))
+                        # Skip invalid citations instead of randomizing
                         if 1 <= num <= len(articles):
                             article_numbers.append(num)
                     except (ValueError, IndexError):
@@ -2292,6 +2290,9 @@ def process_analysis_source_links(analysis: Dict[str, List[str]], articles: List
                             f'{icon} {source[:15]}{"..." if len(source) > 15 else ""}'
                             f'</a>'
                         )
+                    else:
+                        logger.warning(f"Skipping invalid citation {num} (range: 1-{len(articles)})")
+                        continue
                 
                 # Return badges HTML or empty string if no valid sources
                 if source_badges:

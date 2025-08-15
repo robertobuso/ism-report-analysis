@@ -301,10 +301,10 @@ def get_news_summary():
         # Call the enhanced orchestration function (existing code)
         results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
         
-        # Handle case where no articles found (existing code)
+        # Handle case where no articles found
         if not results['success']:
-            # ... existing error handling code ...
-            pass
+            error_message = results.get('error', 'No articles found. Try a different company or date range.')
+            return render_template("news_simple.html", error=error_message)
         
         # Process successful results for rendering (existing code)
         articles = results['articles']
