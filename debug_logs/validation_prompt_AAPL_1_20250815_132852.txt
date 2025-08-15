@@ -1,0 +1,10 @@
+=== VALIDATION PROMPT DEBUG ===
+Company: AAPL
+Attempt: 1
+Timestamp: 2025-08-15 13:28:52.718487
+Characters: 0
+Estimated tokens: 0
+Lines: 0
+Words: 0
+==================================================
+

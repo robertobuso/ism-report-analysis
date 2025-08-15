@@ -1,0 +1,11 @@
+=== VALIDATION PROMPT DEBUG ===
+Company: AAPL
+Attempt: 1
+Timestamp: 2025-08-15 12:14:19.193374
+Characters: 60
+Estimated tokens: 15
+Lines: 0
+Words: 7
+==================================================
+
+Citations API validation prompt (content in message_content)

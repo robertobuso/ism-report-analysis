@@ -383,49 +383,101 @@ class ClaudeWebSearchEngine:
             
             return prepared_articles
 
-    async def validate_with_web_search(self, 
-                                 company: str, 
-                                 analysis: Dict[str, List[str]], 
-                                 articles: List[Dict],
-                                 attempt: int = 1) -> Dict[str, Any]:
-        """Enhanced quality validation with CLEAN DEBUG LOGGING."""
+    async def validate_with_web_search(
+        self, company: str, analysis: Dict[str, List[str]], articles: List[Dict], attempt: int = 1
+    ) -> Dict[str, Any]:
         try:
-            # Create fresh client for retry attempts
             if attempt > 1:
                 logger.info(f"🔄 Creating fresh client for attempt {attempt} (reset conversation context)")
                 self.client = self._create_fresh_client()
-            
-            # Use same articles to maintain citation consistency
-            optimized_articles = articles[:18]  # Limit count but maintain order/numbering
 
-            # Try Citations API validation first, fallback to manual
+            optimized_articles = articles[:18]
+
+            validation_prompt = ""
+            uses_citations_api = False
+            article_index_map = {}
+
             try:
                 message_content, article_index_map = self._create_web_search_validation_prompt_with_citations(
                     company, analysis, optimized_articles, attempt
                 )
                 uses_citations_api = True
+                logger.info(f"📝 CITATIONS API PATH TAKEN:")
+                logger.info(f"   Message content blocks: {len(message_content)}")
+                logger.info(f"   Article index map size: {len(article_index_map)}")
             except Exception as e:
                 logger.warning(f"Citations API validation failed, using manual: {e}")
                 validation_prompt = self._create_web_search_validation_prompt(
                     company, analysis, optimized_articles, attempt
                 )
                 message_content = [{"type": "text", "text": validation_prompt}]
-                article_index_map = {}
                 uses_citations_api = False
-            
-            # ✅ CLEAN DEBUG: Only call methods that exist
-            self._debug_log_prompt_details(validation_prompt, attempt, company)
-            
-            # Call Claude with logging
-            response = await self._call_claude_with_web_search_DEBUG(validation_prompt, attempt)
-            
-            # Parse and return results
+                self._debug_log_prompt_details(validation_prompt, attempt, company)
+
+            # Make the call
+            response = await self._call_claude_with_citations_api(message_content, attempt)
+
+            # ✅ RETURN the parsed result (this was missing)
             return self._parse_web_search_response(response)
+
+        except Exception as e:
+            logger.error(f"❌ Citations API validation completely failed: {e}")
+            logger.error(f"   Exception type: {type(e).__name__}")
+            return {
+                'overall_score': 5.0,
+                'overall_verdict': 'fail',
+                'revised_analysis': {},
+                'enhancements_made': [f'Validation failed: {str(e)}'],
+                'validation_metadata': {},
+                'critical_issues': ['Citations API validation failed'],
+                'web_search_metadata': {
+                    'searches_performed': 0,
+                    'web_search_enabled': False,
+                    'error': str(e)
+                }
+            }
+   
+    async def _call_claude_with_citations_api(self, message_content: List, attempt: int):
+        """Call Claude with Citations API message format."""
+        
+        try:
+            logger.info(f"🌐 CLAUDE CITATIONS API CALL - Attempt {attempt}")
+            logger.info(f"   Message content blocks: {len(message_content)}")
+            
+            loop = asyncio.get_event_loop()
+            
+            # Tools for Citations API call
+            tools = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 10}] if attempt == 1 else []
+            
+            response = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: self.client.messages.create(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=8000,
+                        temperature=0.05,
+                        messages=[{"role": "user", "content": message_content}],  # ✅ Use message_content directly
+                        tools=tools
+                    )
+                ),
+                timeout=360.0
+            )
+            
+            # Log response details
+            if hasattr(response, 'content'):
+                logger.info(f"📦 CITATIONS API RESPONSE:")
+                logger.info(f"   Content blocks: {len(response.content)}")
+                for i, block in enumerate(response.content):
+                    if hasattr(block, 'citations'):
+                        citations_count = len(block.citations) if block.citations else 0
+                        logger.info(f"   Block {i}: citations count={citations_count}")
+            
+            return response
             
         except Exception as e:
-            logger.error(f"Web search validation failed: {e}")
-            return self._create_fallback_result(analysis, str(e))
-   
+            logger.error(f"🚨 CITATIONS API CALL ERROR - Attempt {attempt}: {e}")
+            raise e
+    
     # 1. WEB SEARCH TOOL DEFINITION - Could be massive
     def debug_web_search_tool_tokens():
         """Check if the web search tool definition is huge."""
@@ -666,6 +718,11 @@ class ClaudeWebSearchEngine:
 
             logger.info(f"🛠️ Tools for attempt {attempt}: {tools if tools else 'None (disabled to avoid token overload)'}")
 
+            # ✅ ADD: Log what we're actually sending
+            logger.info(f"🌐 SENDING TO CLAUDE - Attempt {attempt}")
+            logger.info(f"   Prompt length: {len(prompt)} chars")
+            logger.info(f"   Prompt preview: {prompt[:200]}...")
+
             response = await asyncio.wait_for(
                 loop.run_in_executor(
                     None,
@@ -673,7 +730,7 @@ class ClaudeWebSearchEngine:
                         model="claude-sonnet-4-20250514",
                         max_tokens=8000,
                         temperature=0.05,
-                        messages=[{"role": "user", "content": message_content}],
+                        messages=[{"role": "user", "content": prompt}],
                         tools=tools  # <- dynamic based on attempt
                     )
                 ),
@@ -689,6 +746,19 @@ class ClaudeWebSearchEngine:
                 logger.info(f"   Output tokens: {getattr(response.usage, 'output_tokens', 'unknown')}")
                 logger.info(f"   Total tokens: {getattr(response.usage, 'total_tokens', 'unknown')}")
             
+            # ✅ ADD: Log what Claude returns
+            logger.info(f"📦 CLAUDE RESPONSE STRUCTURE:")
+            logger.info(f"   Response type: {type(response)}")
+            logger.info(f"   Has content: {hasattr(response, 'content')}")
+            
+            if hasattr(response, 'content'):
+                logger.info(f"   Content blocks: {len(response.content)}")
+                for i, block in enumerate(response.content):
+                    logger.info(f"   Block {i}: type={getattr(block, 'type', 'unknown')}")
+                    if hasattr(block, 'citations'):
+                        citations_count = len(block.citations) if block.citations else 0
+                        logger.info(f"   Block {i}: citations count={citations_count}")
+
             return response
             
         except Exception as e:
@@ -976,7 +1046,6 @@ Focus on IMPROVEMENT MEASUREMENT - show how web search enhanced the analysis qua
 
         return message_content, article_index_map
 
-
     async def _call_claude_with_web_search(self, prompt: str):
         """Call Claude Sonnet 4 with web search - safe domain list."""
         
@@ -1012,19 +1081,74 @@ Focus on IMPROVEMENT MEASUREMENT - show how web search enhanced the analysis qua
         
         logger.info(f"🐛 DIAGNOSTIC: _parse_web_search_response called")
         
+        # Initialize variables that might be used later
+        uses_citations_api = False
+        citation_blocks = []
+        article_index_map = {}
+        
         try:
             # Extract content (existing code)
             final_content = ""
-            if hasattr(response, 'content') and isinstance(response.content, list):
-                for content_block in response.content:
-                    if hasattr(content_block, 'type') and content_block.type == "text":
-                        final_content += content_block.text
             
-            # Parse JSON (existing code)
+            if hasattr(response, 'content') and isinstance(response.content, list):
+                logger.info(f"   Found {len(response.content)} content blocks")
+                
+                for i, content_block in enumerate(response.content):
+                    if hasattr(content_block, 'type') and content_block.type == "text":
+                        block_text = content_block.text
+                        final_content += block_text
+                        
+                        # ✅ ADD: Check for citations
+                        if hasattr(content_block, 'citations'):
+                            has_citations = bool(content_block.citations)
+                            logger.info(f"   Block {i}: has citations = {has_citations}")
+                            
+                            if content_block.citations:
+                                citation_count = len(content_block.citations)
+                                logger.info(f"   Block {i}: {citation_count} citations found")
+                                
+                                citation_blocks.append({
+                                    'text': block_text,
+                                    'citations': content_block.citations
+                                })
+            
+            logger.info(f"📊 CITATION EXTRACTION SUMMARY:")
+            logger.info(f"   Total content length: {len(final_content)}")
+            logger.info(f"   Citation blocks: {len(citation_blocks)}")
+
+             # ✅ ADD THIS CRITICAL LOGGING - what did Claude actually return?
+            logger.info(f"🔍 CLAUDE RETURNED TEXT CONTENT:")
+            logger.info(f"   Length: {len(final_content)}")
+            logger.info(f"   First 500 chars: {repr(final_content[:500])}")
+            logger.info(f"   Last 200 chars: {repr(final_content[-200:])}")
+            
+            # Parse JSON with proper error handling
             json_start = final_content.find('{')
             json_end = final_content.rfind('}') + 1
+
+            if json_start == -1:
+                logger.error(f"❌ NO JSON FOUND - Claude returned pure text without JSON structure")
+                logger.error(f"   Full content: {repr(final_content[:500])}")
+                return self._create_simple_fallback()
+
             json_text = final_content[json_start:json_end]
-            result = json.loads(json_text)
+            logger.info(f"🔍 EXTRACTED JSON TEXT:")
+            logger.info(f"   JSON start position: {json_start}")
+            logger.info(f"   JSON end position: {json_end}")
+            logger.info(f"   JSON length: {len(json_text)}")
+
+            try:
+                result = json.loads(json_text)
+                if result is None:
+                    logger.error(f"❌ JSON parsing returned None")
+                    return self._create_simple_fallback()
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ JSON parsing failed: {e}")
+                logger.error(f"   Invalid JSON: {repr(json_text[:200])}")
+                return self._create_simple_fallback()
+            except Exception as e:
+                logger.error(f"❌ Unexpected error parsing JSON: {e}")
+                return self._create_simple_fallback()
             
             # ✅ NEW: Extract dual scoring data
             baseline = result.get('baseline_assessment', {})
@@ -1337,25 +1461,9 @@ class QualityValidationEngine:
         meaningful_improvement = score_delta >= 0.5 or len(web_searches) >= 3
 
         if revised_analysis and meaningful_improvement:
-            # ✅ FIX: Use native citations processing for quality validation too
-            # Create article mapping for validation subset
-            validation_article_map = {}
-            for i, article in enumerate(original_articles[:18]):
-                validation_article_map[i] = {
-                    'article': article,
-                    'url': article.get('link', '#'),
-                    'source': article.get('source', 'Unknown'),
-                    'title': article.get('title', 'Unknown'),
-                    'source_type': article.get('source_type', 'google_search')
-                }
-            
-            # Process native citations if the validation used Citations API
-            if validation_result.get('uses_citations_api', False):
-                citation_blocks = validation_result.get('citation_blocks', [])
-                final_analysis = process_native_citations(revised_analysis, citation_blocks, validation_article_map)
-            else:
-                # Fallback: if validation didn't use Citations API, use manual processing
-                final_analysis = process_analysis_source_links(revised_analysis, original_articles[:18])
+            # Use the enhanced analysis from quality validation as-is
+            # (Quality validation already processes citations when using Citations API)
+            final_analysis = revised_analysis
             
             used_enhanced = True
             logger.info(f"   📝 Using ENHANCED analysis for {company}")
@@ -1408,272 +1516,6 @@ class QualityValidationEngine:
             'enhanced': used_enhanced
         }
     
-    def process_native_citations(analysis: Dict[str, List[str]], citation_blocks: List, 
-                            article_index_map: Dict) -> Dict[str, List[str]]:
-        """Process Claude's native citations into HTML badges with proper article mapping."""
-        
-        processed_analysis = {}
-        
-        for section_key, bullets in analysis.items():
-            processed_bullets = []
-            
-            for bullet in bullets:
-                # Extract citations that apply to this bullet and convert to badges
-                processed_bullet = extract_and_convert_citations_for_bullet(
-                    bullet, citation_blocks, article_index_map
-                )
-                processed_bullets.append(processed_bullet)
-            
-            processed_analysis[section_key] = processed_bullets
-        
-        return processed_analysis
-
-    def extract_and_convert_citations_for_bullet(bullet_text: str, citation_blocks: List, 
-                                            article_index_map: Dict) -> str:
-        """Extract citations for a specific bullet and convert to HTML badges."""
-        
-        citations_for_bullet = []
-        
-        # Find citations where the cited text appears in this bullet
-        for block in citation_blocks:
-            if not block.get('citations'):
-                continue
-                
-            for citation in block['citations']:
-                cited_text = citation.cited_text.strip()
-                
-                # Check if the cited content is referenced in this bullet
-                # Use fuzzy matching since the bullet might be paraphrased
-                if (any(word in bullet_text.lower() for word in cited_text.lower().split() if len(word) > 4) or
-                    any(word in cited_text.lower() for word in bullet_text.lower().split() if len(word) > 4)):
-                    
-                    citations_for_bullet.append(citation)
-        
-        if not citations_for_bullet:
-            return bullet_text
-        
-        # Convert citations to HTML badges
-        badges = []
-        seen_docs = set()
-        
-        for citation in citations_for_bullet[:3]:  # Limit to 3 citations per bullet
-            doc_index = citation.document_index
-            
-            if doc_index in article_index_map and doc_index not in seen_docs:
-                article_data = article_index_map[doc_index]
-                
-                # ✅ NOW we have the original article data!
-                url = article_data['url']
-                source = article_data['source']
-                title = article_data['title']
-                source_type = article_data['source_type']
-                
-                # Create badge with proper styling
-                if source_type == 'alphavantage_premium':
-                    badge_class = 'bg-purple'
-                    icon = '<i class="fas fa-brain"></i>'
-                elif source_type == 'nyt_api':
-                    badge_class = 'bg-warning'
-                    icon = '<i class="fas fa-newspaper"></i>'
-                elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
-                    badge_class = 'bg-success'
-                    icon = '<i class="fas fa-crown"></i>'
-                else:
-                    badge_class = 'bg-secondary'
-                    icon = '<i class="fas fa-link"></i>'
-                
-                badges.append(
-                    f'<a href="{url}" target="_blank" rel="noopener" '
-                    f'class="badge {badge_class} text-decoration-none source-badge" '
-                    f'title="Source: {source} | {title[:50]}... | Cited: {citation.cited_text[:50]}...">'
-                    f'{icon} {source[:15]}'
-                    f'</a>'
-                )
-                seen_docs.add(doc_index)
-        
-        # Add badges to the end of the bullet
-        if badges:
-            return f'{bullet_text} {" ".join(badges)}'
-        else:
-            return bullet_text
-    
-    def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
-        """Generate analysis using Claude Sonnet 4 with Citations API and fallback."""
-        
-        try:
-            # Try Citations API first
-            return generate_claude_analysis_with_citations(company, articles)
-        except Exception as e:
-            logger.warning(f"Citations API failed: {e}, falling back to manual system")
-            return generate_claude_analysis_manual(company, articles)
-
-    def generate_claude_analysis_manual(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
-        """Fallback to original manual citation system"""
-        anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        
-        # Prepare articles as document blocks for Citations API
-        document_blocks = []
-        article_index_map = {}  # Map document index to article data
-
-        for i, article_item in enumerate(articles[:30]):
-            content = f"Title: {article_item['title']}\n"
-            content += f"Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
-            content += f"Source: {article_item['source']}\n"
-            content += f"Published: {article_item.get('published', '')}\n"
-            
-            if article_item.get('source_type') == 'alphavantage_premium':
-                content += f"Sentiment: {article_item.get('sentiment_label', 'Neutral')} ({article_item.get('sentiment_score', 0):.3f})\n"
-                content += f"Relevance: {article_item.get('relevance_score', 0):.3f}\n"
-            
-            # Store mapping for later citation processing
-            article_index_map[i] = {
-                'article': article_item,
-                'url': article_item.get('link', '#'),
-                'source': article_item.get('source', 'Unknown'),
-                'title': article_item.get('title', 'Unknown'),
-                'source_type': article_item.get('source_type', 'google_search')
-            }
-            
-            document_blocks.append({
-                "type": "document",
-                "source": {
-                    "type": "text",
-                    "media_type": "text/plain", 
-                    "data": content
-                },
-                "citations": {"enabled": True},
-                "title": f"{article_item['source']} - {article_item['title'][:50]}..."
-            })
-
-        # Create enhanced analysis prompt (your existing enhanced prompt without manual citations)
-        analysis_prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors.
-
-    **CRITICAL: Use the provided source documents to support all claims. Claude's Citations API will automatically cite relevant sources.**
-
-    ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
-
-    **CRITICAL FORMATTING REQUIREMENTS:**
-    - Use EXACTLY these section headers: "**EXECUTIVE SUMMARY**", "**INVESTOR INSIGHTS**", "**CATALYSTS & RISKS**"
-    - Start each bullet with a bullet point symbol: "•"
-    - Each section must have exactly 4-5 bullets
-
-    **CRITICAL WRITING REQUIREMENTS:**
-    1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
-    2. **Source-Grounded Analysis**: Support all claims with information from the provided documents
-    3. **Accessible Language**: Maintain analytical precision but use clear, readable language that flows naturally
-    4. **Quantified Insights**: Include specific metrics and probability estimates, but weave them into compelling narratives
-    5. **Professional Tone**: Write like you're briefing a client, not generating a technical report
-
-    **EXECUTIVE SUMMARY** (Strategic & Financial Impact)
-    Create 4-5 bullets that tell the strategic story of {company} with quantified impacts.
-
-    **INVESTOR INSIGHTS** (Valuation & Market Dynamics)
-    Create 4-5 bullets that weave valuation analysis into compelling market stories.
-
-    **CATALYSTS & RISKS** (Probability-Weighted Analysis)
-    Create 4-5 bullets that present catalysts and risks as investment decision factors.
-
-    Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling, grounded in the provided source documents."""
-
-        # Create message content with document blocks + text prompt
-        message_content = document_blocks + [{
-            "type": "text",
-            "text": analysis_prompt
-        }]
-
-        response = anthropic_client.messages.create(
-            model="claude-sonnet-4-20250514", 
-            max_tokens=7500,
-            temperature=0.07,
-            messages=[{
-                "role": "user",
-                "content": message_content
-            }]
-        )
-        
-        # Process response with native citations
-        analysis_text = ""
-        citation_blocks = []
-
-        # Extract text and citations from response
-        for content_block in response.content:
-            if content_block.type == "text":
-                analysis_text += content_block.text
-                
-                # Check if this specific text block has citations
-                if hasattr(content_block, 'citations') and content_block.citations:
-                    citation_blocks.append({
-                        'text': content_block.text,
-                        'citations': content_block.citations
-                    })
-
-        logger.info(f"Found {len(citation_blocks)} text blocks with citations")
-
-        # Parse structured analysis from combined text
-        initial_analysis = parse_analysis_response(analysis_text)
-
-        # Convert native citations to HTML badges with proper article mapping
-        final_analysis = process_native_citations(initial_analysis, citation_blocks, article_index_map)
-
-        logger.info(f"Claude analysis with native citations generated: {len(analysis_text)} chars")
-        return final_analysis
-
-    def convert_native_citations_to_badges(bullet_text: str, citation_lookup: Dict, 
-                                        article_index_map: Dict) -> str:
-        """Convert native citations to HTML badges by matching text content."""
-        
-        # Find citations that might apply to this bullet
-        applicable_citations = []
-        
-        for cited_text, citations in citation_lookup.items():
-            # Check if any part of the cited text appears in this bullet
-            if any(word in bullet_text.lower() for word in cited_text.lower().split() if len(word) > 3):
-                applicable_citations.extend(citations)
-        
-        if not applicable_citations:
-            return bullet_text
-        
-        # Build source badges from citations
-        badges = []
-        seen_articles = set()
-        
-        for citation in applicable_citations[:3]:  # Limit to 3 citations
-            doc_index = citation.document_index
-            
-            if doc_index in article_index_map and doc_index not in seen_articles:
-                article = article_index_map[doc_index]
-                source = article.get('source', 'Unknown')
-                link = article.get('link', '#')
-                
-                # Determine badge style based on source type
-                if article.get('source_type') == 'alphavantage_premium':
-                    badge_class = 'bg-purple'
-                    icon = '<i class="fas fa-brain"></i>'
-                elif article.get('source_type') == 'nyt_api':
-                    badge_class = 'bg-warning'
-                    icon = '<i class="fas fa-newspaper"></i>'
-                elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
-                    badge_class = 'bg-success'
-                    icon = '<i class="fas fa-crown"></i>'
-                else:
-                    badge_class = 'bg-secondary'
-                    icon = '<i class="fas fa-link"></i>'
-                
-                badges.append(
-                    f'<a href="{link}" target="_blank" rel="noopener" '
-                    f'class="badge {badge_class} text-decoration-none source-badge" '
-                    f'title="Source: {source} | Cited: {citation.cited_text[:50]}...">'
-                    f'{icon} {source[:15]}'
-                    f'</a>'
-                )
-                seen_articles.add(doc_index)
-        
-        # Append badges to bullet text
-        if badges:
-            return f'{bullet_text} {" ".join(badges)}'
-        else:
-            return bullet_text
-
     def _create_improvement_summary(self, validation_result: Dict) -> Dict[str, Any]:
         """Create summary of improvements made."""
         enhancements = validation_result.get('enhancements_made', [])
@@ -2548,6 +2390,191 @@ def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Dict[str, 
         return create_error_summaries(company, str(openai_error))
 
 def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+    """Generate analysis using Claude Sonnet 4 with Citations API and fallback."""
+    
+    try:
+        # Try Citations API first
+        return generate_claude_analysis_with_citations(company, articles)
+    except Exception as e:
+        logger.warning(f"Citations API failed: {e}, falling back to manual system")
+        return generate_claude_analysis_manual(company, articles)
+
+def generate_claude_analysis_manual(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+    """Fallback to original manual citation system"""
+    anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    
+    # Prepare articles as document blocks for Citations API
+    document_blocks = []
+    article_index_map = {}  # Map document index to article data
+
+    for i, article_item in enumerate(articles[:30]):
+        content = f"Title: {article_item['title']}\n"
+        content += f"Content: {article_item.get('full_content', article_item.get('snippet', ''))}\n"
+        content += f"Source: {article_item['source']}\n"
+        content += f"Published: {article_item.get('published', '')}\n"
+        
+        if article_item.get('source_type') == 'alphavantage_premium':
+            content += f"Sentiment: {article_item.get('sentiment_label', 'Neutral')} ({article_item.get('sentiment_score', 0):.3f})\n"
+            content += f"Relevance: {article_item.get('relevance_score', 0):.3f}\n"
+        
+        # Store mapping for later citation processing
+        article_index_map[i] = {
+            'article': article_item,
+            'url': article_item.get('link', '#'),
+            'source': article_item.get('source', 'Unknown'),
+            'title': article_item.get('title', 'Unknown'),
+            'source_type': article_item.get('source_type', 'google_search')
+        }
+        
+        document_blocks.append({
+            "type": "document",
+            "source": {
+                "type": "text",
+                "media_type": "text/plain", 
+                "data": content
+            },
+            "citations": {"enabled": True},
+            "title": f"{article_item['source']} - {article_item['title'][:50]}..."
+        })
+
+    # Create enhanced analysis prompt (your existing enhanced prompt without manual citations)
+    analysis_prompt = f"""You are a Managing Director of Equity Research at Goldman Sachs writing for institutional investors.
+
+**CRITICAL: Use the provided source documents to support all claims. Claude's Citations API will automatically cite relevant sources.**
+
+ENHANCED ANALYTICAL FRAMEWORK - Superior Depth with Accessible Communication:
+
+**CRITICAL FORMATTING REQUIREMENTS:**
+- Use EXACTLY these section headers: "**EXECUTIVE SUMMARY**", "**INVESTOR INSIGHTS**", "**CATALYSTS & RISKS**"
+- Start each bullet with a bullet point symbol: "•"
+- Each section must have exactly 4-5 bullets
+
+**CRITICAL WRITING REQUIREMENTS:**
+1. **Storytelling Flow**: Each bullet should read like professional investment commentary, not raw data
+2. **Source-Grounded Analysis**: Support all claims with information from the provided documents
+3. **Accessible Language**: Maintain analytical precision but use clear, readable language that flows naturally
+4. **Quantified Insights**: Include specific metrics and probability estimates, but weave them into compelling narratives
+5. **Professional Tone**: Write like you're briefing a client, not generating a technical report
+
+**EXECUTIVE SUMMARY** (Strategic & Financial Impact)
+Create 4-5 bullets that tell the strategic story of {company} with quantified impacts.
+
+**INVESTOR INSIGHTS** (Valuation & Market Dynamics)
+Create 4-5 bullets that weave valuation analysis into compelling market stories.
+
+**CATALYSTS & RISKS** (Probability-Weighted Analysis)
+Create 4-5 bullets that present catalysts and risks as investment decision factors.
+
+Generate exactly 4-5 substantive bullets per section that combine analytical excellence with compelling storytelling, grounded in the provided source documents."""
+
+    # Create message content with document blocks + text prompt
+    message_content = document_blocks + [{
+        "type": "text",
+        "text": analysis_prompt
+    }]
+
+    response = anthropic_client.messages.create(
+        model="claude-sonnet-4-20250514", 
+        max_tokens=7500,
+        temperature=0.07,
+        messages=[{
+            "role": "user",
+            "content": message_content
+        }]
+    )
+    
+    # Process response preserving Claude's native citation structure
+    final_analysis = {"executive": [], "investor": [], "catalysts": []}
+    current_section = None
+    
+    # Section detection patterns
+    section_patterns = {
+        "executive": re.compile(r".*executive\s+summary.*", re.IGNORECASE),
+        "investor": re.compile(r".*investor\s+insights.*", re.IGNORECASE),
+        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?).*", re.IGNORECASE)
+    }
+    
+    # Process each content block from Claude's response
+    for content_block in response.content:
+        if content_block.type == "text":
+            text = content_block.text
+            citations = getattr(content_block, 'citations', [])
+            
+            # Convert citations to HTML badges for this specific text block
+            if citations:
+                badges = []
+                seen_docs = set()
+                
+                for citation in citations[:3]:  # Limit to 3 citations per block
+                    doc_index = citation.document_index
+                    
+                    if doc_index in article_index_map and doc_index not in seen_docs:
+                        article_data = article_index_map[doc_index]
+                        
+                        url = article_data['url']
+                        source = article_data['source']
+                        source_type = article_data['source_type']
+                        
+                        # Create badge with proper styling
+                        if source_type == 'alphavantage_premium':
+                            badge_class = 'bg-purple'
+                            icon = '<i class="fas fa-brain"></i>'
+                        elif source_type == 'nyt_api':
+                            badge_class = 'bg-warning'
+                            icon = '<i class="fas fa-newspaper"></i>'
+                        elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
+                            badge_class = 'bg-success'
+                            icon = '<i class="fas fa-crown"></i>'
+                        else:
+                            badge_class = 'bg-secondary'
+                            icon = '<i class="fas fa-link"></i>'
+                        
+                        badges.append(
+                            f'<a href="{url}" target="_blank" rel="noopener" '
+                            f'class="badge {badge_class} text-decoration-none source-badge" '
+                            f'title="Source: {source} | Cited: {citation.cited_text[:50]}...">'
+                            f'{icon} {source[:15]}'
+                            f'</a>'
+                        )
+                        seen_docs.add(doc_index)
+                
+                # Append badges to this text block
+                if badges:
+                    text_with_badges = f'{text} {" ".join(badges)}'
+                else:
+                    text_with_badges = text
+            else:
+                text_with_badges = text
+            
+            # Parse this enhanced text block into bullet points
+            lines = text_with_badges.strip().split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Check for section headers
+                for section_name, pattern in section_patterns.items():
+                    if pattern.match(line):
+                        current_section = section_name
+                        break
+                else:
+                    # Process bullet points
+                    if line.startswith(('•', '-', '*')) and current_section:
+                        bullet = line.lstrip('•-* ').strip()
+                        if bullet and len(bullet) > 10:
+                            final_analysis[current_section].append(bullet)
+    
+    # Ensure each section has content
+    for section_name, bullets in final_analysis.items():
+        if not bullets:
+            final_analysis[section_name] = ["No significant developments identified in this category."]
+
+    logger.info(f"Claude analysis with preserved native citations: {len(str(final_analysis))} chars")
+    return final_analysis
+
+def generate_claude_analysis_with_citations(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
     """Generate analysis using Claude Sonnet 4."""
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     
@@ -2701,31 +2728,95 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
         }]
     )
     
-    # Process response with native citations
-    analysis_text = ""
-    citation_blocks = []
-
-    # ✅ CORRECTED: Extract all text and citations properly
+    # Process response preserving Claude's native citation structure
+    final_analysis = {"executive": [], "investor": [], "catalysts": []}
+    current_section = None
+    
+    # Section detection patterns
+    section_patterns = {
+        "executive": re.compile(r".*executive\s+summary.*", re.IGNORECASE),
+        "investor": re.compile(r".*investor\s+insights.*", re.IGNORECASE),
+        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?).*", re.IGNORECASE)
+    }
+    
+    # Process each content block from Claude's response
     for content_block in response.content:
         if content_block.type == "text":
-            analysis_text += content_block.text
+            text = content_block.text
+            citations = getattr(content_block, 'citations', [])
             
-            # ✅ Check if this specific text block has citations
-            if hasattr(content_block, 'citations') and content_block.citations:
-                citation_blocks.append({
-                    'text': content_block.text,
-                    'citations': content_block.citations
-                })
+            # Convert citations to HTML badges for this specific text block
+            if citations:
+                badges = []
+                seen_docs = set()
+                
+                for citation in citations[:3]:  # Limit to 3 citations per block
+                    doc_index = citation.document_index
+                    
+                    if doc_index in article_index_map and doc_index not in seen_docs:
+                        article_data = article_index_map[doc_index]
+                        
+                        url = article_data['url']
+                        source = article_data['source']
+                        source_type = article_data['source_type']
+                        
+                        # Create badge with proper styling
+                        if source_type == 'alphavantage_premium':
+                            badge_class = 'bg-purple'
+                            icon = '<i class="fas fa-brain"></i>'
+                        elif source_type == 'nyt_api':
+                            badge_class = 'bg-warning'
+                            icon = '<i class="fas fa-newspaper"></i>'
+                        elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
+                            badge_class = 'bg-success'
+                            icon = '<i class="fas fa-crown"></i>'
+                        else:
+                            badge_class = 'bg-secondary'
+                            icon = '<i class="fas fa-link"></i>'
+                        
+                        badges.append(
+                            f'<a href="{url}" target="_blank" rel="noopener" '
+                            f'class="badge {badge_class} text-decoration-none source-badge" '
+                            f'title="Source: {source} | Cited: {citation.cited_text[:50]}...">'
+                            f'{icon} {source[:15]}'
+                            f'</a>'
+                        )
+                        seen_docs.add(doc_index)
+                
+                # Append badges to this text block
+                if badges:
+                    text_with_badges = f'{text} {" ".join(badges)}'
+                else:
+                    text_with_badges = text
+            else:
+                text_with_badges = text
+            
+            # Parse this enhanced text block into bullet points
+            lines = text_with_badges.strip().split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Check for section headers
+                for section_name, pattern in section_patterns.items():
+                    if pattern.match(line):
+                        current_section = section_name
+                        break
+                else:
+                    # Process bullet points
+                    if line.startswith(('•', '-', '*')) and current_section:
+                        bullet = line.lstrip('•-* ').strip()
+                        if bullet and len(bullet) > 10:
+                            final_analysis[current_section].append(bullet)
+    
+    # Ensure each section has content
+    for section_name, bullets in final_analysis.items():
+        if not bullets:
+            final_analysis[section_name] = ["No significant developments identified in this category."]
 
-    logger.info(f"Found {len(citation_blocks)} text blocks with citations")
-
-    # Parse structured analysis from combined text
-    initial_analysis = parse_analysis_response(analysis_text)
-
-    # ✅ Convert native citations to HTML badges with proper article mapping
-    final_analysis = process_native_citations(initial_analysis, citation_blocks, article_index_map)
-
-    logger.info(f"Claude analysis with native citations generated: {len(analysis_text)} chars")
+    logger.info(f"Claude analysis with preserved native citations: {len(str(final_analysis))} chars")
     return final_analysis
 
 def generate_openai_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:

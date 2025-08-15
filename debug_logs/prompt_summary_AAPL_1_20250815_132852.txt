@@ -1,0 +1,8 @@
+PROMPT ANALYSIS SUMMARY
+======================
+Characters: 0
+Estimated tokens: 0
+Lines: 0
+Unique lines: 1
+Duplicate lines: 0
+Article section found: NO

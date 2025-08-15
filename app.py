@@ -23,12 +23,7 @@ from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
 from news_utils import ClaudeWebSearchEngine
 
-# Enhanced news analysis imports
-from news_utils import (
-    convert_markdown_to_html,
-    create_source_url_mapping,
-    fetch_comprehensive_news_guaranteed_30_enhanced
-)
+from news_utils import fetch_comprehensive_news_guaranteed_30_enhanced
 from company_ticker_service import fast_company_ticker_service as company_ticker_service
 from configuration_and_integration import ConfigurationManager, IntegrationHelper
 
@@ -118,12 +113,58 @@ def _build_source_map(articles):
     smap = {}
     for i, article in enumerate(articles, start=1):
         smap[str(i)] = {
-            "url": safe_get(article, "link", "#"),
+            "url": (article.get("link") or article.get("url") or article.get("web_url") or article.get("href") or "#"),
             "title": safe_get(article, "title", "Unknown Source"),
             "published_at": safe_get(article, "published", ""),
             "source": safe_get(article, "source", "")
         }
     return smap
+
+# ADD: normalize alt citation tokens to [S#]
+def _normalize_citation_tokens(text: str) -> str:
+    if not text:
+        return text
+    # [^12] -> [S12], [12] -> [S12]  (won't hit [Text](url))
+    text = re.sub(r'\[\^?(\d+)\]', r'[S\1]', text)
+    # (S12) or (s 12) -> [S12]
+    text = re.sub(r'\(\s*[Ss]\s*(\d+)\s*\)', r'[S\1]', text)
+    # {S12} -> [S12]
+    text = re.sub(r'\{\s*[Ss]\s*(\d+)\s*\}', r'[S\1]', text)
+    return text
+
+# ADD: render bullets with [S#] → anchor tags, plus basic markdown
+def _render_bullet_with_citations(bullet: str, source_map: Dict[str, Dict[str, str]]) -> str:
+    import html as _html
+
+    if not bullet:
+        return ""
+
+    # 1) Normalize alt tokens to [S#]
+    text = _normalize_citation_tokens(bullet)
+
+    # 2) Basic markdown to HTML (bold + inline [text](url))
+    #    (keep this minimal, you already trust |safe in the template)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2" target="_blank" rel="noopener">\1</a>', text)
+
+    # 3) Replace [S#] with clickable badges using source_map
+    def _sref(match):
+        sid = match.group(1)
+        data = source_map.get(str(sid)) or {}
+        url = (data.get("url") or "").strip()
+        title = data.get("title") or "Source"
+        if url:
+            return (
+                f'<a href="{_html.escape(url)}" target="_blank" rel="noopener" '
+                f'class="badge bg-secondary text-decoration-none source-badge" '
+                f'title="{_html.escape(title)}"><i class="fas fa-link"></i> S{sid}</a>'
+            )
+        # leave the raw token if we can’t resolve
+        return f'[S{sid}]'
+
+    text = re.sub(r'\[S(\d+)\]', _sref, text)
+
+    return text
 
 def _extract_citations(answer_text, max_id):
     """Extract [S#] citations from answer text."""
@@ -309,13 +350,24 @@ def get_news_summary():
         # Process successful results for rendering (existing code)
         articles = results['articles']
         metrics = results['metrics']
-        
-        # Create source mapping and convert summaries to HTML (existing code)
-        source_mapping = create_source_url_mapping(articles)
+
+        # 🔧 Normalize URLs so all articles have .link
+        for a in articles:
+            if not a.get('link'):
+                a['link'] = a.get('url') or a.get('web_url') or a.get('href') or ""
+
+        # REPLACE WITH this: build a 1..N source map and render [S#] links
+        source_mapping = _build_source_map(articles)
         summaries = {
-            key: [convert_markdown_to_html(bullet, source_mapping) for bullet in bullets]
+            key: [_render_bullet_with_citations(bullet, source_mapping) for bullet in bullets]
             for key, bullets in results['summaries'].items()
         }
+
+        try:
+            all_bullets = sum(len(v) for v in summaries.values())
+            logger.info(f"Rendered summaries: {all_bullets} bullets; source_map size={len(source_mapping)}")
+        except Exception:
+            pass
         
         # Calculate date range for display (existing code)
         end_date = datetime.now()
@@ -1145,24 +1197,57 @@ def chat():
                 "error": "AI service temporarily unavailable. Please try again."
             }), 502
     
-    # Extract and build citations
-    max_source_id = len(run_data["articles"])
-    citation_numbers = _extract_citations(answer, max_source_id)
-    
-    citations = []
+   # Build citations (prefer Claude tc → fallback to [S#] in text)
     source_map = run_data["source_map"]
-    
-    for num in citation_numbers:
-        source_data = source_map.get(str(num))
-        if source_data:
-            citations.append({
-                "s": num,
-                "url": source_data["url"],
-                "title": source_data["title"]
+    tc = chat_result.get("citations") or []
+
+    def _num_from_tc(c):
+        if isinstance(c, dict):
+            if "s" in c and str(c["s"]).isdigit():
+                return int(c["s"])
+            if "source_number" in c and str(c["source_number"]).isdigit():
+                return int(c["source_number"])
+            if isinstance(c.get("source"), str) and c["source"].upper().startswith("S") and c["source"][1:].isdigit():
+                return int(c["source"][1:])
+        return None
+
+    hydrated = []
+    seen = set()
+
+    # 1) Use Claude's tc first, but hydrate title/url from our map
+    for c in tc:
+        n = _num_from_tc(c)
+        if not n or n in seen:
+            continue
+        meta = source_map.get(str(n), {})
+        hydrated.append({
+            "s": n,
+            "title": c.get("title") or meta.get("title") or f"Source S{n}",
+            "url":   c.get("url")   or meta.get("url")   or ""
+        })
+        seen.add(n)
+
+    # 2) Fallback to parsing [S#] tokens in the answer text
+    if not hydrated:
+        max_source_id = len(run_data["articles"])
+        for n in _extract_citations(answer, max_source_id):
+            if n in seen:
+                continue
+            meta = source_map.get(str(n), {})
+            hydrated.append({
+                "s": n,
+                "title": meta.get("title") or f"Source S{n}",
+                "url":   meta.get("url")   or ""
             })
-    
+            seen.add(n)
+
+    citations = hydrated
+
     # Log the interaction
-    logger.info(f"Chat query for {company} (run_id: {run_id[:8]}): '{question[:50]}...' -> {len(citations)} citations")
+    logger.info(
+        f"Chat query for {company} (run_id: {run_id[:8]}): '{question[:50]}...' -> {len(citations)} citations "
+        f"(tc={len(tc)}, hydrated={len(citations)})"
+    )
     
     return jsonify({
         "answer": answer,
