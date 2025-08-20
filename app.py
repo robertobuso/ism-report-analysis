@@ -166,11 +166,21 @@ def _render_bullet_with_citations(bullet: str, source_map: Dict[str, Dict[str, s
 
     return text
 
+def _normalize_chat_citations(text: str) -> str:
+    """Normalize citation tokens in chat responses."""
+    if not text:
+        return text
+    # Convert (S 12), {S12}, [^12] etc. to [S12]
+    text = re.sub(r'\(\s*[Ss]\s*(\d+)\s*\)', r'[S\1]', text)
+    text = re.sub(r'\{\s*[Ss]\s*(\d+)\s*\}', r'[S\1]', text)
+    text = re.sub(r'\[\^(\d+)\]', r'[S\1]', text)
+    return text
+
 def _extract_citations(answer_text, max_id):
     """Extract [S#] citations from answer text."""
-    nums = []
-    seen = set()
-    for match in re.finditer(r"\[S(\d+)\]", answer_text):
+    text = _normalize_citation_tokens(answer_text or "")
+    nums, seen = [], set()
+    for match in re.finditer(r"\[S(\d+)\]", text):
         try:
             n = int(match.group(1))
             if 1 <= n <= max_id and n not in seen:
@@ -419,7 +429,7 @@ def get_news_summary():
             "window_days": days_back,
             "summaries": results['summaries'],  # Original summaries without HTML
             "articles": articles,
-            "source_map": _build_source_map(articles),
+            "source_map": source_mapping,
             "metrics": metrics
         }
         
@@ -734,8 +744,22 @@ def dashboard():
         # Get all report dates for this report type
         report_dates = get_all_report_dates(report_type)
         
-        # Get available report types for the template
-        available_report_types = get_report_types()
+        # Get available report types directly from database
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT DISTINCT report_type 
+                FROM reports 
+                ORDER BY report_type
+            """)
+            
+            available_report_types = [row['report_type'] for row in cursor.fetchall()]
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error getting report types: {str(e)}")
+            available_report_types = ["Manufacturing", "Services"]  # Default fallback
         
         # Include report_type in template context
         return render_template('dashboard.html', 
@@ -1078,7 +1102,7 @@ def chat():
     """Handle chatbot questions about specific analysis runs."""
     
     # Validate content type
-    if request.content_type != "application/json":
+    if not request.content_type or not request.content_type.startswith("application/json"):
         return jsonify({"error": "Content-Type must be application/json"}), 415
     
     # Parse request
@@ -1093,7 +1117,11 @@ def chat():
     run_id = payload.get("run_id", "").strip()
     conversation_history = payload.get("conversation_history", []) 
     window_days = payload.get("window_days", 30)
-    verify_with_web = bool(payload.get("verify_with_web", False))
+    verify_with_web_raw = payload.get("verify_with_web", False)
+    if isinstance(verify_with_web_raw, str):
+        verify_with_web = verify_with_web_raw.lower() in ('true', '1', 'yes')
+    else:
+        verify_with_web = bool(verify_with_web_raw)
     
     # Input validation
     if not question:

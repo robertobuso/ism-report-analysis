@@ -1467,13 +1467,21 @@ class QualityValidationEngine:
         meaningful_improvement = score_delta >= 0.5 or len(web_searches) >= 3
 
         if revised_analysis and meaningful_improvement:
-            # Use the enhanced analysis from quality validation as-is
-            # (Quality validation already processes citations when using Citations API)
-            final_analysis = revised_analysis
+            # Check if the revised analysis has meaningful content in all sections
+            has_content = all(
+                revised_analysis.get(section) and len(revised_analysis[section]) > 0 
+                for section in ['executive', 'investor', 'catalysts']
+            )
             
-            used_enhanced = True
-            logger.info(f"   📝 Using ENHANCED analysis for {company}")
-            logger.info(f"   📊 Quality improvement: {original_score:.1f} → {revised_score:.1f} (+{score_delta:.1f})")
+            if has_content:
+                final_analysis = revised_analysis
+                used_enhanced = True
+                logger.info(f"   📝 Using ENHANCED analysis for {company}")
+                logger.info(f"   📊 Quality improvement: {original_score:.1f} → {revised_score:.1f} (+{score_delta:.1f})")
+            else:
+                final_analysis = {}
+                used_enhanced = False
+                logger.warning(f"   📝 Enhanced analysis empty, falling back to original for {company}")
         else:
             final_analysis = {}
             used_enhanced = False
