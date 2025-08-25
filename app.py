@@ -21,7 +21,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_pdf, process_multiple_pdfs
 from report_handlers import ReportTypeFactory
 from google_auth import get_google_sheets_service, get_google_auth_url, finish_google_auth
-from news_utils import ClaudeWebSearchEngine
+from news_utils import ClaudeWebSearchEngine, create_source_url_mapping
 
 from news_utils import fetch_comprehensive_news_guaranteed_30_enhanced
 from company_ticker_service import fast_company_ticker_service as company_ticker_service
@@ -399,12 +399,87 @@ def get_news_summary():
             if not a.get('link'):
                 a['link'] = a.get('url') or a.get('web_url') or a.get('href') or ""
 
+        # ✅ DEBUG: Log the actual structure we're working with
+        logger.info(f"Results structure - summaries type: {type(results.get('summaries'))}")
+        logger.info(f"Article index map available: {'article_index_map' in results}")
+        logger.info(f"Quality validation status: {results.get('quality_validation', {}).get('used_enhanced_analysis', False)}")
+
+        # ✅ Handle case where enhanced analysis may not have citation structure
+        if results.get('quality_validation', {}).get('used_enhanced_analysis'):
+            logger.info("Using enhanced analysis - citation structure may be simplified")
+
+        # ✅ FIX: Create source_mapping for legacy fallback with error handling
+        try:
+            # ✅ FIX: Direct function import to avoid namespace issues
+            from news_utils import create_source_url_mapping
+            source_mapping = create_source_url_mapping(articles)
+        except NameError:
+            # Fallback implementation if function not imported
+            source_mapping = {}
+            for article in articles:
+                source = article.get('source', '')
+                if source and source not in source_mapping:
+                    source_mapping[source] = article.get('link', '#')
+
+        # Extract article_index_map from results
+        article_index_map = results.get('article_index_map', {})
+
         # REPLACE WITH this: build a 1..N source map and render [S#] links
         source_mapping = _build_source_map(articles)
-        summaries = {
-            key: [_render_bullet_with_citations(bullet, source_mapping) for bullet in bullets]
-            for key, bullets in results['summaries'].items()
-        }
+        # Convert UIBullet format to rendered HTML
+        summaries = {}
+        for section_key, ui_bullets in results['summaries'].items():
+            rendered_bullets = []
+            for bullet_data in ui_bullets:
+                if isinstance(bullet_data, dict) and 'citations' in bullet_data:
+                    # New UIBullet format
+                    bullet_text = bullet_data['text']
+                    citations = bullet_data.get('citations', [])
+                    
+                    # Render citations as HTML badges
+                    if citations:
+                        badges = []
+                        seen_docs = set()
+                        
+                        for citation in citations:
+                            doc_idx = citation.get('document_index')
+                            if doc_idx is not None and doc_idx not in seen_docs:
+                                source_data = article_index_map.get(doc_idx, {})
+                                if source_data and source_data.get('url'):
+                                    url = source_data['url']
+                                    source = source_data.get('source', '')
+                                    source_type = source_data.get('source_type', '')
+                                    
+                                    # Badge styling
+                                    if source_type == 'alphavantage_premium':
+                                        badge_class, icon = 'bg-purple', '<i class="fas fa-brain"></i>'
+                                    elif source_type == 'nyt_api':
+                                        badge_class, icon = 'bg-warning', '<i class="fas fa-newspaper"></i>'
+                                    elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
+                                        badge_class, icon = 'bg-success', '<i class="fas fa-crown"></i>'
+                                    else:
+                                        badge_class, icon = 'bg-secondary', '<i class="fas fa-link"></i>'
+                                    
+                                    badges.append(
+                                        f'<a href="{url}" target="_blank" rel="noopener" '
+                                        f'class="badge {badge_class} text-decoration-none source-badge" '
+                                        f'title="Source: {source}">{icon} {source[:15]}</a>'
+                                    )
+                                    seen_docs.add(doc_idx)
+                                    
+                                    # Cap to 3 citations per bullet
+                                    if len(badges) >= 3:
+                                        break
+                        
+                        if badges:
+                            bullet_text += ' ' + ' '.join(badges)
+                    
+                    rendered_bullets.append(bullet_text)
+                else:
+                    # Legacy string format fallback
+                    rendered_bullets.append(_render_bullet_with_citations(str(bullet_data), source_mapping))
+            
+            summaries[section_key] = rendered_bullets
 
         try:
             all_bullets = sum(len(v) for v in summaries.values())

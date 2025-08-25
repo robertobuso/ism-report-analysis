@@ -46,6 +46,80 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+from typing import Dict, List, Tuple, Optional, Any, TypedDict
+
+class UICitation(TypedDict, total=False):
+    # From Anthropic citation object:
+    document_index: int
+    type: str
+    document_title: Optional[str]
+    cited_text: Optional[str]
+    start_char_index: Optional[int]
+    end_char_index: Optional[int]
+    start_page_number: Optional[int]
+    end_page_number: Optional[int]
+    start_block_index: Optional[int]
+    end_block_index: Optional[int]
+    # Enriched with our article metadata (from article_index_map):
+    url: Optional[str]
+    source: Optional[str]
+    title: Optional[str]
+    source_type: Optional[str]
+
+class UIBullet(TypedDict):
+    text: str
+    text_block_index: int             # which Claude text block this bullet came from
+    citations: list[UICitation]       # zero or more normalized citations
+
+UISections = dict[str, list[UIBullet]]  # keys: 'executive' | 'investor' | 'catalysts'
+
+def _normalize_citation(cit, article_index_map) -> UICitation:
+    # Anthropic SDK objects can be attr- or dict-like; use getattr with fallback
+    def g(obj, name, default=None):
+        return getattr(obj, name, obj.get(name, default)) if isinstance(obj, dict) else getattr(obj, name, default)
+
+    doc_index = g(cit, "document_index")
+    ui: UICitation = {
+        "document_index": doc_index,
+        "type": g(cit, "type"),
+        "document_title": g(cit, "document_title"),
+        "cited_text": g(cit, "cited_text"),
+        "start_char_index": g(cit, "start_char_index"),
+        "end_char_index": g(cit, "end_char_index"),
+        "start_page_number": g(cit, "start_page_number"),
+        "end_page_number": g(cit, "end_page_number"),
+        "start_block_index": g(cit, "start_block_index"),
+        "end_block_index": g(cit, "end_block_index"),
+    }
+
+    # Enrich with our article metadata
+    if doc_index in article_index_map:
+        meta = article_index_map[doc_index]
+        ui.update({
+            "url": meta.get("url"),
+            "source": meta.get("source"),
+            "title": meta.get("title"),
+            "source_type": meta.get("source_type"),
+        })
+    return ui
+
+def _mk(obj_or_str) -> UIBullet:
+    # convenience for single-string fallbacks
+    return {"text": obj_or_str, "text_block_index": -1, "citations": []}
+
+def legacy_to_ui(sections_legacy: dict[str, list[str]]) -> UISections:
+    """Convert legacy string format to UI format."""
+    return {k: [{"text": t, "text_block_index": -1, "citations": []} for t in v]
+            for k, v in (sections_legacy or {}).items()}
+
+def ui_to_legacy(sections_ui: UISections) -> dict[str, list[str]]:
+    """Convert UI format to legacy string format."""
+    return {k: [b["text"] for b in (sections_ui.get(k) or [])] for k in ["executive","investor","catalysts"]}
+
+def as_legacy_string_sections(sections: UISections) -> dict[str, list[str]]:
+    """Compatibility adapter for old callers expecting string sections."""
+    return {k: [b["text"] for b in v] for k, v in sections.items()}
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -2383,10 +2457,10 @@ def should_trigger_google_cse(all_articles: List[Dict], relevant_articles: List[
 # ANALYSIS GENERATION
 # ============================================================================
 
-def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Tuple[UISections, Dict]:
     """Generate analysis using Claude Sonnet 4 with OpenAI fallback."""
     if not articles:
-        return create_empty_summaries(company)
+        return create_empty_summaries(company), {}
     
     # Try Claude Sonnet 4 first
     if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
@@ -2401,9 +2475,9 @@ def generate_enhanced_analysis(company: str, articles: List[Dict]) -> Dict[str, 
         return generate_openai_analysis(company, articles)
     except Exception as openai_error:
         logger.error(f"OpenAI analysis failed: {openai_error}")
-        return create_error_summaries(company, str(openai_error))
+        return create_error_summaries(company, str(openai_error)), {}
 
-def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+def generate_claude_analysis(company: str, articles: List[Dict]) -> Tuple[UISections, Dict]:
     """Generate analysis using Claude Sonnet 4 with Citations API and fallback."""
     
     try:
@@ -2413,7 +2487,7 @@ def generate_claude_analysis(company: str, articles: List[Dict]) -> Dict[str, Li
         logger.warning(f"Citations API failed: {e}, falling back to manual system")
         return generate_claude_analysis_manual(company, articles)
 
-def generate_claude_analysis_manual(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+def generate_claude_analysis_manual(company: str, articles: List[Dict]) -> Tuple[UISections, Dict]:
     """Fallback to original manual citation system"""
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     
@@ -2511,70 +2585,30 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
 
     
     # Process response preserving Claude's native citation structure
-    final_analysis = {"executive": [], "investor": [], "catalysts": []}
+    final_analysis: UISections = {"executive": [], "investor": [], "catalysts": []}
     current_section = None
     
     # Section detection patterns
     section_patterns = {
         "executive": re.compile(r".*executive\s+summary.*", re.IGNORECASE),
-        "investor": re.compile(r".*investor\s+insights.*", re.IGNORECASE),
-        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?).*", re.IGNORECASE)
+        "investor":  re.compile(r".*investor\s+insights.*", re.IGNORECASE),
+        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?).*", re.IGNORECASE),
     }
     
-    # Process each content block from Claude's response
-    for content_block in response.content:
+    # enumerate to capture text_block_index for the UI
+    for block_idx, content_block in enumerate(response.content):
         if content_block.type == "text":
             text = content_block.text
             citations = getattr(content_block, 'citations', [])
             
-            # Convert citations to HTML badges for this specific text block
+            # Convert citations to normalized format for this specific text block
             if citations:
-                badges = []
-                seen_docs = set()
-                
-                for citation in citations[:3]:  # Limit to 3 citations per block
-                    doc_index = citation.document_index
-                    
-                    if doc_index in article_index_map and doc_index not in seen_docs:
-                        article_data = article_index_map[doc_index]
-                        
-                        url = article_data['url']
-                        source = article_data['source']
-                        source_type = article_data['source_type']
-                        
-                        # Create badge with proper styling
-                        if source_type == 'alphavantage_premium':
-                            badge_class = 'bg-purple'
-                            icon = '<i class="fas fa-brain"></i>'
-                        elif source_type == 'nyt_api':
-                            badge_class = 'bg-warning'
-                            icon = '<i class="fas fa-newspaper"></i>'
-                        elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
-                            badge_class = 'bg-success'
-                            icon = '<i class="fas fa-crown"></i>'
-                        else:
-                            badge_class = 'bg-secondary'
-                            icon = '<i class="fas fa-link"></i>'
-                        
-                        badges.append(
-                            f'<a href="{url}" target="_blank" rel="noopener" '
-                            f'class="badge {badge_class} text-decoration-none source-badge" '
-                            f'title="Source: {source} | Cited: {citation.cited_text[:50]}...">'
-                            f'{icon} {source[:15]}'
-                            f'</a>'
-                        )
-                        seen_docs.add(doc_index)
-                
-                # Append badges to this text block
-                if badges:
-                    text_with_badges = f'{text} {" ".join(badges)}'
-                else:
-                    text_with_badges = text
+                normalized_citations = [_normalize_citation(c, article_index_map) for c in citations]
             else:
-                text_with_badges = text
+                normalized_citations = []
             
-            # Parse this enhanced text block into bullet points
-            lines = text_with_badges.strip().split('\n')
+            # Parse this text block into bullet points
+            lines = text.strip().split('\n')
             
             for line in lines:
                 line = line.strip()
@@ -2591,17 +2625,21 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
                     if line.startswith(('•', '-', '*')) and current_section:
                         bullet = line.lstrip('•-* ').strip()
                         if bullet and len(bullet) > 10:
-                            final_analysis[current_section].append(bullet)
+                            final_analysis[current_section].append({
+                                "text": bullet,
+                                "text_block_index": block_idx,
+                                "citations": normalized_citations
+                            })
     
     # Ensure each section has content
     for section_name, bullets in final_analysis.items():
         if not bullets:
-            final_analysis[section_name] = ["No significant developments identified in this category."]
+            final_analysis[section_name] = [_mk("No significant developments identified in this category.")]
 
     logger.info(f"Claude analysis with preserved native citations: {len(str(final_analysis))} chars")
-    return final_analysis
+    return final_analysis, article_index_map
 
-def generate_claude_analysis_with_citations(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+def generate_claude_analysis_with_citations(company: str, articles: List[Dict]) -> Tuple[UISections, Dict]:
     """Generate analysis using Claude Sonnet 4."""
     anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     
@@ -2768,70 +2806,30 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
     logger.info("CLAUDE RAW RESPONSE:\n%s", raw)
     
     # Process response preserving Claude's native citation structure
-    final_analysis = {"executive": [], "investor": [], "catalysts": []}
+    final_analysis: UISections = {"executive": [], "investor": [], "catalysts": []}
     current_section = None
     
     # Section detection patterns
     section_patterns = {
         "executive": re.compile(r".*executive\s+summary.*", re.IGNORECASE),
-        "investor": re.compile(r".*investor\s+insights.*", re.IGNORECASE),
-        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?).*", re.IGNORECASE)
+        "investor":  re.compile(r".*investor\s+insights.*", re.IGNORECASE),
+        "catalysts": re.compile(r".*(catalysts?\s*(&|and)?\s*risks?|risks?\s*(&|and)?\s*catalysts?).*", re.IGNORECASE),
     }
     
-    # Process each content block from Claude's response
-    for content_block in response.content:
+    # enumerate to capture text_block_index for the UI
+    for block_idx, content_block in enumerate(response.content):
         if content_block.type == "text":
             text = content_block.text
             citations = getattr(content_block, 'citations', [])
             
-            # Convert citations to HTML badges for this specific text block
+            # Convert citations to normalized format for this specific text block
             if citations:
-                badges = []
-                seen_docs = set()
-                
-                for citation in citations[:3]:  # Limit to 3 citations per block
-                    doc_index = citation.document_index
-                    
-                    if doc_index in article_index_map and doc_index not in seen_docs:
-                        article_data = article_index_map[doc_index]
-                        
-                        url = article_data['url']
-                        source = article_data['source']
-                        source_type = article_data['source_type']
-                        
-                        # Create badge with proper styling
-                        if source_type == 'alphavantage_premium':
-                            badge_class = 'bg-purple'
-                            icon = '<i class="fas fa-brain"></i>'
-                        elif source_type == 'nyt_api':
-                            badge_class = 'bg-warning'
-                            icon = '<i class="fas fa-newspaper"></i>'
-                        elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
-                            badge_class = 'bg-success'
-                            icon = '<i class="fas fa-crown"></i>'
-                        else:
-                            badge_class = 'bg-secondary'
-                            icon = '<i class="fas fa-link"></i>'
-                        
-                        badges.append(
-                            f'<a href="{url}" target="_blank" rel="noopener" '
-                            f'class="badge {badge_class} text-decoration-none source-badge" '
-                            f'title="Source: {source} | Cited: {citation.cited_text[:50]}...">'
-                            f'{icon} {source[:15]}'
-                            f'</a>'
-                        )
-                        seen_docs.add(doc_index)
-                
-                # Append badges to this text block
-                if badges:
-                    text_with_badges = f'{text} {" ".join(badges)}'
-                else:
-                    text_with_badges = text
+                normalized_citations = [_normalize_citation(c, article_index_map) for c in citations]
             else:
-                text_with_badges = text
+                normalized_citations = []
             
-            # Parse this enhanced text block into bullet points
-            lines = text_with_badges.strip().split('\n')
+            # Parse this text block into bullet points
+            lines = text.strip().split('\n')
             
             for line in lines:
                 line = line.strip()
@@ -2848,24 +2846,28 @@ Generate exactly 4-5 substantive bullets per section that combine analytical exc
                     if line.startswith(('•', '-', '*')) and current_section:
                         bullet = line.lstrip('•-* ').strip()
                         if bullet and len(bullet) > 10:
-                            final_analysis[current_section].append(bullet)
+                            final_analysis[current_section].append({
+                                "text": bullet,
+                                "text_block_index": block_idx,
+                                "citations": normalized_citations
+                            })
     
     # Ensure each section has content
     for section_name, bullets in final_analysis.items():
         if not bullets:
-            final_analysis[section_name] = ["No significant developments identified in this category."]
+            final_analysis[section_name] = [_mk("No significant developments identified in this category.")]
 
     logger.info(f"Claude analysis with preserved native citations: {len(str(final_analysis))} chars")
-    return final_analysis
+    return final_analysis, article_index_map
 
-def generate_openai_analysis(company: str, articles: List[Dict]) -> Dict[str, List[str]]:
+def generate_openai_analysis(company: str, articles: List[Dict]) -> Tuple[UISections, Dict]:
     """Generate analysis using OpenAI as fallback."""
     # Prepare article content (simplified for OpenAI)
-    article_text_for_prompt= ""
+    article_text_for_prompt = ""
     for i, article in enumerate(articles[:30], 1):
-        article_text_for_prompt+= f"\n{i}. {article['title']}\n"
-        article_text_for_prompt+= f"   Source: {article['source']}\n"
-        article_text_for_prompt+= f"   Content: {article.get('snippet', '')}\n"
+        article_text_for_prompt += f"\n{i}. {article['title']}\n"
+        article_text_for_prompt += f"   Source: {article['source']}\n"
+        article_text_for_prompt += f"   Content: {article.get('snippet', '')}\n"
     
     prompt = f"""You are a senior equity research analyst analyzing {company}.
 
@@ -2875,19 +2877,19 @@ ARTICLES TO ANALYZE:
 Generate institutional-grade analysis in exactly this format:
 
 **EXECUTIVE SUMMARY**
-• [bullet point 1]
-• [bullet point 2] 
-• [bullet point 3]
+- [bullet point 1]
+- [bullet point 2] 
+- [bullet point 3]
 
 **INVESTOR INSIGHTS**
-• [bullet point 1]
-• [bullet point 2]
-• [bullet point 3]
+- [bullet point 1]
+- [bullet point 2]
+- [bullet point 3]
 
 **CATALYSTS & RISKS**  
-• [bullet point 1]
-• [bullet point 2]
-• [bullet point 3]
+- [bullet point 1]
+- [bullet point 2]
+- [bullet point 3]
 
 Focus on actionable insights with specific metrics and timelines."""
     
@@ -2899,9 +2901,17 @@ Focus on actionable insights with specific metrics and timelines."""
     )
     
     analysis_text = response.choices[0].message.content
-    logger.info(f"OpenAI analysis generated: {len(analysis_text)} chars")
+    sections_legacy = parse_analysis_response(analysis_text)  # returns Dict[str, List[str]]
     
-    return parse_analysis_response(analysis_text)
+    # Upgrade to UISections (empty citations, no block index)
+    upgraded: UISections = {k: [{"text": t, "text_block_index": -1, "citations": []} for t in texts]
+                            for k, texts in sections_legacy.items()}
+    
+    # Create empty article mapping for compatibility
+    article_index_map = {}
+    
+    logger.info(f"OpenAI analysis generated: {len(analysis_text)} chars")
+    return upgraded, article_index_map
 
 def parse_analysis_response(text: str) -> Dict[str, List[str]]:
     """Parse LLM response into structured summaries."""
@@ -2961,20 +2971,18 @@ def extract_domain(url: str) -> str:
     except:
         return "unknown"
 
-def create_empty_summaries(company: str) -> Dict[str, List[str]]:
-    """Create empty summaries when no articles available."""
+def create_empty_summaries(company: str) -> UISections:
     return {
-        "executive": [f"No recent financial news found for {company}. Try expanding date range or verifying company ticker."],
-        "investor": ["No recent investor-relevant developments identified."],
-        "catalysts": ["No material catalysts or risks detected in recent coverage."]
+        "executive": [_mk(f"No recent financial news found for {company}. Try expanding date range or verifying company ticker.")],
+        "investor":  [_mk("No recent investor-relevant developments identified.")],
+        "catalysts": [_mk("No material catalysts or risks detected in recent coverage.")],
     }
 
-def create_error_summaries(company: str, error_msg: str) -> Dict[str, List[str]]:
-    """Create error summaries when analysis fails."""
+def create_error_summaries(company: str, error_msg: str) -> UISections:
     return {
-        "executive": [f"Analysis temporarily unavailable for {company}: {error_msg[:100]}..."],
-        "investor": ["Please try again in a few moments or contact support."],
-        "catalysts": ["Consider checking company's investor relations page directly."]
+        "executive": [_mk(f"Analysis temporarily unavailable for {company}: {error_msg[:100]}...")],
+        "investor":  [_mk("Please try again in a few moments or contact support.")],
+        "catalysts": [_mk("Consider checking company's investor relations page directly.")],
     }
 
 def create_empty_result(company: str, days_back: int) -> Dict[str, Any]:
@@ -3199,32 +3207,36 @@ async def _run_comprehensive_analysis(company: str, days_back: int,
 
     # Phase 5: Analysis generation
     logger.info("📝 Phase 5: Analysis generation...")
-    initial_summaries = generate_enhanced_analysis(company, final_articles)
+    initial_summaries_ui, article_index_map = generate_enhanced_analysis(company, final_articles)
     
    # Phase 6: SIMPLIFIED quality validation - EXACTLY ONE CALL
-    final_summaries = initial_summaries
+    final_summaries_ui = initial_summaries_ui  # Use UI format throughout
     quality_info = {'enabled': enable_quality_validation, 'passed': None, 'score': None}
-    
+
     if enable_quality_validation and final_articles:
         logger.info("🔍 Phase 6: SINGLE CALL quality validation...")
         
         quality_engine = QualityValidationEngine()
         
         try:
+            # ✅ CRITICAL: Convert to legacy format for the validator
+            initial_summaries_legacy = ui_to_legacy(initial_summaries_ui)
+            
             # ✅ EXACTLY ONE CALL - no retries
             quality_result = await quality_engine.validate_and_enhance_analysis_SINGLE_CALL(
-                company, initial_summaries, final_articles
+                company, initial_summaries_legacy, final_articles
             )
             
             # ✅ FIXED: Check if enhanced analysis was actually used
-            enhanced_analysis = quality_result['analysis']
-            quality_info = quality_result['quality_validation']
+            enhanced_legacy = quality_result.get('analysis')
+            quality_info = quality_result.get('quality_validation', quality_info)
             
-            if enhanced_analysis and quality_info.get('used_enhanced_analysis'):
-                final_summaries = enhanced_analysis
+            if enhanced_legacy and quality_info.get('used_enhanced_analysis'):
+                # ✅ Convert enhanced results back to UI format
+                final_summaries_ui = legacy_to_ui(enhanced_legacy)
                 logger.info(f"🎉 Using ENHANCED analysis with web search improvements for {company}")
             else:
-                final_summaries = initial_summaries
+                final_summaries_ui = initial_summaries_ui
                 logger.info(f"📄 Using ORIGINAL analysis for {company} (no enhancements available)")
             
             # ✅ DETAILED SUCCESS LOGGING
@@ -3237,7 +3249,6 @@ async def _run_comprehensive_analysis(company: str, days_back: int,
                 logger.info(f"   📊 Quality score: {score}/10")
                 logger.info(f"   🔍 Web searches: {web_count}")
                 logger.info(f"   ⚡ Enhancements: {enhancement_count}")
-                logger.info(f"   📝 Analysis used: {quality_info.get('analysis_source', 'unknown')}")
                 
                 # ✅ Log key improvements
                 improvements = quality_info.get('improvement_summary', {})
@@ -3248,7 +3259,7 @@ async def _run_comprehensive_analysis(company: str, days_back: int,
                         
         except Exception as quality_error:
             logger.error(f"❌ Quality validation ERROR for {company}: {quality_error}")
-            final_summaries = initial_summaries  # ✅ Always fall back to original
+            final_summaries_ui = initial_summaries_ui  # ✅ Always fall back to original UI format
             quality_info = {
                 'enabled': True, 'passed': False, 'error': str(quality_error), 
                 'score': None, 'single_call_validation': True,
@@ -3286,7 +3297,8 @@ async def _run_comprehensive_analysis(company: str, days_back: int,
     return {
         'company': company,
         'articles': final_articles,
-        'summaries': final_summaries,
+        'summaries': final_summaries_ui,
+        'article_index_map': article_index_map,
         'metrics': {
             'total_articles': total_articles,
             'alphavantage_articles': alphavantage_count,
