@@ -198,19 +198,22 @@ def _compose_context(run_data):
     lines.append(f"COMPANY: {run_data['company']} | ANALYSIS PERIOD: {run_data['date_range']}")
     
     lines.append("\n== EXECUTIVE SUMMARY ==")
-    for bullet in summaries.get("executive", []):
-        # Strip HTML for Claude
-        clean_bullet = re.sub(r'<[^>]+>', '', bullet)
+    for bullet_data in summaries.get("executive", []):
+        # Extract text from UIBullet object and strip HTML for Claude
+        bullet_text = bullet_data.get("text", "") if isinstance(bullet_data, dict) else str(bullet_data)
+        clean_bullet = re.sub(r'<[^>]+>', '', bullet_text)
         lines.append(f"• {clean_bullet}")
-    
+
     lines.append("\n== INVESTOR INSIGHTS ==")
-    for bullet in summaries.get("investor", []):
-        clean_bullet = re.sub(r'<[^>]+>', '', bullet)
+    for bullet_data in summaries.get("investor", []):
+        bullet_text = bullet_data.get("text", "") if isinstance(bullet_data, dict) else str(bullet_data)
+        clean_bullet = re.sub(r'<[^>]+>', '', bullet_text)
         lines.append(f"• {clean_bullet}")
-    
+
     lines.append("\n== CATALYSTS & RISKS ==")
-    for bullet in summaries.get("catalysts", []):
-        clean_bullet = re.sub(r'<[^>]+>', '', bullet)
+    for bullet_data in summaries.get("catalysts", []):
+        bullet_text = bullet_data.get("text", "") if isinstance(bullet_data, dict) else str(bullet_data)
+        clean_bullet = re.sub(r'<[^>]+>', '', bullet_text)
         lines.append(f"• {clean_bullet}")
     
     lines.append("\n== SOURCES INDEX ==")
@@ -1005,6 +1008,24 @@ def get_report_types():
         logger.error(f"Error getting report types: {str(e)}")
         return jsonify(["Manufacturing", "Services"]), 500  # Default fallback
     
+def _extract_text_from_summaries(summaries):
+    """Extract plain text from UISections for backward compatibility."""
+    if not summaries:
+        return {}
+    
+    # Handle both old (string list) and new (UIBullet list) formats
+    result = {}
+    for section_key, bullets in summaries.items():
+        result[section_key] = []
+        for bullet in bullets:
+            if isinstance(bullet, dict):
+                # New UIBullet format - extract text
+                result[section_key].append(bullet.get("text", ""))
+            else:
+                # Old string format - use as-is
+                result[section_key].append(str(bullet))
+    return result
+
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
@@ -1081,9 +1102,21 @@ def chat():
             "citations": []
         }), 200
     
-    # Compose context for Claude
+   # Compose context for Claude
     try:
         context = _compose_context(run_data)
+    except Exception as e:
+        logger.error(f"Error composing context: {e}")
+        # Fallback: try to extract legacy format for context
+        try:
+            summaries_legacy = _extract_text_from_summaries(run_data["summaries"])
+            run_data_fallback = run_data.copy()
+            run_data_fallback["summaries"] = summaries_legacy
+            context = _compose_context(run_data_fallback)
+            logger.info("Used fallback context composition")
+        except Exception as fallback_error:
+            logger.error(f"Fallback context composition also failed: {fallback_error}")
+            return jsonify({"error": "Failed to prepare analysis context"}), 500
     except Exception as e:
         logger.error(f"Error composing context: {e}")
         return jsonify({"error": "Failed to prepare analysis context"}), 500

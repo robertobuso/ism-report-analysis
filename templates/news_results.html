@@ -1056,6 +1056,18 @@
     (function() {
         // Initialize source mapping from Jinja template with safe defaults
         const SOURCE_MAP = {{ sources_map_json|default({})|tojson }};
+
+        // Validate SOURCE_MAP structure
+        if (SOURCE_MAP && typeof SOURCE_MAP === 'object') {
+            // Convert any malformed entries
+            Object.keys(SOURCE_MAP).forEach(key => {
+                if (!SOURCE_MAP[key] || typeof SOURCE_MAP[key] !== 'object') {
+                    console.warn(`Malformed source map entry for key ${key}:`, SOURCE_MAP[key]);
+                    SOURCE_MAP[key] = { url: '#', title: `Source ${key}`, source: 'Unknown' };
+                }
+            });
+        }
+
         const COMPANY = {{ company|tojson }};
         const WINDOW_DAYS = {{ window_days|default(30) }};
         const RUN_ID = {{ run_id|default("")|tojson }};
@@ -1486,6 +1498,18 @@
     (function () {
     // Pull the same map you already pass to the chatbot (safe even if undefined)
     const SOURCE_MAP = {{ sources_map_json|default({})|tojson }};
+
+    // Validate SOURCE_MAP structure
+    if (SOURCE_MAP && typeof SOURCE_MAP === 'object') {
+        // Convert any malformed entries
+        Object.keys(SOURCE_MAP).forEach(key => {
+            if (!SOURCE_MAP[key] || typeof SOURCE_MAP[key] !== 'object') {
+                console.warn(`Malformed source map entry for key ${key}:`, SOURCE_MAP[key]);
+                SOURCE_MAP[key] = { url: '#', title: `Source ${key}`, source: 'Unknown' };
+            }
+        });
+    }
+
     if (!SOURCE_MAP || Object.keys(SOURCE_MAP).length === 0) return;
 
     // Matches [S7], [S3,S9], [S3–S5], [Sources: 3, 7-8], S12, etc.
