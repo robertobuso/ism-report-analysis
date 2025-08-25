@@ -329,233 +329,67 @@ def news_form():
 @app.route("/news/summary", methods=["POST"])
 @login_required
 def get_news_summary():
-    """Generate institutional-grade financial news analysis with chatbot support."""
+    """
+    Generate institutional-grade financial news analysis with chatbot support.
+    CORRECTED V3 to handle UISections object with nested citations.
+    """
     try:
-        # Parse and validate input (existing code)
         company = request.form.get("company", "").strip()
         days_back = int(request.form.get("days_back", 7))
         
         if not company:
-            return render_template("news_simple.html", 
-                                 error="Please enter a company name or ticker symbol")
+            return render_template("news_simple.html", error="Please enter a company name or ticker symbol")
 
-        # Validate days_back parameter (existing code)
-        if days_back < 1 or days_back > 30:
-            days_back = 7
-        
-        # Enhanced company/ticker resolution (existing code)
         ticker, company_name = company_ticker_service.get_both_ticker_and_company(company)
-        display_name = company_name if company_name else ticker if ticker else company
+        display_name = company_name or ticker or company
         
-        logger.info(f"Processing analysis: '{company}' → ticker: '{ticker}', company: '{company_name}' ({days_back} days)")
+        logger.info(f"Processing analysis V3: '{company}' → '{display_name}' ({days_back} days)")
         
-        # Call the enhanced orchestration function (existing code)
         results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
 
-        # NEW: capture raw model text if news_utils returns it; else derive a fallback view
-        raw_model_text = (
-            results.get("raw_model_text")
-            or results.get("raw_llm")
-            or results.get("claude_raw")
-            or results.get("analysis_text")
-            or ""
-        )
-
-        if not raw_model_text:
-            # Fallback: show what we actually render (pre-HTML)
-            try:
-                raw_model_text = "\n".join(
-                    sum(
-                        (
-                            results["summaries"].get("executive", []),
-                            results["summaries"].get("investor", []),
-                            results["summaries"].get("catalysts", []),
-                        ),
-                        []
-                    )
-                )
-            except Exception:
-                pass
-
-        # Helpful diagnostics: how many citation-like tokens are present before rendering
-        try:
-            import re as _re
-            token_like = _re.findall(r'\[S\s*\d+\]|\[\^\d+\]|\[\d+\]|\(\s*[Ss]\s*\d+\s*\)|\{\s*[Ss]\s*\d+\s*\}', raw_model_text)
-            logger.info(f"Citation-like tokens seen in raw model text: {len(token_like)} (first 5: {token_like[:5]})")
-        except Exception:
-            pass
-        
-        # Handle case where no articles found
         if not results['success']:
-            error_message = results.get('error', 'No articles found. Try a different company or date range.')
-            return render_template("news_simple.html", error=error_message)
+            return render_template("news_simple.html", error=results.get('error', 'No articles found.'))
         
-        # Process successful results for rendering (existing code)
         articles = results['articles']
         metrics = results['metrics']
-
-        # 🔧 Normalize URLs so all articles have .link
-        for a in articles:
-            if not a.get('link'):
-                a['link'] = a.get('url') or a.get('web_url') or a.get('href') or ""
-
-        # ✅ DEBUG: Log the actual structure we're working with
-        logger.info(f"Results structure - summaries type: {type(results.get('summaries'))}")
-        logger.info(f"Article index map available: {'article_index_map' in results}")
-        logger.info(f"Quality validation status: {results.get('quality_validation', {}).get('used_enhanced_analysis', False)}")
-
-        # ✅ Handle case where enhanced analysis may not have citation structure
-        if results.get('quality_validation', {}).get('used_enhanced_analysis'):
-            logger.info("Using enhanced analysis - citation structure may be simplified")
-
-        # ✅ FIX: Create source_mapping for legacy fallback with error handling
-        try:
-            # ✅ FIX: Direct function import to avoid namespace issues
-            from news_utils import create_source_url_mapping
-            source_mapping = create_source_url_mapping(articles)
-        except NameError:
-            # Fallback implementation if function not imported
-            source_mapping = {}
-            for article in articles:
-                source = article.get('source', '')
-                if source and source not in source_mapping:
-                    source_mapping[source] = article.get('link', '#')
-
-        # Extract article_index_map from results
+        
+        # ✅ NEW: Directly use the UISections object. No conversion needed.
+        summaries_ui = results['summaries']
         article_index_map = results.get('article_index_map', {})
 
-        # REPLACE WITH this: build a 1..N source map and render [S#] links
-        source_mapping = _build_source_map(articles)
-        # Convert UIBullet format to rendered HTML
-        summaries = {}
-        for section_key, ui_bullets in results['summaries'].items():
-            rendered_bullets = []
-            for bullet_data in ui_bullets:
-                if isinstance(bullet_data, dict) and 'citations' in bullet_data:
-                    # New UIBullet format
-                    bullet_text = bullet_data['text']
-                    citations = bullet_data.get('citations', [])
-                    
-                    # Render citations as HTML badges
-                    if citations:
-                        badges = []
-                        seen_docs = set()
-                        
-                        for citation in citations:
-                            doc_idx = citation.get('document_index')
-                            if doc_idx is not None and doc_idx not in seen_docs:
-                                source_data = article_index_map.get(doc_idx, {})
-                                if source_data and source_data.get('url'):
-                                    url = source_data['url']
-                                    source = source_data.get('source', '')
-                                    source_type = source_data.get('source_type', '')
-                                    
-                                    # Badge styling
-                                    if source_type == 'alphavantage_premium':
-                                        badge_class, icon = 'bg-purple', '<i class="fas fa-brain"></i>'
-                                    elif source_type == 'nyt_api':
-                                        badge_class, icon = 'bg-warning', '<i class="fas fa-newspaper"></i>'
-                                    elif source in ['bloomberg.com', 'reuters.com', 'wsj.com', 'ft.com']:
-                                        badge_class, icon = 'bg-success', '<i class="fas fa-crown"></i>'
-                                    else:
-                                        badge_class, icon = 'bg-secondary', '<i class="fas fa-link"></i>'
-                                    
-                                    badges.append(
-                                        f'<a href="{url}" target="_blank" rel="noopener" '
-                                        f'class="badge {badge_class} text-decoration-none source-badge" '
-                                        f'title="Source: {source}">{icon} {source[:15]}</a>'
-                                    )
-                                    seen_docs.add(doc_idx)
-                                    
-                                    # Cap to 3 citations per bullet
-                                    if len(badges) >= 3:
-                                        break
-                        
-                        if badges:
-                            bullet_text += ' ' + ' '.join(badges)
-                    
-                    rendered_bullets.append(bullet_text)
-                else:
-                    # Legacy string format fallback
-                    rendered_bullets.append(_render_bullet_with_citations(str(bullet_data), source_mapping))
-            
-            summaries[section_key] = rendered_bullets
+        # Build the source map for the chatbot from the final article list
+        source_map_for_chatbot = _build_source_map(articles)
 
-        try:
-            all_bullets = sum(len(v) for v in summaries.values())
-            logger.info(f"Rendered summaries: {all_bullets} bullets; source_map size={len(source_mapping)}")
-        except Exception:
-            pass
+        date_range = f"{(datetime.now() - timedelta(days=days_back)).strftime('%B %d, %Y')} – {datetime.now().strftime('%B %d, %Y')}"
         
-        # Calculate date range for display (existing code)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
-        date_range = f"{start_date.strftime('%B %d, %Y')} – {end_date.strftime('%B %d, %Y')}"
-        analysis_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M UTC')
-        
-        # ✅ NEW: Generate run_id and cache analysis data
+        # Cache data for the chatbot
         run_id = str(uuid.uuid4())
-        
-        # Cache the analysis data for chatbot
         RUN_CACHE[run_id] = {
-            "ts": time.time(),
-            "company": display_name,
-            "date_range": date_range,
-            "window_days": days_back,
-            "summaries": results['summaries'],  # Original summaries without HTML
-            "articles": articles,
-            "source_map": source_mapping,
+            "ts": time.time(), "company": display_name, "date_range": date_range,
+            "summaries": summaries_ui, "articles": articles, "source_map": source_map_for_chatbot,
             "metrics": metrics
         }
         
-        # Clean old cache entries (keep last 100)
-        if len(RUN_CACHE) > 100:
-            old_keys = sorted(RUN_CACHE.keys(), key=lambda k: RUN_CACHE[k]["ts"])[:-100]
-            for key in old_keys:
-                del RUN_CACHE[key]
+        logger.info(f"✅ V3 ANALYSIS COMPLETE for {display_name} (run_id: {run_id[:8]})")
         
-        # Enhanced logging (existing code)
-        logger.info(f"✅ ANALYSIS COMPLETE for {display_name} (run_id: {run_id[:8]})")
-        
-        # ✅ MODIFIED: Render results with run_id and sources_map_json
-        max_display_articles = 12
+        # Pass the rich objects directly to the template
         return render_template(
             "news_results.html",
             company=display_name,
-            summaries=summaries,
+            summaries=summaries_ui, # Pass the full UI object
             articles=articles,
-            all_articles=articles,   
+            article_index_map=article_index_map, # Pass the map for rendering
             date_range=date_range,
-            analysis_timestamp=analysis_timestamp,
-            article_count=metrics.get('total_articles', 0),
-            articles_analyzed=metrics.get('articles_analyzed', 30),
-            articles_displayed=min(max_display_articles, metrics.get('total_articles', 0)), 
-            analysis_quality=metrics.get('analysis_quality', 'Limited'),
-            high_quality_sources=metrics.get('high_quality_sources', 0),
-            premium_coverage=metrics.get('premium_coverage', 0),
-            alphavantage_articles=metrics.get('alphavantage_articles', 0),
-            alphavantage_coverage=metrics.get('alphavantage_coverage', 0),
-            premium_sources_count=metrics.get('premium_sources_count', 0),
-            premium_sources_coverage=metrics.get('premium_sources_coverage', 0),
-            nyt_articles=metrics.get('nyt_articles', 0),
-            rss_articles=metrics.get('rss_articles', 0),
-            source_performance=results.get('source_performance', {}),
+            metrics=metrics,
             quality_validation=results.get('quality_validation', {}),
-            raw_model_preview=raw_model_text[:4000],
-            citations_index_map=results.get('article_index_map', {}),
             run_id=run_id,
-            sources_map_json=RUN_CACHE[run_id]["source_map"],
-            window_days=days_back
+            sources_map_json=source_map_for_chatbot
         )
 
     except Exception as e:
-        logger.error(f"Error in news analysis: {str(e)}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        return render_template("news_simple.html", 
-                             error="Analysis temporarily unavailable. Please try again.")
-
+        logger.error(f"Error in news analysis V3: {e}", exc_info=True)
+        return render_template("news_simple.html", error="Analysis temporarily unavailable. Please try again.")
+    
 @app.route("/api/news/<company>")
 @login_required  
 def api_news_summary(company):

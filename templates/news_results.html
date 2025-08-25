@@ -207,10 +207,10 @@
                             {% elif analysis_quality == 'Professional' %}bg-info
                             {% elif analysis_quality == 'Standard' %}bg-warning
                             {% else %}bg-secondary{% endif %}">
-                            {{ analysis_quality }} Grade
+                            {{ metrics.analysis_quality }} Grade
                         </span>
                         <span class="text-muted">
-                            <i class="fas fa-newspaper"></i> {{ article_count }} articles
+                            <i class="fas fa-newspaper"></i> {{ metrics.total_articles }} articles
                         </span>
                     </div>
                     
@@ -366,57 +366,57 @@
                     </div>
                     
                     <div class="row justify-content-center">
-                        {% if alphavantage_articles > 0 %}
+                        {% if metrics.alphavantage_articles > 0 %}
                         <div class="col-md-3 col-6">
                             <div class="metric-card text-center">
-                                <div class="h4 text-purple mb-1">{{ alphavantage_articles }}</div>
+                                <div class="h4 text-purple mb-1">{{ metrics.alphavantage_articles }}</div>
                                 <small><i class="fas fa-brain"></i> AlphaVantage</small>
                                 <div class="small text-muted">Sentiment + Full Content</div>
                                 <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-purple" style="width: {{ alphavantage_coverage }}%"></div>
+                                    <div class="progress-bar bg-purple" style="width: {{ metrics.alphavantage_coverage }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ alphavantage_coverage|default(0)|round }}%</small>
+                                <small class="text-muted">{{ metrics.alphavantage_coverage|default(0)|round }}%</small>
                             </div>
                         </div>
                         {% endif %}
                         
-                        {% if nyt_articles is defined and nyt_articles > 0 %}
+                        {% if metrics.nyt_articles is defined and metrics.nyt_articles > 0 %}
                         <div class="col-md-3 col-6">
                             <div class="metric-card text-center">
-                                <div class="h4 text-warning mb-1">{{ nyt_articles }}</div>
+                                <div class="h4 text-warning mb-1">{{ metrics.nyt_articles }}</div>
                                 <small><i class="fas fa-newspaper"></i> NYT API</small>
                                 <div class="small text-muted">Full Abstracts</div>
                                 <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-warning" style="width: {{ (nyt_articles / article_count * 100) | round }}%"></div>
+                                    <div class="progress-bar bg-warning" style="width: {{ (metrics.nyt_articles / metrics.total_articles * 100) | round }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ (nyt_articles / article_count * 100) | round }}%</small>
+                                <small class="text-muted">{{ (metrics.nyt_articles / metrics.total_articles * 100) | round }}%</small>
                             </div>
                         </div>
                         {% endif %}
                         
-                        {% if rss_articles is defined and rss_articles > 0 %}
+                        {% if metrics.rss_articles is defined and metrics.rss_articles > 0 %}
                         <div class="col-md-3 col-6">
                             <div class="metric-card text-center">
-                                <div class="h4 text-info mb-1">{{ rss_articles }}</div>
+                                <div class="h4 text-info mb-1">{{ metrics.rss_articles }}</div>
                                 <small><i class="fas fa-rss"></i> RSS Feeds</small>
                                 <div class="small text-muted">Premium Feeds</div>
                                 <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-info" style="width: {{ (rss_articles / article_count * 100) | round }}%"></div>
+                                    <div class="progress-bar bg-info" style="width: {{ (metrics.rss_articles / metrics.total_articles * 100) | round }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ (rss_articles / article_count * 100) | round }}%</small>
+                                <small class="text-muted">{{ (metrics.rss_articles / metrics.total_articles * 100) | round }}%</small>
                             </div>
                         </div>
                         {% endif %}
                         
                         <div class="col-md-3 col-6">
                             <div class="metric-card text-center">
-                                <div class="h4 text-success mb-1">{{ high_quality_sources }}</div>
+                                <div class="h4 text-success mb-1">{{ metrics.high_quality_sources }}</div>
                                 <small><i class="fas fa-star"></i> Premium</small>
                                 <div class="small text-muted">Bloomberg, Reuters, WSJ</div>
                                 <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-success" style="width: {{ premium_coverage }}%"></div>
+                                    <div class="progress-bar bg-success" style="width: {{ metrics.premium_coverage }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ premium_coverage|default(0)|round }}%</small>
+                                <small class="text-muted">{{ metrics.premium_coverage|default(0)|round }}%</small>
                             </div>
                         </div>
                     </div>
@@ -425,65 +425,80 @@
                 <!-- Executive Summary -->
                 <div class="card analysis-section executive-section">
                     <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-briefcase"></i> Executive Summary
-                        </h5>
-                        <small>Strategic developments and fundamental business outlook</small>
+                        <h5 class="mb-0"><i class="fas fa-briefcase"></i> Executive Summary</h5>
                     </div>
                     <div class="card-body">
                         {% if summaries.executive %}
-                            {% for bullet in summaries.executive %}
+                            {% for bullet_data in summaries.executive %}
                             <div class="insight-bullet">
                                 <i class="fas fa-chevron-right text-success me-2"></i>
-                                {{ bullet|safe }}
+                                {# Render the bullet text #}
+                                {{ bullet_data.text | safe }}
+
+                                {# Render the citation badges #}
+                                {% if bullet_data.citations %}
+                                    {% for citation in bullet_data.citations %}
+                                        <a href="{{ citation.url }}" target="_blank" rel="noopener"
+                                           class="badge bg-secondary text-decoration-none source-badge"
+                                           title="Source: {{ citation.title }}">
+                                            <i class="fas fa-link"></i> {{ citation.source | truncate(15) }}
+                                        </a>
+                                    {% endfor %}
+                                {% endif %}
                             </div>
                             {% endfor %}
-                        {% else %}
-                            <p class="text-muted mb-0">No significant executive developments identified.</p>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Investor Insights -->
+                <!-- Investor Insights (repeat the same pattern) -->
                 <div class="card analysis-section investor-section">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-chart-bar"></i> Investor Insights
-                        </h5>
-                        <small>Valuation drivers, analyst actions, and market sentiment</small>
+                        <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Investor Insights</h5>
                     </div>
                     <div class="card-body">
                         {% if summaries.investor %}
-                            {% for bullet in summaries.investor %}
+                            {% for bullet_data in summaries.investor %}
                             <div class="insight-bullet">
                                 <i class="fas fa-chevron-right text-primary me-2"></i>
-                                {{ bullet|safe }}
+                                {{ bullet_data.text | safe }}
+                                {% if bullet_data.citations %}
+                                    {% for citation in bullet_data.citations %}
+                                        <a href="{{ citation.url }}" target="_blank" rel="noopener"
+                                           class="badge bg-secondary text-decoration-none source-badge"
+                                           title="Source: {{ citation.title }}">
+                                            <i class="fas fa-link"></i> {{ citation.source | truncate(15) }}
+                                        </a>
+                                    {% endfor %}
+                                {% endif %}
                             </div>
                             {% endfor %}
-                        {% else %}
-                            <p class="text-muted mb-0">No significant investor developments identified.</p>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Catalysts & Risks -->
+                <!-- Catalysts & Risks (repeat the same pattern) -->
                 <div class="card analysis-section catalysts-section">
                     <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-exclamation-triangle"></i> Catalysts & Risks
-                        </h5>
-                        <small>Near-term trading catalysts and risk factors</small>
+                        <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Catalysts & Risks</h5>
                     </div>
                     <div class="card-body">
                         {% if summaries.catalysts %}
-                            {% for bullet in summaries.catalysts %}
+                            {% for bullet_data in summaries.catalysts %}
                             <div class="insight-bullet">
                                 <i class="fas fa-chevron-right text-danger me-2"></i>
-                                {{ bullet|safe }}
+                                {{ bullet_data.text | safe }}
+                                {% if bullet_data.citations %}
+                                    {% for citation in bullet_data.citations %}
+                                        <a href="{{ citation.url }}" target="_blank" rel="noopener"
+                                           class="badge bg-secondary text-decoration-none source-badge"
+                                           title="Source: {{ citation.title }}">
+                                            <i class="fas fa-link"></i> {{ citation.source | truncate(15) }}
+                                        </a>
+                                    {% endfor %}
+                                {% endif %}
                             </div>
                             {% endfor %}
-                        {% else %}
-                            <p class="text-muted mb-0">No significant catalysts or risks identified.</p>
                         {% endif %}
                     </div>
                 </div>
@@ -494,8 +509,8 @@
                     <div class="card-header bg-light">
                         <h5 class="mb-0">
                             <i class="fas fa-newspaper"></i> Source Articles
-                            <span class="badge bg-secondary ms-2">{{ article_count }} analyzed</span>
-                            <small class="text-muted">(showing top 4, expand for all {{ article_count }})</small>
+                            <span class="badge bg-secondary ms-2">{{ metrics.total_articles }} analyzed</span>
+                            <small class="text-muted">(showing top 4, expand for all {{ metrics.total_articles }})</small>
                         </h5>
                         <small class="text-muted">Premium articles ranked by relevance, source quality, and content depth</small>
                     </div>
@@ -603,7 +618,7 @@
                             <div class="row">
                                 <div class="col-12">
                                     <h6 class="text-muted mb-3">
-                                        <i class="fas fa-list me-2"></i>Additional Sources (Articles 5-{{ article_count }})
+                                        <i class="fas fa-list me-2"></i>Additional Sources (Articles 5-{{ metrics.total_articles }})
                                         <small class="text-muted">- Comprehensive coverage from all premium sources</small>
                                     </h6>
                                 </div>
@@ -671,23 +686,23 @@
                             <div class="row mt-4">
                                 <div class="col-12">
                                     <div class="alert alert-info">
-                                        <h6><i class="fas fa-chart-bar me-2"></i>Complete Article Breakdown (All {{ article_count }})</h6>
+                                        <h6><i class="fas fa-chart-bar me-2"></i>Complete Article Breakdown (All {{ metrics.total_articles }})</h6>
                                         <div class="row">
                                             <div class="col-md-3">
-                                                <strong>AlphaVantage:</strong> {{ alphavantage_articles }} articles<br>
+                                                <strong>AlphaVantage:</strong> {{ metrics.alphavantage_articles }} articles<br>
                                                 <small class="text-muted">Full content + sentiment analysis</small>
                                             </div>
                                             <div class="col-md-3">
-                                                <strong>NYT API:</strong> {{ nyt_articles }} articles<br>
+                                                <strong>NYT API:</strong> {{ metrics.nyt_articles }} articles<br>
                                                 <small class="text-muted">Full abstracts + editorial quality</small>
                                             </div>
                                             <div class="col-md-3">
-                                                <strong>Premium RSS:</strong> {{ rss_articles }} articles<br>
+                                                <strong>Premium RSS:</strong> {{ metrics.rss_articles }} articles<br>
                                                 <small class="text-muted">Bloomberg, Reuters, WSJ feeds</small>
                                             </div>
                                             <div class="col-md-3">
-                                                <strong>Premium Sources:</strong> {{ high_quality_sources }} articles<br>
-                                                <small class="text-muted">{{ premium_coverage }}% coverage</small>
+                                                <strong>Premium Sources:</strong> {{ metrics.high_quality_sources }} articles<br>
+                                                <small class="text-muted">{{ metrics.premium_coverage }}% coverage</small>
                                             </div>
                                         </div>
                                     </div>
@@ -840,7 +855,7 @@
                 // Update button text when expanded/collapsed - FIXED VERSION
                 document.getElementById('expandArticlesBtn').addEventListener('click', function() {
                     const remainingCount = {{ remaining_articles|length }};
-                    const totalCount = {{ article_count }};
+                    const totalCount = {{ metrics.total_articles }};
                     const isExpanded = this.getAttribute('aria-expanded') === 'true';
                     
                     if (isExpanded) {
@@ -865,21 +880,21 @@
                         <div class="col-md-6">
                             <ul class="mb-0 small">
                                 <li><strong>Data Sources:</strong> 
-                                    {% if alphavantage_articles > 0 %}AlphaVantage API ({{ alphavantage_articles }} with sentiment), {% endif %}
-                                    {% if nyt_articles is defined and nyt_articles > 0 %}NYT API ({{ nyt_articles }} abstracts), {% endif %}
-                                    {% if rss_articles is defined and rss_articles > 0 %}Premium RSS ({{ rss_articles }} feeds), {% endif %}
+                                    {% if metrics.alphavantage_articles > 0 %}AlphaVantage API ({{ metrics.alphavantage_articles }} with sentiment), {% endif %}
+                                    {% if metrics.nyt_articles is defined and metrics.nyt_articles > 0 %}NYT API ({{ metrics.nyt_articles }} abstracts), {% endif %}
+                                    {% if metrics.rss_articles is defined and metrics.rss_articles > 0 %}Premium RSS ({{ metrics.rss_articles }} feeds), {% endif %}
                                     Google Search fallback
                                 </li>
-                                <li><strong>Content Quality:</strong> {{ alphavantage_coverage|default(0)|round }}% full content, {{ premium_coverage|default(0)|round }}% premium sources</li>
+                                <li><strong>Content Quality:</strong> {{ metrics.alphavantage_coverage|default(0)|round }}% full content, {{ metrics.premium_coverage|default(0)|round }}% premium sources</li>
                                 <li><strong>Analysis Features:</strong> 
-                                    {% if alphavantage_articles > 0 %}Sentiment analysis, relevance scoring, {% endif %}
+                                    {% if metrics.alphavantage_articles > 0 %}Sentiment analysis, relevance scoring, {% endif %}
                                     quantified financial impacts, trading context
                                 </li>
                             </ul>
                         </div>
                         <div class="col-md-6">
                             <ul class="mb-0 small">
-                                <li><strong>Processing:</strong> {{ articles_analyzed|default(article_count) }} articles analyzed, {{ articles_displayed|default(8) }} top articles displayed</li>
+                                <li><strong>Processing:</strong> {{ articles_analyzed|default(metrics.total_articles) }} articles analyzed, {{ articles_displayed|default(8) }} top articles displayed</li>
                                 
                                 <!-- Enhanced Quality Information -->
                                 {% if quality_validation and quality_validation.enabled %}
@@ -894,7 +909,7 @@
                                 </li>
                                 {% endif %}
                                 
-                                <li><strong>Analysis Grade:</strong> {{ analysis_quality }} - 
+                                <li><strong>Analysis Grade:</strong> {{ metrics.analysis_quality }} - 
                                     {% if analysis_quality == 'Premium+' %}Multi-source with sentiment analysis
                                     {% elif analysis_quality == 'Institutional' %}Premium sources with quantified impacts
                                     {% elif analysis_quality == 'Professional' %}Enhanced analysis with business context
@@ -942,13 +957,13 @@
         function exportAnalysis() {
             const company = {{ company|tojson }};
             const dateRange = "{{ date_range }}";
-            const analysisQuality = "{{ analysis_quality }}";
+            const analysisQuality = "{{ metrics.analysis_quality }}";
             const sourceBreakdown = {
-                total: {{ article_count }},
-                alphavantage: {{ alphavantage_articles|default(0) }},
-                nyt: {{ nyt_articles|default(0) }},
-                rss: {{ rss_articles|default(0) }},
-                premium: {{ high_quality_sources|default(0) }}
+                total: {{ metrics.total_articles }},
+                alphavantage: {{ metrics.alphavantage_articles|default(0) }},
+                nyt: {{ metrics.nyt_articles|default(0) }},
+                rss: {{ metrics.rss_articles|default(0) }},
+                premium: {{ metrics.high_quality_sources|default(0) }}
             };
             
             let text = `PREMIUM FINANCIAL ANALYSIS: ${company}\n`;
