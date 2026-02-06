@@ -4,218 +4,103 @@
 
 {% block extra_styles %}
     <style>
-        :root {
-            --primary-color: midnightblue; /* #191970 */
-            --primary-hover: #10104D; /* A darker shade for hover */
-            --secondary-color: #f8f9fa;
-            --accent-color: #28a745; /* Keep accent green or choose another */
-            --text-color: #333;
-            --light-text: #6c757d;
-            --bg-color: #f8fafc; /* Background for dashboard/upload pages */
-            --card-shadow: rgba(0, 0, 0, 0.05);
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: #f8fafc;
-            color: var(--text-color);
-            line-height: 1.6;
-            position: relative;
-            min-height: 100vh;
-        }
-        
         .container {
             max-width: 1000px;
             padding: 2rem;
             margin: 0 auto;
         }
         
-        .navbar {
-            padding: 1rem 0;
-            background-color: white !important;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        }
-        
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.4rem;
-            color: var(--primary-color) !important;
-        }
-        
-        .content-card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 86, 179, 0.08);
-            margin-bottom: 2rem;
-            overflow: hidden;
-        }
-        
-        .card-header {
-            background-color: white;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-            padding: 1.5rem 2rem;
-        }
-        
-        .card-header h5 {
-            margin: 0;
-            font-weight: 600;
-            color: var(--primary-color);
-            font-size: 1.4rem;
-        }
-        
-        .card-body {
-            padding: 2rem;
-        }
-        
-        .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-            font-weight: 600;
-            padding: 0.75rem 2rem;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-primary:hover:not(:disabled) {
-            background-color: #004494;
-            border-color: #004494;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 86, 179, 0.2);
-        }
-        
-        .btn-primary:disabled {
-            background-color: #a2c1e5;
-            border-color: #a2c1e5;
-        }
-        
-        .form-control {
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            padding: 0.75rem 1rem;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-        
-        .form-control:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.1);
-        }
-        
-        .form-check-input:checked {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-        }
-        
         .upload-area {
-            border: 2px dashed #cbd5e1;
-            border-radius: 12px;
+            border: 2px dashed var(--color-border);
+            border-radius: var(--radius-button);
             padding: 2rem;
             text-align: center;
-            transition: all 0.3s ease;
+            transition: var(--transition-default);
             margin-bottom: 1.5rem;
-            background-color: #f8fafc;
+            background-color: var(--color-background);
         }
-        
+
         .upload-area:hover {
-            border-color: var(--primary-color);
-            background-color: #f0f7ff;
+            border-color: var(--color-primary);
+            background-color: rgba(25, 25, 112, 0.02);
         }
-        
+
         .upload-icon {
             font-size: 3rem;
             margin-bottom: 1rem;
-            color: var(--primary-color);
+            color: var(--color-primary);
         }
-        
+
         .upload-text {
             margin-bottom: 1rem;
         }
-        
-        .form-text {
-            color: var(--light-text);
-        }
-        
+
         .info-card {
-            background-color: #e6f4ff;
-            border-radius: 8px;
+            background-color: rgba(59, 130, 246, 0.05);
+            border-radius: var(--radius-button);
+            border: 1px solid var(--color-border-light);
             padding: 1.5rem;
             margin-bottom: 1.5rem;
         }
-        
+
         .info-card h5 {
-            color: var(--primary-color);
+            color: var(--color-primary);
             margin-bottom: 1rem;
-            font-weight: 600;
-        }
-        
-        .nav-link {
-            color: var(--text-color);
-            font-weight: 500;
-        }
-        
-        .nav-link:hover {
-            color: var(--primary-color);
-        }
-        
-        .footer {
-            background-color: var(--secondary-color);
-            padding: 2rem 0;
-            text-align: center;
-            color: var(--light-text);
-            margin-top: 3rem;
+            font-weight: var(--font-weight-semibold);
         }
         
         .viz-option {
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-button);
             padding: 1.5rem;
             margin-bottom: 1rem;
-            transition: all 0.2s ease;
+            transition: var(--transition-fast);
         }
-        
+
         .viz-option:hover {
-            border-color: var(--primary-color);
-            background-color: #f8fafc;
+            border-color: var(--color-primary);
+            background-color: var(--color-background);
         }
-        
+
         .viz-option-title {
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             margin-bottom: 0.5rem;
             display: flex;
             align-items: center;
         }
-        
+
         .viz-option-title i {
             margin-right: 0.5rem;
-            color: var(--primary-color);
+            color: var(--color-primary);
         }
-        
+
         .viz-option-desc {
-            color: var(--light-text);
-            font-size: 0.9rem;
+            color: var(--color-muted);
+            font-size: 0.875rem;
             margin-left: 1.7rem;
         }
-        
+
         .selected-files {
             margin-top: 1rem;
         }
-        
+
         .file-item {
             display: flex;
             align-items: center;
             padding: 0.75rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-button);
             margin-bottom: 0.5rem;
         }
-        
+
         .file-item i {
             font-size: 1.25rem;
             margin-right: 0.75rem;
-            color: var(--primary-color);
+            color: var(--color-primary);
         }
-        
+
         .tooltip-icon {
-            color: var(--primary-color);
+            color: var(--color-primary);
             font-size: 0.85rem;
             cursor: pointer;
             margin-left: 0.5rem;
@@ -268,14 +153,17 @@
 
 {% block content %}
     <div class="container">
-        <div class="content-card">
+        <div class="ds-card ds-card-accent-green">
             <div class="card-header">
-                <h5>Upload ISM Manufacturing Report</h5>
+                <h5 class="ds-section-title mb-0">Upload ISM Manufacturing Report</h5>
             </div>
             <div class="card-body">
                 <div class="info-card">
-                    <h5><i class="bi bi-info-circle-fill me-2"></i>About This Tool</h5>
-                    <p>This tool analyzes ISM Manufacturing Reports to extract key metrics, industry trends, and visual insights. Simply upload your PDF report and we'll take care of the rest.</p>
+                    <h5 class="d-flex align-items-center gap-2">
+                        <i data-lucide="info" style="width: 20px; height: 20px;"></i>
+                        About This Tool
+                    </h5>
+                    <p class="mb-0">This tool analyzes ISM Manufacturing Reports to extract key metrics, industry trends, and visual insights. Simply upload your PDF report and we'll take care of the rest.</p>
                 </div>
 
                 <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" id="uploadForm">
@@ -322,19 +210,13 @@
 
         {% if has_data %}
         <div class="d-grid">
-            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary">
-                <i class="bi bi-bar-chart-fill me-2"></i>View Dashboard
+            <a href="{{ url_for('dashboard') }}" class="ds-btn-secondary d-inline-flex align-items-center justify-content-center gap-2">
+                <i data-lucide="bar-chart-3" style="width: 16px; height: 16px;"></i>
+                View Dashboard
             </a>
         </div>
         {% endif %}
     </div>
-
-    <footer class="footer">
-        <div class="container">
-            <p>© 2025 Envoy LLC. All rights reserved.</p>
-        </div>
-    </footer>
-
 
 {% endblock %}
 
@@ -452,6 +334,11 @@
                      }
                  }, 5000);
              }
+
+            // Initialize Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
 
         }); // End DOMContentLoaded
     </script>

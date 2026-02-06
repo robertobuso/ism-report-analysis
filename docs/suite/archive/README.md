@@ -4,4 +4,4 @@ Files here are archived and no longer current. Check the [current implementation
 
 | File | Archived Date | Reason | Replacement |
 |------|--------------|--------|-------------|
-| (empty -- no archived docs yet) | | | |
+| ui-ux-consolidation-plan.md | 2026-02-06 | Completed all phases (3-7). Unified visual design across all Flask templates to match Portfolio Intelligence. | [Implementation Doc](../implementations/2026-02-06-ui-ux-consolidation.md) |

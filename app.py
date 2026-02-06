@@ -9,6 +9,10 @@ import uuid
 import json
 import time
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Create necessary directories first
 os.makedirs("logs", exist_ok=True)

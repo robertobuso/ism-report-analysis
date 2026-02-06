@@ -1,0 +1,255 @@
+{# Envoy Signal Logo - Animated (for landing pages) #}
+{% set logo_size = logo_size | default(180) %}
+{% set show_text = show_text | default(true) %}
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0px;">
+    <svg width="{{ logo_size }}" height="{{ logo_size }}" viewBox="0 0 120 120" style="margin-bottom: -30px;">
+        <defs>
+            <linearGradient id="signalGrad-{{ logo_size }}" x1="0%" y1="100%" x2="0%" y2="0%">
+                <stop offset="0%" stop-color="#191970" stop-opacity="0.2" />
+                <stop offset="50%" stop-color="#764ba2" stop-opacity="0.6" />
+                <stop offset="100%" stop-color="#28a745" />
+            </linearGradient>
+            <linearGradient id="coreGrad-{{ logo_size }}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#28a745" />
+                <stop offset="100%" stop-color="#3b82f6" />
+            </linearGradient>
+        </defs>
+
+        {# Signal waves emanating outward #}
+        <path
+            d="M 30 60 Q 60 36, 90 60"
+            fill="none"
+            stroke="url(#signalGrad-{{ logo_size }})"
+            stroke-width="2"
+            opacity="0.8"
+            class="wave-0"
+        />
+
+        <path
+            d="M 36 60 Q 60 40, 84 60"
+            fill="none"
+            stroke="url(#signalGrad-{{ logo_size }})"
+            stroke-width="2"
+            opacity="0.65"
+            class="wave-1"
+        />
+
+        <path
+            d="M 42 60 Q 60 44, 78 60"
+            fill="none"
+            stroke="url(#signalGrad-{{ logo_size }})"
+            stroke-width="2"
+            opacity="0.5"
+            class="wave-2"
+        />
+
+        <path
+            d="M 48 60 Q 60 48, 72 60"
+            fill="none"
+            stroke="url(#signalGrad-{{ logo_size }})"
+            stroke-width="2"
+            opacity="0.35"
+            class="wave-3"
+        />
+
+        <path
+            d="M 54 60 Q 60 52, 66 60"
+            fill="none"
+            stroke="url(#signalGrad-{{ logo_size }})"
+            stroke-width="2"
+            opacity="0.2"
+            class="wave-4"
+        />
+
+        {# Source point with subtle pulse #}
+        <circle
+            cx="60"
+            cy="60"
+            r="5"
+            fill="url(#coreGrad-{{ logo_size }})"
+            class="source-pulse"
+        />
+        <circle
+            cx="60"
+            cy="60"
+            r="3"
+            fill="#3b82f6"
+            class="core-glow"
+        />
+
+        <style>
+            .wave-0, .wave-1, .wave-2, .wave-3, .wave-4,
+            .source-pulse, .core-glow {
+                transform-origin: 60px 60px;
+            }
+
+            .wave-0 {
+                animation: wave-flow-0 4s ease-in-out infinite;
+            }
+
+            .wave-1 {
+                animation: wave-flow-1 4s ease-in-out infinite 0.5s;
+            }
+
+            .wave-2 {
+                animation: wave-flow-2 4s ease-in-out infinite 1s;
+            }
+
+            .wave-3 {
+                animation: wave-flow-3 4s ease-in-out infinite 1.5s;
+            }
+
+            .wave-4 {
+                animation: wave-flow-4 4s ease-in-out infinite 2s;
+            }
+
+            .source-pulse {
+                animation: source-pulse 3s ease-in-out infinite;
+            }
+
+            .core-glow {
+                animation: core-glow 3s ease-in-out infinite;
+            }
+
+            @keyframes wave-flow-0 {
+                0% {
+                    opacity: 0;
+                    transform: translateY(0) scale(0.95);
+                }
+                20% {
+                    opacity: 0.9;
+                    transform: translateY(-3px) scale(1);
+                }
+                40% {
+                    opacity: 0.8;
+                    transform: translateY(-2px) scale(1);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateY(-8px) scale(1.05);
+                }
+            }
+
+            @keyframes wave-flow-1 {
+                0% {
+                    opacity: 0;
+                    transform: translateY(0) scale(0.95);
+                }
+                20% {
+                    opacity: 0.75;
+                    transform: translateY(-3px) scale(1);
+                }
+                40% {
+                    opacity: 0.65;
+                    transform: translateY(-2px) scale(1);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateY(-8px) scale(1.05);
+                }
+            }
+
+            @keyframes wave-flow-2 {
+                0% {
+                    opacity: 0;
+                    transform: translateY(0) scale(0.95);
+                }
+                20% {
+                    opacity: 0.6;
+                    transform: translateY(-3px) scale(1);
+                }
+                40% {
+                    opacity: 0.5;
+                    transform: translateY(-2px) scale(1);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateY(-8px) scale(1.05);
+                }
+            }
+
+            @keyframes wave-flow-3 {
+                0% {
+                    opacity: 0;
+                    transform: translateY(0) scale(0.95);
+                }
+                20% {
+                    opacity: 0.45;
+                    transform: translateY(-3px) scale(1);
+                }
+                40% {
+                    opacity: 0.35;
+                    transform: translateY(-2px) scale(1);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateY(-8px) scale(1.05);
+                }
+            }
+
+            @keyframes wave-flow-4 {
+                0% {
+                    opacity: 0;
+                    transform: translateY(0) scale(0.95);
+                }
+                20% {
+                    opacity: 0.3;
+                    transform: translateY(-3px) scale(1);
+                }
+                40% {
+                    opacity: 0.2;
+                    transform: translateY(-2px) scale(1);
+                }
+                100% {
+                    opacity: 0;
+                    transform: translateY(-8px) scale(1.05);
+                }
+            }
+
+            @keyframes source-pulse {
+                0%, 100% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1.15);
+                    opacity: 0.85;
+                }
+            }
+
+            @keyframes core-glow {
+                0%, 100% {
+                    filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.4));
+                }
+                50% {
+                    filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.6));
+                }
+            }
+        </style>
+    </svg>
+
+    {% if show_text %}
+    <div style="text-align: center;">
+        <div style="
+            font-family: var(--font-sans);
+            font-size: {{ (logo_size * 0.267) | int }}px;
+            font-weight: var(--font-weight-semibold);
+            letter-spacing: 0.02em;
+            color: var(--color-primary);
+        ">
+            Envoy
+        </div>
+        <div style="
+            font-family: var(--font-sans);
+            font-size: {{ (logo_size * 0.092) | int }}px;
+            font-weight: var(--font-weight-medium);
+            letter-spacing: 0.15em;
+            color: var(--color-accent-purple);
+            margin-top: 2px;
+        ">
+            FINANCIAL INTELLIGENCE
+        </div>
+    </div>
+    {% endif %}
+</div>

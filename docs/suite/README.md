@@ -9,6 +9,7 @@ Phase 0 is complete. The Envoy Financial Intelligence Suite has a shared `base.h
 ## Quick Links
 
 - [Current Implementation Status](status/current-implementation-status.md)
+- [UI/UX Consolidation Plan](planning/ui-ux-consolidation-plan.md) *(in progress)*
 - [Base Template Migration](implementations/base-template-migration.md)
 - [Suite Landing Page](implementations/suite-landing-page.md)
 - [Dev Environment Setup](implementations/dev-environment-setup.md)

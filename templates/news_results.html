@@ -2,20 +2,14 @@
 
 {% block title %}{{ company }} - Premium Financial Analysis{% endblock %}
 
-{% block head %}
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-{% endblock %}
-
 {% block extra_styles %}
     <style>
         .analysis-section {
-            border-left: 4px solid #007bff;
-            background: #f8f9fa;
             margin-bottom: 1.5rem;
         }
-        .executive-section { border-left-color: #28a745; }
-        .investor-section { border-left-color: #007bff; }
-        .catalysts-section { border-left-color: #dc3545; }
+        .executive-section { border-left: 4px solid var(--color-accent-green); }
+        .investor-section { border-left: 4px solid var(--color-accent-blue); }
+        .catalysts-section { border-left: 4px solid var(--color-accent-red); }
         
         .quality-badge {
             font-size: 0.75rem;
@@ -73,43 +67,14 @@
         
         .back-button {
             position: fixed;
-            top: 20px;
+            top: 80px;
             left: 20px;
             z-index: 1000;
         }
-        
-        .source-breakdown {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .metric-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            backdrop-filter: blur(10px);
-        }
-        
+
         .progress-thin {
             height: 6px;
-        }
-
-        .metric-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            backdrop-filter: blur(10px);
-            color: #333 !important; /* ✅ Fix: Ensure text is dark */
-        }
-
-        .metric-card small,
-        .metric-card .small {
-            color: #6c757d !important; /* ✅ Fix: Ensure small text is visible gray */
+            border-radius: 3px;
         }
 
         .badge.bg-purple { 
@@ -189,17 +154,18 @@
 {% block content %}
     <div class="container-fluid">
         <!-- Back Button -->
-        <a href="/news" class="btn btn-outline-secondary back-button">
-            <i class="fas fa-arrow-left"></i> New Analysis
+        <a href="/news" class="ds-btn-secondary back-button d-inline-flex align-items-center gap-2">
+            <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+            New Analysis
         </a>
-        
+
         <div class="row justify-content-center">
             <div class="col-lg-10 col-xl-8">
                 <!-- Enhanced Header with Premium Metrics -->
                 <div class="text-center mb-4 mt-4">
-                    <h2 class="mb-2">
-                        <i class="fas fa-chart-line text-primary"></i>
-                        Premium Financial Analysis: {{ company }}
+                    <h2 class="ds-page-title mb-3 d-flex align-items-center justify-content-center gap-2">
+                        <i data-lucide="trending-up" style="width: 28px; height: 28px;" class="text-primary"></i>
+                        Financial Analysis: {{ company }}
                     </h2>
                     <div class="d-flex justify-content-center align-items-center gap-3 flex-wrap">
                         <span class="badge bg-secondary">{{ date_range }}</span>
@@ -359,75 +325,91 @@
 
 
                 <!-- Enhanced Source Breakdown -->
-                <div class="source-breakdown">
-                    <div class="row text-center">
-                        <div class="col-12 mb-3">
-                            <h5 class="mb-0"><i class="fas fa-database"></i> Premium Sources Breakdown</h5>
-                            <small>Multi-source institutional analysis powered by APIs and premium feeds</small>
-                        </div>
+                <div class="ds-card ds-card-accent-purple mb-4">
+                    <div class="text-center mb-3">
+                        <h5 class="ds-section-title mb-2 d-flex align-items-center justify-content-center gap-2">
+                            <i data-lucide="database" style="width: 20px; height: 20px;"></i>
+                            Premium Sources Breakdown
+                        </h5>
+                        <small class="ds-muted">Multi-source institutional analysis powered by APIs and premium feeds</small>
                     </div>
-                    
+
                     <div class="row justify-content-center">
                         {% if metrics.alphavantage_articles > 0 %}
                         <div class="col-md-3 col-6">
-                            <div class="metric-card text-center">
-                                <div class="h4 text-purple mb-1">{{ metrics.alphavantage_articles }}</div>
-                                <small><i class="fas fa-brain"></i> AlphaVantage</small>
-                                <div class="small text-muted">Sentiment + Full Content</div>
-                                <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-purple" style="width: {{ metrics.alphavantage_coverage }}%"></div>
+                            <div class="ds-kpi-card text-center">
+                                <div class="h4 mb-1" style="color: var(--color-accent-purple);">{{ metrics.alphavantage_articles }}</div>
+                                <small class="d-flex align-items-center justify-content-center gap-1 mb-1">
+                                    <i data-lucide="brain" style="width: 14px; height: 14px;"></i>
+                                    AlphaVantage
+                                </small>
+                                <div class="small ds-muted">Sentiment + Full Content</div>
+                                <div class="progress progress-thin mt-2" style="background: var(--color-border-light);">
+                                    <div class="progress-bar" style="background: var(--color-accent-purple); width: {{ metrics.alphavantage_coverage }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ metrics.alphavantage_coverage|default(0)|round }}%</small>
+                                <small class="ds-muted">{{ metrics.alphavantage_coverage|default(0)|round }}%</small>
                             </div>
                         </div>
                         {% endif %}
-                        
+
                         {% if metrics.nyt_articles is defined and metrics.nyt_articles > 0 %}
                         <div class="col-md-3 col-6">
-                            <div class="metric-card text-center">
-                                <div class="h4 text-warning mb-1">{{ metrics.nyt_articles }}</div>
-                                <small><i class="fas fa-newspaper"></i> NYT API</small>
-                                <div class="small text-muted">Full Abstracts</div>
-                                <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-warning" style="width: {{ (metrics.nyt_articles / metrics.total_articles * 100) | round }}%"></div>
+                            <div class="ds-kpi-card text-center">
+                                <div class="h4 mb-1" style="color: var(--color-accent-warning);">{{ metrics.nyt_articles }}</div>
+                                <small class="d-flex align-items-center justify-content-center gap-1 mb-1">
+                                    <i data-lucide="newspaper" style="width: 14px; height: 14px;"></i>
+                                    NYT API
+                                </small>
+                                <div class="small ds-muted">Full Abstracts</div>
+                                <div class="progress progress-thin mt-2" style="background: var(--color-border-light);">
+                                    <div class="progress-bar" style="background: var(--color-accent-warning); width: {{ (metrics.nyt_articles / metrics.total_articles * 100) | round }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ (metrics.nyt_articles / metrics.total_articles * 100) | round }}%</small>
+                                <small class="ds-muted">{{ (metrics.nyt_articles / metrics.total_articles * 100) | round }}%</small>
                             </div>
                         </div>
                         {% endif %}
-                        
+
                         {% if metrics.rss_articles is defined and metrics.rss_articles > 0 %}
                         <div class="col-md-3 col-6">
-                            <div class="metric-card text-center">
-                                <div class="h4 text-info mb-1">{{ metrics.rss_articles }}</div>
-                                <small><i class="fas fa-rss"></i> RSS Feeds</small>
-                                <div class="small text-muted">Premium Feeds</div>
-                                <div class="progress progress-thin mt-2">
-                                    <div class="progress-bar bg-info" style="width: {{ (metrics.rss_articles / metrics.total_articles * 100) | round }}%"></div>
+                            <div class="ds-kpi-card text-center">
+                                <div class="h4 mb-1" style="color: var(--color-accent-blue);">{{ metrics.rss_articles }}</div>
+                                <small class="d-flex align-items-center justify-content-center gap-1 mb-1">
+                                    <i data-lucide="rss" style="width: 14px; height: 14px;"></i>
+                                    RSS Feeds
+                                </small>
+                                <div class="small ds-muted">Premium Feeds</div>
+                                <div class="progress progress-thin mt-2" style="background: var(--color-border-light);">
+                                    <div class="progress-bar" style="background: var(--color-accent-blue); width: {{ (metrics.rss_articles / metrics.total_articles * 100) | round }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ (metrics.rss_articles / metrics.total_articles * 100) | round }}%</small>
+                                <small class="ds-muted">{{ (metrics.rss_articles / metrics.total_articles * 100) | round }}%</small>
                             </div>
                         </div>
                         {% endif %}
-                        
+
                         <div class="col-md-3 col-6">
-                            <div class="metric-card text-center">
-                                <div class="h4 text-success mb-1">{{ metrics.high_quality_sources }}</div>
-                                <small><i class="fas fa-star"></i> Premium</small>
-                                <div class="small text-muted">Bloomberg, Reuters, WSJ</div>
-                                <div class="progress progress-thin mt-2">
+                            <div class="ds-kpi-card text-center">
+                                <div class="h4 mb-1" style="color: var(--color-accent-green);">{{ metrics.high_quality_sources }}</div>
+                                <small class="d-flex align-items-center justify-content-center gap-1 mb-1">
+                                    <i data-lucide="star" style="width: 14px; height: 14px;"></i>
+                                    Premium
+                                </small>
+                                <div class="small ds-muted">Bloomberg, Reuters, WSJ</div>
+                                <div class="progress progress-thin mt-2" style="background: var(--color-border-light);">
                                     <div class="progress-bar bg-success" style="width: {{ metrics.premium_coverage }}%"></div>
                                 </div>
-                                <small class="text-muted">{{ metrics.premium_coverage|default(0)|round }}%</small>
+                                <small class="ds-muted">{{ metrics.premium_coverage|default(0)|round }}%</small>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Executive Summary -->
-                <div class="card analysis-section executive-section">
+                <div class="ds-card analysis-section executive-section">
                     <div class="card-header bg-success text-white">
-                        <h5 class="mb-0"><i class="fas fa-briefcase"></i> Executive Summary</h5>
+                        <h5 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="briefcase" style="width: 18px; height: 18px;"></i>
+                            Executive Summary
+                        </h5>
                     </div>
                     <div class="card-body">
                         {% if summaries.executive %}
@@ -454,9 +436,12 @@
                 </div>
 
                 <!-- Investor Insights (repeat the same pattern) -->
-                <div class="card analysis-section investor-section">
+                <div class="ds-card analysis-section investor-section">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Investor Insights</h5>
+                        <h5 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="bar-chart-3" style="width: 18px; height: 18px;"></i>
+                            Investor Insights
+                        </h5>
                     </div>
                     <div class="card-body">
                         {% if summaries.investor %}
@@ -480,9 +465,12 @@
                 </div>
 
                 <!-- Catalysts & Risks (repeat the same pattern) -->
-                <div class="card analysis-section catalysts-section">
+                <div class="ds-card analysis-section catalysts-section">
                     <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Catalysts & Risks</h5>
+                        <h5 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="alert-triangle" style="width: 18px; height: 18px;"></i>
+                            Catalysts & Risks
+                        </h5>
                     </div>
                     <div class="card-body">
                         {% if summaries.catalysts %}
@@ -1052,6 +1040,11 @@
                 .badge.bg-purple { background-color: #6f42c1 !important; }
             `;
             document.head.appendChild(style);
+
+            // Initialize Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
         });
     </script>
 

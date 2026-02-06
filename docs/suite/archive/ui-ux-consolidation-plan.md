@@ -1,5 +1,7 @@
 # UI/UX Consolidation Plan: Unifying the Envoy Financial Intelligence Suite
 
+> **ARCHIVED**: 2026-02-06 — Phases 3-7 completed. See [Implementation Doc](../implementations/2026-02-06-ui-ux-consolidation.md) for results. Phases 1-2 were completed earlier.
+
 > **Goal**: Make the Flask app (ISM Analysis, News Analysis) visually match the Portfolio Intelligence (PI) Next.js frontend so the entire suite feels like one cohesive product.
 
 > **Design Principle**: "Same brand, different vintage" — shared visual DNA, tool-specific accents.

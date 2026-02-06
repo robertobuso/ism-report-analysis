@@ -3,18 +3,18 @@
 {% block title %}News Analysis System Monitoring{% endblock %}
 
 {% block head %}
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 {% endblock %}
 
 {% block extra_styles %}
     <style>
         .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
+            transition: var(--transition-default);
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
         }
         
         .health-indicator {
@@ -24,29 +24,21 @@
             display: inline-block;
             margin-right: 8px;
         }
-        
-        .health-healthy { background-color: #28a745; }
-        .health-warning { background-color: #ffc107; }
-        .health-error { background-color: #dc3545; }
-        
-        .chart-container {
-            background: white;
-            border-radius: 10px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
+
+        .health-healthy { background-color: var(--color-accent-green); }
+        .health-warning { background-color: var(--color-accent-warning); }
+        .health-error { background-color: var(--color-accent-red); }
+
         .anomaly-item {
-            border-left: 4px solid #dc3545;
+            border-left: 4px solid var(--color-accent-red);
             background: #f8d7da;
             padding: 0.75rem;
             margin-bottom: 0.5rem;
-            border-radius: 0 5px 5px 0;
+            border-radius: 0 var(--radius-button) var(--radius-button) 0;
         }
-        
-        .anomaly-medium { border-left-color: #ffc107; background: #fff3cd; }
-        .anomaly-low { border-left-color: #17a2b8; background: #d1ecf1; }
+
+        .anomaly-medium { border-left-color: var(--color-accent-warning); background: #fff3cd; }
+        .anomaly-low { border-left-color: var(--color-accent-blue); background: #d1ecf1; }
     </style>
 {% endblock %}
 
@@ -56,20 +48,26 @@
         <div class="row">
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center py-3">
-                    <h2><i class="fas fa-chart-bar text-primary"></i> News Analysis System Monitoring</h2>
-                    <div>
-                        <span class="health-indicator health-{{ data.health_status }}"></span>
-                        <span class="text-muted">System Status: 
-                            {% if data.health_status == 'healthy' %}
-                                <span class="text-success">Healthy</span>
-                            {% elif data.health_status == 'issues_detected' %}
-                                <span class="text-warning">Issues Detected</span>
-                            {% else %}
-                                <span class="text-danger">Error</span>
-                            {% endif %}
-                        </span>
-                        <a href="/news" class="btn btn-outline-primary ms-3">
-                            <i class="fas fa-arrow-left"></i> Back to Analysis
+                    <h2 class="ds-page-title d-flex align-items-center gap-2 mb-0">
+                        <i data-lucide="bar-chart-3" style="width: 28px; height: 28px;" class="text-primary"></i>
+                        System Monitoring
+                    </h2>
+                    <div class="d-flex align-items-center gap-3">
+                        <div>
+                            <span class="health-indicator health-{{ data.health_status }}"></span>
+                            <span class="ds-muted">Status:
+                                {% if data.health_status == 'healthy' %}
+                                    <span class="text-success">Healthy</span>
+                                {% elif data.health_status == 'issues_detected' %}
+                                    <span class="text-warning">Issues Detected</span>
+                                {% else %}
+                                    <span class="text-danger">Error</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                        <a href="/news" class="ds-btn-secondary d-inline-flex align-items-center gap-2">
+                            <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+                            Back to Analysis
                         </a>
                     </div>
                 </div>
@@ -79,39 +77,42 @@
         <!-- Real-time Metrics -->
         <div class="row">
             <div class="col-md-3">
-                <div class="metric-card text-center">
-                    <h3 class="mb-1">{{ data.real_time_metrics.recent_requests_count or 0 }}</h3>
-                    <small>Recent Requests</small>
-                    <div class="mt-2">
-                        <i class="fas fa-clock"></i> Last {{ data.real_time_metrics.recent_requests_count or 0 }} analyses
+                <div class="ds-kpi-card metric-card ds-card-accent-purple text-center">
+                    <h3 class="mb-1 ds-tabular-nums">{{ data.real_time_metrics.recent_requests_count or 0 }}</h3>
+                    <small class="d-block mb-2">Recent Requests</small>
+                    <div class="mt-2 ds-muted d-flex align-items-center justify-content-center gap-2">
+                        <i data-lucide="clock" style="width: 14px; height: 14px;"></i>
+                        <span>Last {{ data.real_time_metrics.recent_requests_count or 0 }} analyses</span>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="metric-card text-center">
-                    <h3 class="mb-1">{{ data.real_time_metrics.avg_articles or 0 }}</h3>
-                    <small>Avg Articles per Analysis</small>
-                    <div class="mt-2">
-                        <i class="fas fa-newspaper"></i> Article quality
+                <div class="ds-kpi-card metric-card ds-card-accent-blue text-center">
+                    <h3 class="mb-1 ds-tabular-nums">{{ data.real_time_metrics.avg_articles or 0 }}</h3>
+                    <small class="d-block mb-2">Avg Articles per Analysis</small>
+                    <div class="mt-2 ds-muted d-flex align-items-center justify-content-center gap-2">
+                        <i data-lucide="newspaper" style="width: 14px; height: 14px;"></i>
+                        <span>Article quality</span>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="metric-card text-center">
-                    <h3 class="mb-1">{{ data.real_time_metrics.avg_response_time or 0 }}s</h3>
-                    <small>Avg Response Time</small>
-                    <div class="mt-2">
-                        <i class="fas fa-tachometer-alt"></i> Performance
+                <div class="ds-kpi-card metric-card ds-card-accent-green text-center">
+                    <h3 class="mb-1 ds-tabular-nums">{{ data.real_time_metrics.avg_response_time or 0 }}s</h3>
+                    <small class="d-block mb-2">Avg Response Time</small>
+                    <div class="mt-2 ds-muted d-flex align-items-center justify-content-center gap-2">
+                        <i data-lucide="gauge" style="width: 14px; height: 14px;"></i>
+                        <span>Performance</span>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="metric-card text-center">
-                    <h3 class="mb-1">{{ data.anomalies|length }}</h3>
-                    <small>Active Issues</small>
-                    <div class="mt-2">
-                        <i class="fas fa-exclamation-triangle"></i> 
-                        {% if data.anomalies|length == 0 %}All Good{% else %}Needs Attention{% endif %}
+                <div class="ds-kpi-card metric-card ds-card-accent-red text-center">
+                    <h3 class="mb-1 ds-tabular-nums">{{ data.anomalies|length }}</h3>
+                    <small class="d-block mb-2">Active Issues</small>
+                    <div class="mt-2 ds-muted d-flex align-items-center justify-content-center gap-2">
+                        <i data-lucide="alert-triangle" style="width: 14px; height: 14px;"></i>
+                        <span>{% if data.anomalies|length == 0 %}All Good{% else %}Needs Attention{% endif %}</span>
                     </div>
                 </div>
             </div>
@@ -121,16 +122,22 @@
         <div class="row">
             <!-- Source Performance Chart -->
             <div class="col-md-6">
-                <div class="chart-container">
-                    <h5><i class="fas fa-database"></i> Source Performance (7 Days)</h5>
+                <div class="ds-card mb-4">
+                    <h5 class="ds-section-title mb-3 d-flex align-items-center gap-2">
+                        <i data-lucide="database" style="width: 18px; height: 18px;"></i>
+                        Source Performance (7 Days)
+                    </h5>
                     <canvas id="sourcePerformanceChart" height="300"></canvas>
                 </div>
             </div>
 
             <!-- Quality Trends Chart -->
             <div class="col-md-6">
-                <div class="chart-container">
-                    <h5><i class="fas fa-star"></i> Analysis Quality Distribution</h5>
+                <div class="ds-card mb-4">
+                    <h5 class="ds-section-title mb-3 d-flex align-items-center gap-2">
+                        <i data-lucide="star" style="width: 18px; height: 18px;"></i>
+                        Analysis Quality Distribution
+                    </h5>
                     <canvas id="qualityDistributionChart" height="300"></canvas>
                 </div>
             </div>
@@ -140,9 +147,12 @@
         <div class="row">
             <!-- Weekly Summary -->
             <div class="col-md-4">
-                <div class="card">
+                <div class="ds-card">
                     <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0"><i class="fas fa-calendar-week"></i> Weekly Summary</h6>
+                        <h6 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                            Weekly Summary
+                        </h6>
                     </div>
                     <div class="card-body">
                         {% if data.weekly_summary %}
@@ -161,9 +171,12 @@
 
             <!-- API Performance -->
             <div class="col-md-4">
-                <div class="card">
+                <div class="ds-card">
                     <div class="card-header bg-success text-white">
-                        <h6 class="mb-0"><i class="fas fa-plug"></i> API Performance</h6>
+                        <h6 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="plug" style="width: 16px; height: 16px;"></i>
+                            API Performance
+                        </h6>
                     </div>
                     <div class="card-body">
                         {% if data.weekly_summary and data.weekly_summary.api_performance %}
@@ -187,9 +200,12 @@
 
             <!-- System Health -->
             <div class="col-md-4">
-                <div class="card">
+                <div class="ds-card">
                     <div class="card-header {% if data.anomalies|length == 0 %}bg-success{% else %}bg-warning{% endif %} text-white">
-                        <h6 class="mb-0"><i class="fas fa-heartbeat"></i> System Health</h6>
+                        <h6 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="heart-pulse" style="width: 16px; height: 16px;"></i>
+                            System Health
+                        </h6>
                     </div>
                     <div class="card-body">
                         {% if data.anomalies %}
@@ -213,23 +229,30 @@
         <!-- Export and Actions -->
         <div class="row mt-4">
             <div class="col-12">
-                <div class="card">
+                <div class="ds-card">
                     <div class="card-header bg-light">
-                        <h6 class="mb-0"><i class="fas fa-download"></i> Export & Actions</h6>
+                        <h6 class="mb-0 d-flex align-items-center gap-2">
+                            <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+                            Export & Actions
+                        </h6>
                     </div>
                     <div class="card-body">
                         <div class="btn-group" role="group">
-                            <a href="/api/monitoring/export?days=7" class="btn btn-outline-primary">
-                                <i class="fas fa-download"></i> Export 7 Days
+                            <a href="/api/monitoring/export?days=7" class="ds-btn-secondary d-inline-flex align-items-center gap-2">
+                                <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                                Export 7 Days
                             </a>
-                            <a href="/api/monitoring/export?days=30" class="btn btn-outline-primary">
-                                <i class="fas fa-download"></i> Export 30 Days
+                            <a href="/api/monitoring/export?days=30" class="ds-btn-secondary d-inline-flex align-items-center gap-2">
+                                <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                                Export 30 Days
                             </a>
-                            <button onclick="refreshDashboard()" class="btn btn-outline-success">
-                                <i class="fas fa-sync-alt"></i> Refresh
+                            <button onclick="refreshDashboard()" class="ds-btn-secondary d-inline-flex align-items-center gap-2">
+                                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                                Refresh
                             </button>
-                            <button onclick="checkAnomalies()" class="btn btn-outline-warning">
-                                <i class="fas fa-search"></i> Check Issues
+                            <button onclick="checkAnomalies()" class="ds-btn-secondary d-inline-flex align-items-center gap-2">
+                                <i data-lucide="search" style="width: 14px; height: 14px;"></i>
+                                Check Issues
                             </button>
                         </div>
                     </div>
@@ -327,5 +350,12 @@
             console.log('Auto-refreshing dashboard...');
             window.location.reload();
         }, 5 * 60 * 1000);
+
+        // Initialize Lucide icons
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
     </script>
 {% endblock %}

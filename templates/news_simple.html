@@ -2,104 +2,74 @@
 
 {% block title %}Financial News Analysis{% endblock %}
 
-{% block head %}
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-{% endblock %}
-
 {% block extra_styles %}
     <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        .example-ticker {
+            cursor: pointer;
+            transition: var(--transition-default);
         }
-        
-        .analysis-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+
+        .example-ticker:hover {
+            background: var(--color-accent-purple);
+            color: white;
+            border-color: var(--color-accent-purple);
+            transform: translateY(-1px);
         }
-        
-        .feature-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
+
+        .loading-spinner {
+            display: none;
+        }
+
+        .feature-icon-box {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-button);
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 1rem;
-            font-size: 1.5rem;
+            margin: 0 auto 0.75rem;
+            font-size: 1.25rem;
         }
-        
-        .form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+
+        .lucide-spin {
+            animation: lucide-spin 1s linear infinite;
         }
-        
-        .btn-analyze {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            border: none;
-            padding: 12px 30px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .btn-analyze:hover {
-            background: linear-gradient(45deg, #5a6fd8, #6a4190);
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .example-ticker {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 20px;
-            padding: 5px 12px;
-            font-size: 0.85rem;
-            margin: 2px;
-            display: inline-block;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .example-ticker:hover {
-            background: #007bff;
-            color: white;
-            border-color: #007bff;
-        }
-        
-        .loading-spinner {
-            display: none;
+
+        @keyframes lucide-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 {% endblock %}
 
 
 {% block content %}
-    <div class="container">
-        <div class="row justify-content-center min-vh-100 align-items-center">
+    <div class="container py-5">
+        <div class="row justify-content-center">
             <div class="col-lg-8 col-xl-6">
-                <div class="analysis-card p-5">
+                <div class="ds-card ds-card-accent-purple p-5">
                     <!-- Header -->
                     <div class="text-center mb-4">
-                        <div class="feature-icon bg-primary text-white mb-3">
-                            <i class="fas fa-chart-line"></i>
+                        <div class="feature-icon-box bg-primary text-white mb-3">
+                            <i data-lucide="trending-up"></i>
                         </div>
-                        <h2 class="mb-3">Claude Sonnet 4 Financial Analysis</h2>
-                        <p class="text-muted">Goldman Sachs-grade insights powered by Claude Sonnet 4 with quantified impacts and superior reasoning</p>
-                        <div class="alert alert-info">
-                            <small><i class="fas fa-robot me-1"></i> <strong>Enhanced with Claude Sonnet 4:</strong> Superior analytical depth, natural language flow, and transparent source attribution</small>
+                        <h2 class="ds-page-title mb-3">Financial News Analysis</h2>
+                        <p class="ds-muted">Institutional-grade insights powered by Claude Sonnet 4 with quantified impacts and comprehensive source analysis</p>
+                        <div class="alert alert-light border">
+                            <small class="d-flex align-items-center justify-content-center gap-2">
+                                <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+                                <strong>Claude Sonnet 4:</strong> Superior analytical depth, natural language flow, and transparent source attribution
+                            </small>
                         </div>
                     </div>
 
                     <!-- Error Alert -->
                     {% if error %}
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        {{ error }}
+                        <div class="d-flex align-items-center gap-2">
+                            <i data-lucide="alert-circle" style="width: 16px; height: 16px;"></i>
+                            {{ error }}
+                        </div>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                     {% endif %}
@@ -108,14 +78,15 @@
                     <form action="/news/summary" method="POST" class="needs-validation" novalidate id="analysisForm">
                         <div class="row">
                             <div class="col-md-8 mb-3">
-                                <label for="company" class="form-label fw-semibold">
-                                    <i class="fas fa-building me-2"></i>Company Name or Ticker
+                                <label for="company" class="form-label fw-semibold d-flex align-items-center gap-2">
+                                    <i data-lucide="building-2" style="width: 16px; height: 16px;"></i>
+                                    Company Name or Ticker
                                 </label>
-                                <input 
-                                    type="text" 
-                                    class="form-control form-control-lg" 
+                                <input
+                                    type="text"
+                                    class="ds-input form-control-lg"
                                     id="company"
-                                    name="company" 
+                                    name="company"
                                     placeholder="e.g., Apple, AAPL, Tesla, TSLA"
                                     required
                                     autocomplete="off"
@@ -124,12 +95,13 @@
                                     Please enter a company name or ticker symbol.
                                 </div>
                             </div>
-                            
+
                             <div class="col-md-4 mb-3">
-                                <label for="days_back" class="form-label fw-semibold">
-                                    <i class="fas fa-calendar me-2"></i>Date Range
+                                <label for="days_back" class="form-label fw-semibold d-flex align-items-center gap-2">
+                                    <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                                    Date Range
                                 </label>
-                                <select class="form-select form-select-lg" id="days_back" name="days_back">
+                                <select class="ds-select form-select-lg" id="days_back" name="days_back">
                                     <option value="3">Last 3 days</option>
                                     <option value="7" selected>Last week</option>
                                     <option value="14">Last 2 weeks</option>
@@ -140,28 +112,28 @@
 
                         <!-- Example Tickers -->
                         <div class="mb-4">
-                            <label class="form-label text-muted small">Popular examples:</label>
-                            <div>
-                                <span class="example-ticker" onclick="setCompany('AAPL')">AAPL</span>
-                                <span class="example-ticker" onclick="setCompany('TSLA')">TSLA</span>
-                                <span class="example-ticker" onclick="setCompany('MSFT')">MSFT</span>
-                                <span class="example-ticker" onclick="setCompany('GOOGL')">GOOGL</span>
-                                <span class="example-ticker" onclick="setCompany('AMZN')">AMZN</span>
-                                <span class="example-ticker" onclick="setCompany('NVDA')">NVDA</span>
-                                <span class="example-ticker" onclick="setCompany('JPM')">JPM</span>
-                                <span class="example-ticker" onclick="setCompany('JNJ')">JNJ</span>
+                            <label class="form-label ds-muted">Popular examples:</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('AAPL')">AAPL</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('TSLA')">TSLA</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('MSFT')">MSFT</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('GOOGL')">GOOGL</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('AMZN')">AMZN</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('NVDA')">NVDA</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('JPM')">JPM</span>
+                                <span class="ds-badge ds-badge-purple example-ticker" onclick="setCompany('JNJ')">JNJ</span>
                             </div>
                         </div>
 
                         <!-- Submit Button -->
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg btn-analyze">
-                                <span class="normal-text">
-                                    <i class="fas fa-search me-2"></i>
+                            <button type="submit" class="ds-btn-primary btn-lg">
+                                <span class="normal-text d-flex align-items-center justify-content-center gap-2">
+                                    <i data-lucide="search" style="width: 16px; height: 16px;"></i>
                                     Generate Analysis
                                 </span>
-                                <span class="loading-spinner">
-                                    <i class="fas fa-spinner fa-spin me-2"></i>
+                                <span class="loading-spinner d-flex align-items-center justify-content-center gap-2">
+                                    <i data-lucide="loader" class="lucide-spin" style="width: 16px; height: 16px;"></i>
                                     Analyzing...
                                 </span>
                             </button>
@@ -171,35 +143,37 @@
                     <!-- Enhanced Features -->
                     <div class="row mt-5 pt-4 border-top">
                         <div class="col-md-4 text-center mb-3">
-                            <div class="feature-icon bg-success text-white">
-                                <i class="fas fa-chart-bar"></i>
+                            <div class="feature-icon-box bg-success text-white">
+                                <i data-lucide="bar-chart-3"></i>
                             </div>
-                            <h6>Quantified Impact</h6>
-                            <small class="text-muted">Revenue estimates, price targets, and financial metrics included</small>
+                            <h6 class="fw-bold mb-2">Quantified Impact</h6>
+                            <small class="ds-muted">Revenue estimates, price targets, and financial metrics included</small>
                         </div>
                         <div class="col-md-4 text-center mb-3">
-                            <div class="feature-icon bg-primary text-white">
-                                <i class="fas fa-university"></i>
+                            <div class="feature-icon-box text-white" style="background: var(--color-accent-purple);">
+                                <i data-lucide="newspaper"></i>
                             </div>
-                            <h6>Premium Sources</h6>
-                            <small class="text-muted">Bloomberg, Reuters, WSJ prioritized for credible analysis</small>
+                            <h6 class="fw-bold mb-2">Premium Sources</h6>
+                            <small class="ds-muted">Bloomberg, Reuters, WSJ prioritized for credible analysis</small>
                         </div>
                         <div class="col-md-4 text-center mb-3">
-                            <div class="feature-icon bg-warning text-white">
-                                <i class="fas fa-crosshairs"></i>
+                            <div class="feature-icon-box bg-primary text-white">
+                                <i data-lucide="target"></i>
                             </div>
-                            <h6>Trading Context</h6>
-                            <small class="text-muted">Support/resistance levels and analyst price targets</small>
+                            <h6 class="fw-bold mb-2">Trading Context</h6>
+                            <small class="ds-muted">Support/resistance levels and analyst price targets</small>
                         </div>
                     </div>
 
                     <!-- Enhanced Disclaimer -->
-                    <div class="alert alert-light mt-4">
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle me-1"></i>
-                            Institutional-grade analysis with quantified financial impacts and trading context. 
-                            Sources include Bloomberg, Reuters, WSJ when available. Not investment advice - 
-                            consult qualified financial advisors and latest SEC filings.
+                    <div class="alert alert-light border mt-4">
+                        <small class="ds-muted d-flex align-items-start gap-2">
+                            <i data-lucide="info" style="width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px;"></i>
+                            <span>
+                                Institutional-grade analysis with quantified financial impacts and trading context.
+                                Sources include Bloomberg, Reuters, WSJ when available. Not investment advice -
+                                consult qualified financial advisors and latest SEC filings.
+                            </span>
                         </small>
                     </div>
                 </div>
@@ -268,25 +242,25 @@
             const overlay = document.createElement('div');
             overlay.id = 'analysisOverlay';
             overlay.innerHTML = `
-                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                        background: rgba(0,0,0,0.8); z-index: 9999; display: flex; 
-                        align-items: center; justify-content: center;">
-                    <div style="background: white; padding: 30px; border-radius: 15px; 
-                            text-align: center; max-width: 400px; margin: 20px;">
-                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
-                            <span class="visually-hidden">Loading...</span>
+                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                        background: rgba(0,0,0,0.75); z-index: 9999; display: flex;
+                        align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+                    <div class="ds-card" style="padding: 2rem; text-align: center; max-width: 400px; margin: 20px;">
+                        <div class="mb-3">
+                            <i data-lucide="loader" class="lucide-spin text-primary" style="width: 48px; height: 48px;"></i>
                         </div>
-                        <h5>Generating Claude Sonnet 4 Analysis</h5>
-                        <div id="progressText">Initializing premium financial sources...</div>
-                        <div class="progress mt-3" style="height: 8px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                        <h5 class="ds-section-title mb-3">Generating Analysis</h5>
+                        <div id="progressText" class="ds-muted mb-3">Initializing premium financial sources...</div>
+                        <div class="progress" style="height: 8px; border-radius: 4px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
                                 role="progressbar" style="width: 0%" id="progressBar"></div>
                         </div>
-                        <small class="text-muted mt-2 d-block">Claude Sonnet 4 analysis may take 1-3 minutes for superior insights</small>
+                        <small class="ds-muted d-block mt-3">Claude Sonnet 4 analysis may take 1-3 minutes</small>
                     </div>
                 </div>
             `;
             document.body.appendChild(overlay);
+            lucide.createIcons();
             
             // Enhanced progress updates for Claude Sonnet 4 (7 steps)
             const progressSteps = [
@@ -327,6 +301,7 @@
         // Auto-focus on company input
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('company').focus();
+            lucide.createIcons();
         });
 
         // Enter key handling for better UX
