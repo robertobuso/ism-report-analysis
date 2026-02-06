@@ -636,8 +636,6 @@ def oauth2callback():
 
             # Redirect to original URL if it exists
             next_url = session.pop('next_url', None)
-            if next_url and 'upload' in next_url:
-            
             if next_url:
                 return redirect(next_url)
             return redirect(url_for('suite_landing'))
