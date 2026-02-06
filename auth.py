@@ -12,7 +12,6 @@ def login_required(f):
         if 'authenticated' not in session or not session['authenticated']:
             # Store the original URL for redirection after login
             session['next_url'] = request.url
-            flash('Please sign in to access this page', 'warning')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function

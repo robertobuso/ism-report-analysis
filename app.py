@@ -293,7 +293,6 @@ def login():
 def logout():
     """Log out the user."""
     session.pop('authenticated', None)
-    flash('You have been logged out successfully', 'success')
     return redirect(url_for('landing'))
 
 @app.route('/')
@@ -634,14 +633,10 @@ def oauth2callback():
         if creds:
             # Set authenticated session
             session['authenticated'] = True
-            flash('Google Sheets authentication successful!', 'success')
-            
+
             # Redirect to original URL if it exists
             next_url = session.pop('next_url', None)
             if next_url and 'upload' in next_url:
-                # Don't pass the flash message to upload page
-                session['_flashes'] = [(cat, msg) for cat, msg in session.get('_flashes', []) 
-                                      if msg != 'Google Sheets authentication successful!']
             
             if next_url:
                 return redirect(next_url)
