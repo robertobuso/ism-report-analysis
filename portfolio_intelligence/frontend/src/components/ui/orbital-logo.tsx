@@ -1,103 +1,84 @@
 /**
- * Envoy Orbital Logo Component
- * Three orbiting rings representing the three products in the suite
+ * Envoy Signal Logo - Static (matches Flask navbar)
+ * Signal waves representing financial intelligence
  */
 
-interface OrbitalLogoProps {
+interface EnvoyLogoProps {
   size?: number;
-  showText?: boolean;
   className?: string;
 }
 
-export function OrbitalLogo({
-  size = 40,
-  showText = false,
-  className = "",
-}: OrbitalLogoProps) {
+export function EnvoyLogo({ size = 40, className = "" }: EnvoyLogoProps) {
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 120 120"
-        className="orbital-logo"
-      >
-        <defs>
-          <linearGradient id="orbitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#191970" />
-            <stop offset="100%" stopColor="#28a745" />
-          </linearGradient>
-        </defs>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 120 120"
+      className={`inline-block ${className}`}
+      style={{ verticalAlign: "middle" }}
+    >
+      <defs>
+        <linearGradient
+          id="signalGradStatic"
+          x1="0%"
+          y1="100%"
+          x2="0%"
+          y2="0%"
+        >
+          <stop offset="0%" stopColor="#191970" stopOpacity="0.3" />
+          <stop offset="50%" stopColor="#764ba2" stopOpacity="0.7" />
+          <stop offset="100%" stopColor="#28a745" />
+        </linearGradient>
+        <linearGradient id="coreGradStatic" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#28a745" />
+          <stop offset="100%" stopColor="#3b82f6" />
+        </linearGradient>
+      </defs>
 
-        {/* Three orbiting rings representing the three products */}
-        <ellipse
-          cx="60"
-          cy="60"
-          rx="45"
-          ry="20"
-          fill="none"
-          stroke="#191970"
-          strokeWidth="1.5"
-          opacity="0.3"
-          style={{
-            transformOrigin: "60px 60px",
-            animation: "orbit-1 12s linear infinite",
-          }}
-        />
+      {/* Static signal waves */}
+      <path
+        d="M 30 60 Q 60 36, 90 60"
+        fill="none"
+        stroke="url(#signalGradStatic)"
+        strokeWidth="2"
+        opacity="0.8"
+      />
 
-        <ellipse
-          cx="60"
-          cy="60"
-          rx="45"
-          ry="20"
-          fill="none"
-          stroke="#28a745"
-          strokeWidth="1.5"
-          opacity="0.4"
-          style={{
-            transformOrigin: "60px 60px",
-            transform: "rotate(60deg)",
-            animation: "orbit-2 12s linear infinite",
-          }}
-        />
+      <path
+        d="M 36 60 Q 60 40, 84 60"
+        fill="none"
+        stroke="url(#signalGradStatic)"
+        strokeWidth="2"
+        opacity="0.65"
+      />
 
-        <ellipse
-          cx="60"
-          cy="60"
-          rx="45"
-          ry="20"
-          fill="none"
-          stroke="#764ba2"
-          strokeWidth="1.5"
-          opacity="0.4"
-          style={{
-            transformOrigin: "60px 60px",
-            transform: "rotate(120deg)",
-            animation: "orbit-3 12s linear infinite",
-          }}
-        />
+      <path
+        d="M 42 60 Q 60 44, 78 60"
+        fill="none"
+        stroke="url(#signalGradStatic)"
+        strokeWidth="2"
+        opacity="0.5"
+      />
 
-        {/* Central core */}
-        <circle
-          cx="60"
-          cy="60"
-          r="8"
-          fill="url(#orbitGrad)"
-          style={{ animation: "pulse-core 3s ease-in-out infinite" }}
-        />
-        <circle cx="60" cy="60" r="4" fill="#28a745" opacity="0.8" />
-      </svg>
+      <path
+        d="M 48 60 Q 60 48, 72 60"
+        fill="none"
+        stroke="url(#signalGradStatic)"
+        strokeWidth="2"
+        opacity="0.35"
+      />
 
-      {showText && (
-        <div className="flex flex-col">
-          <div className="font-semibold text-2xl tracking-tight text-primary">
-            Envoy
-          </div>
-          <div className="text-[10px] font-medium tracking-widest text-purple-600 uppercase">
-            Financial Intelligence
-          </div>
-        </div>
-      )}
-    </div>
+      <path
+        d="M 54 60 Q 60 52, 66 60"
+        fill="none"
+        stroke="url(#signalGradStatic)"
+        strokeWidth="2"
+        opacity="0.2"
+      />
+
+      {/* Static source point */}
+      <circle cx="60" cy="60" r="5" fill="url(#coreGradStatic)" />
+      <circle cx="60" cy="60" r="3" fill="#3b82f6" />
+    </svg>
   );
 }
