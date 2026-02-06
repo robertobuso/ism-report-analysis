@@ -394,6 +394,7 @@ Authenticated pages use **client-side data fetching** via TanStack Query, but re
 * **Holdings Management** - Add/remove positions, view weights and market values
 * **Benchmark Comparison** - SPY integration with overlay charts
 * **Price Refresh** - Manual refresh with background processing
+* **Automatic Daily Updates** - Scheduled nightly price refresh at 6 PM ET (AlphaVantage/Mock)
 * **Delete Portfolio** - With confirmation modal
 
 ### In Progress 🚧

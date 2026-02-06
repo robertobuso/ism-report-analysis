@@ -12,6 +12,37 @@ All notable changes to the Portfolio Intelligence project are documented here.
 
 ---
 
+## [2024-02-06] - Automatic Daily Price Refresh
+
+### Added
+- **APScheduler integration** for automatic daily price updates
+  - Runs nightly at 6 PM ET (18:00 US/Eastern)
+  - Works with AlphaVantage and Mock providers (no OAuth required)
+  - Fetches latest close prices for all active portfolio symbols
+  - Configurable via `ENABLE_NIGHTLY_UPDATES` environment variable
+
+- **Updated nightly_price_update Celery task**
+  - Now fully functional with AlphaVantage/Mock providers
+  - Automatically updates all symbols in all portfolios
+  - Returns detailed status (symbols updated, failed symbols, provider used)
+  - Skips TradeStation (requires user OAuth, not suitable for automated jobs)
+
+### Changed
+- **FastAPI lifespan** now starts APScheduler on startup
+  - Only enables scheduler if `ENABLE_NIGHTLY_UPDATES=true`
+  - Only enables scheduler for AlphaVantage or Mock providers
+  - Logs clear warnings if disabled or incompatible provider
+
+### Configuration
+- New environment variable: `ENABLE_NIGHTLY_UPDATES` (default: `true`)
+- Scheduler timezone: US/Eastern (6 PM ET = after market close)
+
+### Notes
+- **Production ready**: Portfolios now auto-update overnight without manual intervention
+- **TradeStation limitation**: Real TradeStation API requires user OAuth tokens, so automated updates are not supported. Use AlphaVantage for production deployments requiring automatic updates.
+
+---
+
 ## [2024-02-06] - Attribution Fixes & Allocation Type Enforcement
 
 ### Added
