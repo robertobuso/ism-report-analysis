@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     market_data_provider: str = "tradestation"  # "tradestation", "alphavantage", or "mock"
     alphavantage_api_key: str = ""
 
+    # Scheduler
+    enable_nightly_updates: bool = True  # Set to False to disable automatic price updates
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

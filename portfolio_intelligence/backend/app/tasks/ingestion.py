@@ -26,25 +26,61 @@ def nightly_price_update(self):
     """Nightly job: update prices for all active symbols and recompute metrics.
 
     Runs daily at 6 PM ET. Dispatched by APScheduler in FastAPI lifespan.
+
+    Note: Works with AlphaVantage (API key-based) and Mock providers.
+    TradeStation requires OAuth tokens and is not supported for automated jobs.
     """
     async def _run():
         from app.db.database import AsyncSessionLocal
         from app.services.ingestion import PriceIngestionService
+        from app.dependencies import get_tradestation_client
+        from app.config import get_settings
+
+        settings = get_settings()
+
+        # Check if we're using a provider that supports automated updates
+        provider = settings.market_data_provider.lower()
+        if provider == "tradestation" and not settings.use_mock_tradestation:
+            logger.warning("Nightly updates not supported with real TradeStation (requires OAuth)")
+            return {"status": "skipped", "reason": "TradeStation requires user OAuth tokens"}
 
         async with AsyncSessionLocal() as db:
-            service = PriceIngestionService(db)
+            service = PriceIngestionService(db, get_tradestation_client())
             symbols = await service.get_active_symbols()
+
             if not symbols:
                 logger.info("No active symbols to update")
                 return {"symbols_updated": 0}
 
-            # For nightly jobs, we need a service account token or cached token
-            # In production, this would use a system-level refresh token
-            logger.info(f"Updating prices for {len(symbols)} symbols")
+            logger.info(f"Starting nightly update for {len(symbols)} symbols using {provider}")
 
-            # TODO: Implement system-level token refresh for nightly jobs
-            # For now, this task requires manual trigger with a valid access token
-            return {"symbols": symbols, "status": "requires_token"}
+            updated_count = 0
+            failed_symbols = []
+
+            # Fetch latest price for each symbol (1 bar = today's close)
+            for symbol in symbols:
+                try:
+                    logger.info(f"Updating {symbol}")
+                    # Empty access token is fine for AlphaVantage/Mock
+                    count = await service.backfill_symbol("", symbol, bars_back=1)
+                    if count > 0:
+                        updated_count += 1
+                    logger.info(f"Updated {symbol}: {count} bars")
+                except Exception as e:
+                    logger.error(f"Failed to update {symbol}: {e}")
+                    failed_symbols.append(symbol)
+
+            logger.info(
+                f"Nightly update complete: {updated_count}/{len(symbols)} symbols updated, "
+                f"{len(failed_symbols)} failed"
+            )
+
+            return {
+                "symbols_updated": updated_count,
+                "total_symbols": len(symbols),
+                "failed_symbols": failed_symbols,
+                "provider": provider,
+            }
 
     try:
         return _run_async(_run())
