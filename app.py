@@ -74,6 +74,14 @@ UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 
+# Context processor for shared template variables
+@app.context_processor
+def inject_suite_globals():
+    return {
+        'portfolio_intelligence_url': os.environ.get('PORTFOLIO_INTELLIGENCE_URL', ''),
+        'active_page': ''
+    }
+
 def convert_markdown_bullet(bullet):
     # Convert **bold:** to <strong>bold:</strong>
     bullet = re.sub(r"\*\*(.+?)\*\*:", r"<strong>\1:</strong>", bullet)
@@ -246,6 +254,12 @@ RESPONSE STYLE:
 - Professional but accessible tone"""
 
 
+@app.route('/suite')
+@login_required
+def suite_landing():
+    """Suite landing page - unified entry point for all tools."""
+    return render_template('suite_landing.html', active_page='suite')
+
 @app.route('/landing')
 @app.route('/welcome')
 def landing():
@@ -256,7 +270,7 @@ def landing():
 def login():
     """Initiate Google login flow."""
     if is_authenticated():
-        return redirect(url_for('index'))
+        return redirect(url_for('suite_landing'))
     
     try:
         # Get the auth URL
@@ -282,7 +296,7 @@ def logout():
 def root():
     """Root route that checks auth and redirects appropriately."""
     if is_authenticated():
-        return redirect(url_for('index'))
+        return redirect(url_for('suite_landing'))
     return redirect(url_for('landing'))
 
 @app.route('/home')
@@ -307,10 +321,11 @@ def index():
             indices = get_all_indices()
             report_dates = get_all_report_dates()
             
-            return render_template('dashboard.html', 
+            return render_template('dashboard.html',
                                heatmap_data=heatmap_data,
                                indices=indices,
-                               report_dates=report_dates)
+                               report_dates=report_dates,
+                               active_page='ism')
         else:
             # No data yet, redirect to upload page
             return redirect(url_for('upload_view'))
@@ -327,7 +342,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 @login_required
 def news_form():
     """Display the enhanced news analysis form."""
-    return render_template("news_simple.html")
+    return render_template("news_simple.html", active_page='news')
 
 @app.route("/news/summary", methods=["POST"])
 @login_required
@@ -341,7 +356,7 @@ def get_news_summary():
         days_back = int(request.form.get("days_back", 7))
         
         if not company:
-            return render_template("news_simple.html", error="Please enter a company name or ticker symbol")
+            return render_template("news_simple.html", error="Please enter a company name or ticker symbol", active_page='news')
 
         ticker, company_name = company_ticker_service.get_both_ticker_and_company(company)
         display_name = company_name or ticker or company
@@ -351,7 +366,7 @@ def get_news_summary():
         results = fetch_comprehensive_news_guaranteed_30_enhanced(company, days_back)
 
         if not results['success']:
-            return render_template("news_simple.html", error=results.get('error', 'No articles found.'))
+            return render_template("news_simple.html", error=results.get('error', 'No articles found.'), active_page='news')
         
         articles = results['articles']
         metrics = results['metrics']
@@ -386,12 +401,13 @@ def get_news_summary():
             metrics=metrics,
             quality_validation=results.get('quality_validation', {}),
             run_id=run_id,
-            sources_map_json=source_map_for_chatbot
+            sources_map_json=source_map_for_chatbot,
+            active_page='news'
         )
 
     except Exception as e:
         logger.error(f"Error in news analysis V3: {e}", exc_info=True)
-        return render_template("news_simple.html", error="Analysis temporarily unavailable. Please try again.")
+        return render_template("news_simple.html", error="Analysis temporarily unavailable. Please try again.", active_page='news')
     
 @app.route("/api/news/<company>")
 @login_required  
@@ -476,9 +492,10 @@ def upload_view():
     except Exception as e:
         logger.error(f"Error checking database: {str(e)}")
     
-    return render_template('index.html', 
+    return render_template('index.html',
                           google_auth_ready=google_auth_ready,
-                          has_data=has_data)
+                          has_data=has_data,
+                          active_page='ism')
 
 @app.route('/upload', methods=['POST'])
 @login_required
@@ -624,7 +641,7 @@ def oauth2callback():
             
             if next_url:
                 return redirect(next_url)
-            return redirect(url_for('index'))
+            return redirect(url_for('suite_landing'))
         else:
             flash('Google Sheets authentication failed.', 'danger')
             return redirect(url_for('landing'))
@@ -674,12 +691,13 @@ def dashboard():
             available_report_types = ["Manufacturing", "Services"]  # Default fallback
         
         # Include report_type in template context
-        return render_template('dashboard.html', 
+        return render_template('dashboard.html',
                            heatmap_data=heatmap_data,
                            indices=indices,
                            report_dates=report_dates,
                            report_type=report_type,
-                           available_report_types=available_report_types)
+                           available_report_types=available_report_types,
+                           active_page='ism')
     except Exception as e:
         logger.error(f"Error loading dashboard: {str(e)}")
         logger.error(traceback.format_exc())
@@ -1263,7 +1281,7 @@ def chat():
 def monitoring_dashboard():
     from monitoring import get_performance_dashboard
     dashboard_data = get_performance_dashboard()
-    return render_template('monitoring_dashboard.html', data=dashboard_data)
+    return render_template('monitoring_dashboard.html', data=dashboard_data, active_page='news')
 
 @app.route('/api/monitoring/performance')
 @login_required

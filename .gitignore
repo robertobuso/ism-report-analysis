@@ -176,3 +176,14 @@ token.pickle
 
 # Conda related
 .Miniconda3*
+
+# Portfolio Intelligence - Frontend
+portfolio_intelligence/frontend/node_modules/
+portfolio_intelligence/frontend/.next/
+portfolio_intelligence/frontend/out/
+
+# Portfolio Intelligence - Backend
+portfolio_intelligence/backend/.env
+
+# macOS
+.DS_Store

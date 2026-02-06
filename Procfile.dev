@@ -1,0 +1,4 @@
+flask:    .venv/bin/python app.py
+api:      sh -c 'cd portfolio_intelligence/backend && .venv/bin/uvicorn app.main:app --reload --port 8000'
+worker:   sh -c 'cd portfolio_intelligence/backend && .venv/bin/celery -A app.worker worker --loglevel=info --concurrency=2'
+frontend: npm run dev --prefix portfolio_intelligence/frontend -- -p 3100
