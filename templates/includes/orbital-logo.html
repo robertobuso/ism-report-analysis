@@ -1,0 +1,46 @@
+{#
+  Envoy Orbital Logo
+  Usage: {% include 'includes/orbital-logo.html' %}
+  Set `logo_size` before including to control dimensions (default 120).
+  Set `logo_show_text` to true to show the wordmark below (default false).
+#}
+{% set size = logo_size | default(120) %}
+<div class="ds-orbital-logo">
+  <svg width="{{ size }}" height="{{ size }}" viewBox="0 0 120 120">
+    <defs>
+      <linearGradient id="orbitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#191970" />
+        <stop offset="100%" stop-color="#28a745" />
+      </linearGradient>
+    </defs>
+
+    <!-- Three orbiting rings representing the three products -->
+    <ellipse cx="60" cy="60" rx="45" ry="20"
+      fill="none" stroke="#191970" stroke-width="1.5" opacity="0.3"
+      style="transform-origin:60px 60px; animation:ds-orbit-1 12s linear infinite;" />
+
+    <ellipse cx="60" cy="60" rx="45" ry="20"
+      fill="none" stroke="#28a745" stroke-width="1.5" opacity="0.4"
+      style="transform-origin:60px 60px; transform:rotate(60deg); animation:ds-orbit-2 12s linear infinite;" />
+
+    <ellipse cx="60" cy="60" rx="45" ry="20"
+      fill="none" stroke="#764ba2" stroke-width="1.5" opacity="0.4"
+      style="transform-origin:60px 60px; transform:rotate(120deg); animation:ds-orbit-3 12s linear infinite;" />
+
+    <!-- Central core -->
+    <circle cx="60" cy="60" r="8" fill="url(#orbitGrad)"
+      style="animation:ds-pulse-core 3s ease-in-out infinite;" />
+    <circle cx="60" cy="60" r="4" fill="#28a745" opacity="0.8" />
+  </svg>
+
+  {% if logo_show_text | default(false) %}
+  <div style="text-align:center; margin-top:4px;">
+    <div style="font-family:var(--font-sans); font-size:32px; font-weight:600; letter-spacing:0.02em; color:#191970;">
+      Envoy
+    </div>
+    <div style="font-family:var(--font-sans); font-size:11px; font-weight:500; letter-spacing:0.15em; color:#764ba2; margin-top:2px;">
+      FINANCIAL INTELLIGENCE
+    </div>
+  </div>
+  {% endif %}
+</div>

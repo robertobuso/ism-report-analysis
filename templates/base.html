@@ -7,130 +7,67 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
     {% block head %}{% endblock %}
-    <style>
-        :root {
-            --primary-color: midnightblue; /* #191970 */
-            --primary-hover: #10104D;
-            --secondary-color: #f8f9fa;
-            --accent-color: #28a745;
-            --text-color: #333;
-            --light-text: #6c757d;
-            --bg-color: #f8fafc;
-            --card-shadow: rgba(0, 0, 0, 0.05);
-        }
-
-        body {
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            line-height: 1.6;
-            letter-spacing: -0.01em;
-        }
-
-        /* Shared Navbar */
-        .navbar {
-            padding: 1rem 2rem;
-            background-color: white !important;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-        }
-
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.4rem;
-            color: var(--primary-color) !important;
-        }
-
-        .nav-link {
-            font-weight: 500;
-            color: var(--text-color);
-            position: relative;
-            padding: 0.5rem 1rem;
-            margin: 0 0.25rem;
-        }
-
-        .nav-link:hover {
-            color: var(--primary-color);
-        }
-
-        .nav-link.active {
-            color: var(--primary-color);
-        }
-
-        .nav-link.active::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 1rem;
-            right: 1rem;
-            height: 2px;
-            background-color: var(--primary-color);
-        }
-
-        .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-            font-weight: 600;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-        }
-
-        .btn-primary:hover {
-            background-color: var(--primary-hover);
-            border-color: var(--primary-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 86, 179, 0.2);
-        }
-
-        /* Flash messages */
-        .flash-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0.5rem 2rem;
-        }
-    </style>
     {% block extra_styles %}{% endblock %}
 </head>
 <body>
     {% block navbar %}
-    <nav class="navbar navbar-expand-lg navbar-light">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('suite_landing') }}">Envoy LLC</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'suite' %}active{% endif %}" href="{{ url_for('suite_landing') }}">
-                            <i class="bi bi-grid-3x3-gap me-1"></i>Suite Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'ism' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                            <i class="bi bi-bar-chart me-1"></i>ISM Analysis
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'news' %}active{% endif %}" href="{{ url_for('news_form') }}">
-                            <i class="bi bi-newspaper me-1"></i>News Analysis
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'portfolio' %}active{% endif %}" href="{{ portfolio_intelligence_url or '#' }}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
-                            <i class="bi bi-pie-chart me-1"></i>Portfolio Intelligence
-                        </a>
-                    </li>
-                </ul>
-                <div class="d-flex">
-                    <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">
-                        <i class="bi bi-box-arrow-right me-2"></i>Logout
+    <header class="ds-header">
+        <div class="ds-header-inner">
+            <div class="ds-header-left">
+                <a href="{{ url_for('suite_landing') }}" class="ds-brand">
+                    {% include 'includes/orbital-logo-static.html' %}
+                    Envoy LLC
+                </a>
+                <nav class="ds-nav">
+                    <a href="{{ url_for('suite_landing') }}" class="ds-nav-link {% if active_page == 'suite' %}active{% endif %}">
+                        <i data-lucide="layout-grid" class="ds-nav-icon"></i>
+                        Suite Home
                     </a>
-                </div>
+                    <a href="{{ url_for('dashboard') }}" class="ds-nav-link {% if active_page == 'ism' %}active{% endif %}">
+                        <i data-lucide="bar-chart-3" class="ds-nav-icon"></i>
+                        ISM Analysis
+                    </a>
+                    <a href="{{ url_for('news_form') }}" class="ds-nav-link {% if active_page == 'news' %}active{% endif %}">
+                        <i data-lucide="newspaper" class="ds-nav-icon"></i>
+                        News Analysis
+                    </a>
+                    <a href="{{ portfolio_intelligence_url or '#' }}" class="ds-nav-link {% if active_page == 'portfolio' %}active{% endif %}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
+                        <i data-lucide="pie-chart" class="ds-nav-icon"></i>
+                        Portfolio Intelligence
+                    </a>
+                </nav>
+            </div>
+            <div class="ds-header-right">
+                <button class="ds-mobile-toggle" onclick="document.getElementById('dsMobileNav').classList.toggle('open')" aria-label="Toggle navigation">
+                    <i data-lucide="menu" style="width:20px;height:20px;"></i>
+                </button>
+                <a href="{{ url_for('logout') }}" class="ds-btn-secondary ds-btn-sm">
+                    <i data-lucide="log-out" class="ds-nav-icon"></i>
+                    Logout
+                </a>
             </div>
         </div>
-    </nav>
+        <div class="ds-mobile-nav" id="dsMobileNav">
+            <a href="{{ url_for('suite_landing') }}" class="ds-nav-link {% if active_page == 'suite' %}active{% endif %}">
+                <i data-lucide="layout-grid" class="ds-nav-icon"></i>
+                Suite Home
+            </a>
+            <a href="{{ url_for('dashboard') }}" class="ds-nav-link {% if active_page == 'ism' %}active{% endif %}">
+                <i data-lucide="bar-chart-3" class="ds-nav-icon"></i>
+                ISM Analysis
+            </a>
+            <a href="{{ url_for('news_form') }}" class="ds-nav-link {% if active_page == 'news' %}active{% endif %}">
+                <i data-lucide="newspaper" class="ds-nav-icon"></i>
+                News Analysis
+            </a>
+            <a href="{{ portfolio_intelligence_url or '#' }}" class="ds-nav-link {% if active_page == 'portfolio' %}active{% endif %}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
+                <i data-lucide="pie-chart" class="ds-nav-icon"></i>
+                Portfolio Intelligence
+            </a>
+        </div>
+    </header>
     {% endblock %}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -149,6 +86,8 @@
     {% block content %}{% endblock %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>lucide.createIcons();</script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

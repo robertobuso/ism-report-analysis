@@ -108,7 +108,9 @@
 
 {% block content %}
     <div class="suite-header">
-        <h1>Envoy Financial Intelligence Suite</h1>
+        {% set logo_size = 80 %}
+        {% include 'includes/orbital-logo.html' %}
+        <h1 style="margin-top: 1rem;">Envoy Financial Intelligence Suite</h1>
         <p>Institutional-grade analytics tools for the thoughtful investor</p>
     </div>
 

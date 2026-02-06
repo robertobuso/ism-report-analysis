@@ -1,0 +1,498 @@
+/*
+ * Envoy Financial Intelligence Suite — Design System
+ *
+ * Single source of truth for all Flask visual styling.
+ * Maps 1:1 to Portfolio Intelligence's tailwind.config.ts so both
+ * apps share the same visual DNA.
+ *
+ * Naming: new tokens use --color-*, --shadow-*, --radius-*
+ * Old aliases (--primary-color, --light-text, etc.) kept for
+ * backward compatibility with existing templates.
+ */
+
+/* ==========================================================================
+   1. CSS Custom Properties
+   ========================================================================== */
+
+:root {
+  /* --- Brand --- */
+  --color-primary: #191970;
+  --color-primary-hover: #10104D;
+
+  /* --- Surfaces --- */
+  --color-background: #f8fafc;
+  --color-foreground: #333333;
+  --color-muted: #6c757d;
+  --color-border: #e2e8f0;
+  --color-border-light: #f0f0f0;
+
+  /* --- Tool Accents --- */
+  --color-accent-green: #28a745;
+  --color-accent-red: #dc3545;
+  --color-accent-blue: #3b82f6;
+  --color-accent-purple: #764ba2;
+  --color-accent-warning: #ffc107;
+
+  /* --- Semantic (ISM-specific) --- */
+  --color-growing: #34A853;
+  --color-contracting: #EA4335;
+
+  /* --- Shadows (matching PI exactly) --- */
+  --shadow-subtle: 0 2px 10px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.05);
+  --shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.1);
+  --shadow-hero: 0 10px 30px rgba(0, 86, 179, 0.08);
+
+  /* --- Radius (matching PI exactly) --- */
+  --radius-card: 16px;
+  --radius-button: 8px;
+  --radius-badge: 20px;
+
+  /* --- Typography --- */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --letter-spacing-body: -0.01em;
+  --letter-spacing-heading: -0.02em;
+
+  /* --- Transitions --- */
+  --transition-default: all 0.3s ease;
+  --transition-fast: all 0.15s ease;
+
+  /* =======================================================================
+     Backward-compatible aliases
+     (dashboard.html, index.html, suite_landing.html, landing.html use these)
+     ======================================================================= */
+  --primary-color: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --text-color: var(--color-foreground);
+  --light-text: var(--color-muted);
+  --bg-color: var(--color-background);
+  --card-shadow: rgba(0, 0, 0, 0.05);   /* raw value — templates use it inside box-shadow shorthand */
+  --accent-color: var(--color-accent-green);
+  --secondary-color: #f8f9fa;
+}
+
+/* ==========================================================================
+   2. Base Element Overrides
+   ========================================================================== */
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  line-height: 1.6;
+  letter-spacing: var(--letter-spacing-body);
+}
+
+/* Override Bootstrap .btn-primary to match PI */
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-button);
+  transition: var(--transition-default);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 86, 179, 0.2);
+}
+
+/* Override Bootstrap form controls focus ring to match PI */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(25, 25, 112, 0.2);
+}
+
+/* Flash messages container */
+.flash-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.5rem 2rem;
+}
+
+/* ==========================================================================
+   3. Header / Navbar (matching PI's header.tsx)
+   ========================================================================== */
+
+.ds-header {
+  background-color: white;
+  box-shadow: var(--shadow-subtle);
+  padding: 0 1.5rem;
+}
+
+.ds-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0;
+}
+
+.ds-header-left {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.ds-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+  font-size: 1.25rem;
+  text-decoration: none;
+}
+
+.ds-brand:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.ds-nav {
+  display: none;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+@media (min-width: 768px) {
+  .ds-nav {
+    display: flex;
+  }
+}
+
+.ds-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-foreground);
+  text-decoration: none;
+  transition: color 0.15s ease;
+  border-radius: var(--radius-button);
+  border-bottom: 2px solid transparent;
+}
+
+.ds-nav-link:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.ds-nav-link.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.ds-nav-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ds-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Mobile menu toggle */
+.ds-mobile-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  color: var(--color-foreground);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.ds-mobile-toggle:hover {
+  background-color: var(--color-background);
+}
+
+@media (min-width: 768px) {
+  .ds-mobile-toggle {
+    display: none;
+  }
+}
+
+/* Mobile nav dropdown */
+.ds-mobile-nav {
+  display: none;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.ds-mobile-nav.open {
+  display: flex;
+}
+
+@media (min-width: 768px) {
+  .ds-mobile-nav {
+    display: none !important;
+  }
+}
+
+.ds-mobile-nav .ds-nav-link {
+  padding: 0.625rem 0.75rem;
+  border-bottom: none;
+  border-radius: var(--radius-button);
+}
+
+.ds-mobile-nav .ds-nav-link.active {
+  background-color: rgba(25, 25, 112, 0.05);
+}
+
+/* ==========================================================================
+   4. Component Classes
+   ========================================================================== */
+
+/* --- Cards --- */
+
+.ds-card {
+  background: white;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+}
+
+.ds-card-hover {
+  transition: var(--transition-default);
+}
+
+.ds-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.ds-card-accent-green  { border-top: 4px solid var(--color-accent-green); }
+.ds-card-accent-red    { border-top: 4px solid var(--color-accent-red); }
+.ds-card-accent-blue   { border-top: 4px solid var(--color-accent-blue); }
+.ds-card-accent-purple { border-top: 4px solid var(--color-accent-purple); }
+
+/* --- Buttons --- */
+
+.ds-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 1.25rem;
+  background-color: var(--color-primary);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-semibold);
+  border: none;
+  border-radius: var(--radius-button);
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition-default);
+}
+
+.ds-btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  color: white;
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 86, 179, 0.2);
+}
+
+.ds-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-button);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.ds-btn-secondary:hover {
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+
+.ds-btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+/* --- Inputs --- */
+
+.ds-input,
+.ds-select {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-family: var(--font-sans);
+  color: var(--color-foreground);
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-button);
+  transition: var(--transition-fast);
+}
+
+.ds-input:focus,
+.ds-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(25, 25, 112, 0.2);
+}
+
+/* --- Badges --- */
+
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-badge);
+  line-height: 1.4;
+}
+
+.ds-badge-green  { background: rgba(40, 167, 69, 0.1);  color: var(--color-accent-green); }
+.ds-badge-red    { background: rgba(220, 53, 69, 0.1);   color: var(--color-accent-red); }
+.ds-badge-blue   { background: rgba(59, 130, 246, 0.1);  color: var(--color-accent-blue); }
+.ds-badge-purple { background: rgba(118, 75, 162, 0.1);  color: var(--color-accent-purple); }
+.ds-badge-warning{ background: rgba(255, 193, 7, 0.1);   color: #b45309; }
+.ds-badge-muted  { background: #e2e8f0;                   color: #64748b; }
+
+/* --- Tables --- */
+
+.ds-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ds-table th {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.ds-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border-light);
+  font-size: 0.875rem;
+  color: var(--color-foreground);
+}
+
+.ds-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+/* --- Typography --- */
+
+.ds-page-title {
+  font-size: 1.5rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+  color: var(--color-foreground);
+}
+
+.ds-section-title {
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-heading);
+  color: var(--color-foreground);
+}
+
+.ds-muted {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+/* ==========================================================================
+   5. Utility Classes
+   ========================================================================== */
+
+.ds-tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Skeleton loading pulse */
+.ds-skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f0f0f0 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: ds-skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: var(--radius-button);
+}
+
+@keyframes ds-skeleton-pulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Left border accents (section dividers) */
+.ds-accent-border-left-green  { border-left: 4px solid var(--color-accent-green); }
+.ds-accent-border-left-red    { border-left: 4px solid var(--color-accent-red); }
+.ds-accent-border-left-blue   { border-left: 4px solid var(--color-accent-blue); }
+.ds-accent-border-left-purple { border-left: 4px solid var(--color-accent-purple); }
+
+/* Top border accents (card headers) */
+.ds-accent-border-top-green  { border-top: 4px solid var(--color-accent-green); }
+.ds-accent-border-top-red    { border-top: 4px solid var(--color-accent-red); }
+.ds-accent-border-top-blue   { border-top: 4px solid var(--color-accent-blue); }
+.ds-accent-border-top-purple { border-top: 4px solid var(--color-accent-purple); }
+
+/* ==========================================================================
+   6. Orbital Logo
+   ========================================================================== */
+
+.ds-orbital-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ds-orbital-logo svg {
+  display: block;
+}
+
+@keyframes ds-orbit-1 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes ds-orbit-2 {
+  from { transform: rotate(60deg); }
+  to   { transform: rotate(420deg); }
+}
+
+@keyframes ds-orbit-3 {
+  from { transform: rotate(120deg); }
+  to   { transform: rotate(480deg); }
+}
+
+@keyframes ds-pulse-core {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
+}
