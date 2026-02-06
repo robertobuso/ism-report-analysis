@@ -10,4 +10,7 @@ COPY . .
 EXPOSE 8000
 
 # Shell form CMD allows && and env var expansion
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD echo "Starting migrations..." && \
+    alembic upgrade head && \
+    echo "Migrations complete. Starting uvicorn on port ${PORT:-8000}..." && \
+    uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
