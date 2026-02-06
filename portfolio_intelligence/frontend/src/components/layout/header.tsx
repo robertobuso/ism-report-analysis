@@ -20,15 +20,20 @@ export function Header() {
   const { user, logout } = useAuth();
 
   return (
-    <header className="bg-white shadow-subtle px-6 py-4">
-      <div className="flex items-center justify-between">
+    <header className="bg-white px-6" style={{ boxShadow: "0 2px 10px rgba(0, 0, 0, 0.05)" }}>
+      <div className="flex items-center justify-between py-4">
         <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center group">
-            <EnvoyLogo size={40} />
-            <span className="text-primary font-bold text-xl ml-2 group-hover:text-primary-hover transition-colors">
-              Envoy LLC
-            </span>
+          {/* Brand - matches .ds-brand */}
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-primary font-bold no-underline hover:text-primary hover:no-underline"
+            style={{ fontSize: "1.25rem" }}
+          >
+            <EnvoyLogo size={56} />
+            Envoy LLC
           </Link>
+
+          {/* Nav - matches .ds-nav */}
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {
               const isActive = !item.external && pathname === item.href;
@@ -39,7 +44,8 @@ export function Header() {
                   <a
                     key={item.href}
                     href={item.href}
-                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-foreground hover:text-primary transition-colors rounded-button"
+                    className="flex items-center gap-1.5 px-3 py-2 font-medium text-foreground no-underline hover:text-primary hover:no-underline transition-colors rounded-button border-b-2 border-transparent"
+                    style={{ fontSize: "0.875rem" }}
                   >
                     <Icon size={16} />
                     {item.label}
@@ -51,11 +57,12 @@ export function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors rounded-button ${
+                  className={`flex items-center gap-1.5 px-3 py-2 font-medium no-underline hover:no-underline transition-colors rounded-button border-b-2 ${
                     isActive
-                      ? "text-primary border-b-2 border-primary"
-                      : "text-foreground hover:text-primary"
+                      ? "text-primary border-primary"
+                      : "text-foreground hover:text-primary border-transparent"
                   }`}
+                  style={{ fontSize: "0.875rem" }}
                 >
                   <Icon size={16} />
                   {item.label}

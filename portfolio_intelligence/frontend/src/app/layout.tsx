@@ -24,7 +24,7 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             <Header />
-            <main className="min-h-[calc(100vh-73px)]">{children}</main>
+            <main>{children}</main>
           </AuthProvider>
         </QueryProvider>
       </body>
