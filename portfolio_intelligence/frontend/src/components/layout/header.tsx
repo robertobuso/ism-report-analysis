@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Newspaper, PieChart, LayoutGrid, LogOut } from "lucide-react";
 import { useAuth } from "@/providers/auth-provider";
+import { OrbitalLogo } from "@/components/ui/orbital-logo";
 
 const SUITE_URL = process.env.NEXT_PUBLIC_SUITE_URL || "http://localhost:5000";
 
@@ -22,8 +23,11 @@ export function Header() {
     <header className="bg-white shadow-subtle px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-primary font-bold text-xl">
-            Envoy LLC
+          <Link href="/" className="flex items-center gap-2 group">
+            <OrbitalLogo size={36} />
+            <span className="text-primary font-bold text-xl group-hover:text-primary-hover transition-colors">
+              Envoy
+            </span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => {

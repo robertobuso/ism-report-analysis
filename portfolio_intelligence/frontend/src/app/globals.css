@@ -12,3 +12,24 @@ body {
   background: var(--background);
   font-variant-numeric: tabular-nums;
 }
+
+/* Orbital Logo Animations */
+@keyframes orbit-1 {
+  0%, 100% { transform: rotateX(70deg) rotateZ(0deg); }
+  50% { transform: rotateX(70deg) rotateZ(180deg); }
+}
+
+@keyframes orbit-2 {
+  0%, 100% { transform: rotateX(70deg) rotateZ(60deg); }
+  50% { transform: rotateX(70deg) rotateZ(240deg); }
+}
+
+@keyframes orbit-3 {
+  0%, 100% { transform: rotateX(70deg) rotateZ(120deg); }
+  50% { transform: rotateX(70deg) rotateZ(300deg); }
+}
+
+@keyframes pulse-core {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
