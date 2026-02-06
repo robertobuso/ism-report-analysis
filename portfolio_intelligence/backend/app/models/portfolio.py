@@ -27,6 +27,9 @@ class Portfolio(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     base_currency: Mapped[str] = mapped_column(String(10), default="USD")
+    allocation_type: Mapped[AllocationType] = mapped_column(
+        Enum(AllocationType), nullable=False, server_default="quantity"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

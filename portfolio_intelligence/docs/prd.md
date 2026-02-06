@@ -130,12 +130,15 @@ User defines a portfolio as a **concept**, not a transaction.
    * **Allocation mode** — chosen **per-portfolio** (not per-position):
      * **Weight mode:** each holding has a target weight (percentage)
      * **Quantity mode:** each holding has a share quantity
+     * **Once set, this cannot be changed** — ensures consistency across portfolio history
 2. Add holdings
 
    * Type ticker
    * Autocomplete with logo + name
    * Enter value (weight % or share quantity, based on portfolio allocation mode)
 3. Save → creates **Version 1**
+   * System automatically sets effective_at to earliest date where ALL symbols have complete price data
+   * Ensures analytics work from day one without hardcoded dates
 
 ### UX Requirements
 
@@ -144,6 +147,13 @@ User defines a portfolio as a **concept**, not a transaction.
 * **Weight/quantity toggle** at portfolio level — clearly communicates which mode is active
 * Weight bar visualization updating live (weight mode)
 * Subtle warning if weights ≠ 100% (weight mode only)
+
+### Implementation Status
+
+✅ **Completed (2024-02-06)**
+- Portfolio-level allocation type enforcement
+- Dynamic effective_at calculation based on available data
+- Automatic price fetching for new symbols (90 days lookback)
 
 ---
 
@@ -166,17 +176,35 @@ User instantly understands **how the portfolio is doing**.
    * Time range selector (1M / YTD / 1Y / All)
    * Smooth animated chart transitions
 
-2. **Holdings Overview**
+2. **Key Metrics Cards**
 
-   * Cards or table
-   * Weight, contribution, trend arrow
-   * Mini sparklines
+   * Current NAV with YTD return
+   * 30-Day Volatility (annualized)
+   * Max Drawdown (peak to trough)
+   * Sharpe Ratio (with quality indicator)
 
-3. **Key Metrics**
+3. **Return Attribution Section**
 
-   * Volatility
-   * Max drawdown
-   * Best/worst contributor
+   * Clear column headers with units:
+     * "Avg Weight (%)"
+     * "Asset Return (%)"
+     * "Contribution (pp)" ← percentage points notation
+   * Visual contribution bars (positive/negative)
+   * **Key Driver Analysis** with accurate language:
+     * Handles edge cases (>100% contribution, negative returns)
+     * Shows breakdown calculation for transparency
+     * Example: "STLA (+564pp) + Others (-2.6pp) = Net (+561pp)"
+
+4. **Holdings Table**
+
+   * Symbol, quantity, price, market value
+   * Portfolio weight percentage with visual bars
+   * Sorted by market value (largest first)
+
+5. **Benchmark Comparison** (SPY)
+
+   * Overlay chart showing portfolio vs benchmark
+   * Relative performance indicator
 
 ### UX Requirements
 
@@ -184,6 +212,19 @@ User instantly understands **how the portfolio is doing**.
 * Hover reveals additional context
 * No full page reloads
 * State preserved across navigation
+* Conditional rendering based on data availability
+* Graceful loading states with skeletons
+
+### Implementation Status
+
+✅ **Completed (2024-02-06)**
+- All metrics cards with proper calculations
+- Attribution with percentage points (pp) notation
+- Smart key driver logic handling edge cases
+- Holdings table with weights and market values
+- Benchmark comparison (SPY integration)
+- Refresh data button with background processing
+- Delete portfolio with confirmation modal
 
 ---
 
@@ -341,21 +382,38 @@ Authenticated pages use **client-side data fetching** via TanStack Query, but re
 
 ## 8. MVP Scope (Design-First)
 
-### Included
+### Completed Features ✅
 
-* OAuth flow
-* Portfolio creation
-* Versioning
-* Performance visualization
-* Comparison view
-* Polished animations
+* **OAuth flow** - TradeStation integration with mock mode support
+* **Market Data Integration** - AlphaVantage, TradeStation, and Mock providers
+* **Portfolio creation** - With dynamic effective_at and allocation type enforcement
+* **Portfolio versioning** - Create new versions with historical snapshots
+* **Performance visualization** - NAV charts with time range selection (1M/YTD/1Y/All)
+* **Key Metrics** - NAV, volatility, drawdown, Sharpe ratio
+* **Return Attribution** - Contribution analysis with percentage points notation
+* **Holdings Management** - Add/remove positions, view weights and market values
+* **Benchmark Comparison** - SPY integration with overlay charts
+* **Price Refresh** - Manual refresh with background processing
+* **Delete Portfolio** - With confirmation modal
 
-### Excluded (Explicit)
+### In Progress 🚧
+
+* Polished animations (basic animations complete, advanced Framer Motion integration pending)
+* Portfolio comparison view (comparison endpoint exists, UI pending)
+
+### Excluded (Explicit) ❌
 
 * Trading
 * Alerts
 * News feeds
 * Social features
+
+### Known Issues & Tech Debt
+
+* **React Strict Mode conflicts** - Resolved with useRef pattern (2024-02-06)
+* **Attribution calculations for quantity portfolios** - Fixed (2024-02-06)
+* **Hardcoded date lookbacks** - Removed, now fully dynamic (2024-02-06)
+* **Missing allocation_type in responses** - Fixed (2024-02-06)
 
 ---
 

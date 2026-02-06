@@ -171,8 +171,13 @@ portfolios
 - user_id
 - name
 - base_currency
+- allocation_type ENUM('weight', 'quantity')
 - created_at
 ```
+
+**Notes:**
+- `allocation_type` is set at portfolio creation and applies to ALL versions and positions
+- Once set, cannot be changed (enforces consistency across portfolio history)
 
 ---
 
@@ -204,8 +209,10 @@ portfolio_positions
 ```
 
 **Notes:**
-- `allocation_type` is set per-portfolio (all positions in a version share the same type)
+- `allocation_type` is **inherited from portfolio level** (all positions in a portfolio share the same type)
+- Cannot mix allocation types within a single portfolio
 - `value` represents target weight (0.0–1.0) in weight mode, or share quantity in quantity mode
+- Migration completed (2024-02-06): moved allocation_type from position-level to portfolio-level
 
 ---
 
@@ -331,11 +338,15 @@ These rules are **non-negotiable** for analytics correctness:
 
 1. **`version.effective_at` is interpreted as next market open** — the new version applies starting the following trading day. A version created on Wednesday at 3pm takes effect Thursday at market open.
 
-2. **All analytics are computed on daily close prices only** — no intraday calculations, ever. This ensures deterministic, reproducible results.
+2. **`version.effective_at` is set dynamically based on available price data** — when creating a portfolio, the system finds the earliest date where ALL symbols have complete price data and sets that as effective_at. This ensures analytics always have complete data from day one. No hardcoded dates.
 
-3. **Dividends are implicitly included via adjusted close prices** — no separate dividend tracking or reinvestment modeling in MVP.
+3. **All analytics are computed on daily close prices only** — no intraday calculations, ever. This ensures deterministic, reproducible results.
 
-4. **Weekends and market holidays are excluded from return calculations** — only trading days contribute to returns, volatility, and drawdown metrics.
+4. **Dividends are implicitly included via adjusted close prices** — no separate dividend tracking or reinvestment modeling in MVP.
+
+5. **Weekends and market holidays are excluded from return calculations** — only trading days contribute to returns, volatility, and drawdown metrics.
+
+6. **Price refreshes are dynamic** — when refreshing prices, the system calculates days from portfolio.effective_at to today (not hardcoded lookback periods). This ensures complete price history regardless of when the refresh occurs.
 
 ---
 

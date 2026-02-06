@@ -104,8 +104,16 @@ class PortfolioAnalyticsEngine:
         if not trading_dates:
             return []
 
-        # Compute daily NAV
-        allocation_type = versions[0].positions[0].allocation_type if versions[0].positions else AllocationType.weight
+        # Get portfolio to determine allocation type
+        result = await self.db.execute(
+            select(Portfolio).where(Portfolio.id == portfolio_id)
+        )
+        portfolio = result.scalar_one_or_none()
+        if not portfolio:
+            return []
+
+        # Compute daily NAV using portfolio-level allocation type
+        allocation_type = portfolio.allocation_type
         nav_series = []
         prev_nav = Decimal("100")
         peak_nav = Decimal("100")
@@ -197,20 +205,65 @@ class PortfolioAnalyticsEngine:
         if not version:
             return []
 
-        contributions = []
-        for pos in version.positions:
-            prices = await self._get_prices(pos.symbol, start, end)
-            if len(prices) >= 2:
-                first_price = prices[0][1]
-                last_price = prices[-1][1]
-                holding_return = (last_price - first_price) / first_price if first_price else Decimal("0")
-                weight = Decimal(str(pos.value))
-                contributions.append(HoldingContribution(
-                    symbol=pos.symbol,
-                    weight=weight,
-                    return_pct=holding_return,
-                    contribution=weight * holding_return,
-                ))
+        # Get portfolio to determine allocation type
+        result = await self.db.execute(
+            select(Portfolio).where(Portfolio.id == portfolio_id)
+        )
+        portfolio = result.scalar_one_or_none()
+        if not portfolio:
+            return []
+
+        # Determine allocation type from portfolio level
+        allocation_type = portfolio.allocation_type
+
+        # For quantity-based portfolios, calculate actual weights from market values
+        if allocation_type == AllocationType.quantity:
+            # Calculate market value for each position at end date
+            market_values = {}
+            for pos in version.positions:
+                prices = await self._get_prices(pos.symbol, start, end)
+                if prices:
+                    end_price = prices[-1][1]  # Last price in period
+                    market_value = Decimal(str(pos.value)) * end_price
+                    market_values[pos.symbol] = market_value
+
+            # Calculate total portfolio value
+            total_value = sum(market_values.values())
+
+            # Calculate contributions using actual weights
+            contributions = []
+            for pos in version.positions:
+                prices = await self._get_prices(pos.symbol, start, end)
+                if len(prices) >= 2 and pos.symbol in market_values:
+                    first_price = prices[0][1]
+                    last_price = prices[-1][1]
+                    holding_return = (last_price - first_price) / first_price if first_price else Decimal("0")
+
+                    # Calculate actual weight as % of portfolio
+                    weight = market_values[pos.symbol] / total_value if total_value else Decimal("0")
+
+                    contributions.append(HoldingContribution(
+                        symbol=pos.symbol,
+                        weight=weight,
+                        return_pct=holding_return,
+                        contribution=weight * holding_return,
+                    ))
+        else:
+            # Weight-based portfolio - use weights directly
+            contributions = []
+            for pos in version.positions:
+                prices = await self._get_prices(pos.symbol, start, end)
+                if len(prices) >= 2:
+                    first_price = prices[0][1]
+                    last_price = prices[-1][1]
+                    holding_return = (last_price - first_price) / first_price if first_price else Decimal("0")
+                    weight = Decimal(str(pos.value))
+                    contributions.append(HoldingContribution(
+                        symbol=pos.symbol,
+                        weight=weight,
+                        return_pct=holding_return,
+                        contribution=weight * holding_return,
+                    ))
 
         return contributions
 

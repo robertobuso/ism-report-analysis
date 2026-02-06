@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # Flask Suite
     suite_url: str = "http://localhost:5000"
 
+    # Testing
+    use_mock_tradestation: bool = False  # Set to True to use mock data instead of real API
+
+    # Market Data Provider
+    market_data_provider: str = "tradestation"  # "tradestation", "alphavantage", or "mock"
+    alphavantage_api_key: str = ""
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

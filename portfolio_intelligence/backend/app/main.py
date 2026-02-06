@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.api.v1.router import v1_router
-from app.services.tradestation import tradestation_client
+from app.dependencies import get_tradestation_client
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -18,9 +18,17 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Portfolio Intelligence API starting up...")
+
+    # Determine market data provider
+    provider = settings.market_data_provider.upper()
+    auth_mode = "Mock OAuth" if settings.use_mock_tradestation else "TradeStation OAuth"
+    logger.info(f"🔐 Authentication: {auth_mode}")
+    logger.info(f"📊 Market Data Provider: {provider}")
+
+    client = get_tradestation_client()
     yield
     # Cleanup
-    await tradestation_client.close()
+    await client.close()
     logger.info("Portfolio Intelligence API shutting down.")
 
 

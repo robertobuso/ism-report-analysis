@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.instrument import Instrument
 from app.models.price import PriceDaily
-from app.services.tradestation import tradestation_client
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +16,14 @@ logger = logging.getLogger(__name__)
 class PriceIngestionService:
     """Service for ingesting market data from TradeStation."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, ts_client):
+        """
+        Args:
+            db: AsyncSession for database operations
+            ts_client: TradeStation client (real or mock)
+        """
         self.db = db
+        self.ts_client = ts_client
 
     async def _get_or_create_instrument(self, symbol: str) -> Instrument:
         result = await self.db.execute(
@@ -38,14 +43,14 @@ class PriceIngestionService:
         instrument = await self._get_or_create_instrument(symbol)
 
         try:
-            raw_bars = await tradestation_client.get_daily_bars(
+            raw_bars = await self.ts_client.get_daily_bars(
                 access_token, symbol, bars_back=bars_back
             )
         except Exception as e:
             logger.error(f"Failed to fetch bars for {symbol}: {e}")
             return 0
 
-        parsed = tradestation_client.parse_bars(raw_bars)
+        parsed = self.ts_client.parse_bars(raw_bars)
         if not parsed:
             return 0
 

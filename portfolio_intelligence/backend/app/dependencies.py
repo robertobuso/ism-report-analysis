@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db.database import get_async_session
 from app.models.user import User
+from app.services.tradestation import TradeStationClient
+from app.services.mock_tradestation import MockTradeStationClient
+from app.services.alphavantage import AlphaVantageAdapter
 
 security = HTTPBearer()
 
@@ -51,3 +54,53 @@ async def get_current_user(
             detail="User not found",
         )
     return user
+
+
+def get_tradestation_client() -> TradeStationClient | MockTradeStationClient | AlphaVantageAdapter:
+    """
+    Factory function for market data client.
+
+    Returns appropriate client based on configuration:
+    - MARKET_DATA_PROVIDER="mock" → MockTradeStationClient
+    - MARKET_DATA_PROVIDER="alphavantage" → AlphaVantageAdapter
+    - MARKET_DATA_PROVIDER="tradestation" → TradeStationClient (default)
+
+    Note: MARKET_DATA_PROVIDER takes precedence over USE_MOCK_TRADESTATION.
+    This allows mock OAuth with real market data from AlphaVantage.
+    """
+    settings = get_settings()
+
+    # New provider-based selection (takes precedence)
+    provider = settings.market_data_provider.lower()
+
+    if provider == "mock":
+        return MockTradeStationClient()
+    elif provider == "alphavantage":
+        return AlphaVantageAdapter()
+    elif provider == "tradestation":
+        return TradeStationClient()
+    else:
+        # Fallback to legacy behavior if provider is unrecognized
+        if settings.use_mock_tradestation:
+            return MockTradeStationClient()
+        return TradeStationClient()
+
+
+def get_auth_client() -> TradeStationClient | MockTradeStationClient:
+    """
+    Factory function for OAuth/authentication client.
+
+    ALWAYS returns TradeStation or Mock, regardless of MARKET_DATA_PROVIDER.
+    This is because authentication is always done via TradeStation OAuth,
+    even if market data comes from AlphaVantage or other providers.
+
+    Returns:
+    - USE_MOCK_TRADESTATION=true → MockTradeStationClient
+    - Otherwise → TradeStationClient
+    """
+    settings = get_settings()
+
+    if settings.use_mock_tradestation:
+        return MockTradeStationClient()
+    else:
+        return TradeStationClient()

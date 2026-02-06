@@ -128,6 +128,3 @@ class TradeStationClient:
 
     async def close(self):
         await self._client.aclose()
-
-
-tradestation_client = TradeStationClient()

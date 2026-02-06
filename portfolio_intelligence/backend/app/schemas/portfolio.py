@@ -9,8 +9,7 @@ from app.models.portfolio import AllocationType
 
 class PositionCreate(BaseModel):
     symbol: str
-    allocation_type: AllocationType
-    value: Decimal
+    value: Decimal  # Either shares (quantity) or weight (0.0-1.0)
 
     @field_validator("symbol")
     @classmethod
@@ -21,16 +20,16 @@ class PositionCreate(BaseModel):
 class PortfolioCreate(BaseModel):
     name: str
     base_currency: str = "USD"
-    allocation_type: AllocationType
+    allocation_type: AllocationType = AllocationType.quantity  # Portfolio-level setting
     positions: list[PositionCreate]
     note: str | None = None
 
 
 class PortfolioVersionCreate(BaseModel):
     positions: list[PositionCreate]
-    allocation_type: AllocationType
     note: str | None = None
     effective_at: datetime | None = None
+    # allocation_type inherited from portfolio, not changeable per version
 
 
 class PositionRead(BaseModel):
@@ -57,6 +56,7 @@ class PortfolioRead(BaseModel):
     id: uuid.UUID
     name: str
     base_currency: str
+    allocation_type: AllocationType
     created_at: datetime
     latest_version: PortfolioVersionRead | None = None
 

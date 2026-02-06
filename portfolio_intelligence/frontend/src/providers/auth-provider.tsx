@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { api } from "@/lib/api";
@@ -28,19 +29,32 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const checked = useRef(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
+    // Prevent double-checking in React Strict Mode
+    if (checked.current) return;
+    checked.current = true;
 
-    api
-      .getMe()
-      .then((data) => setUser(data))
-      .catch(() => localStorage.removeItem("token"))
-      .finally(() => setIsLoading(false));
+    const checkAuth = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const data = await api.getMe();
+        setUser(data);
+      } catch (error) {
+        console.error("Auth check failed:", error);
+        localStorage.removeItem("token");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   const logout = useCallback(() => {
