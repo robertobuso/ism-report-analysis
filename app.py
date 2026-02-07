@@ -644,11 +644,24 @@ def oauth2callback():
         creds = finish_google_auth(state, code)
 
         if creds:
-            # Get user info from Google
-            from googleapiclient.discovery import build
-            oauth2_service = build('oauth2', 'v2', credentials=creds)
-            user_info = oauth2_service.userinfo().get().execute()
-            user_email = user_info.get('email', '')
+            # Extract email from ID token
+            user_email = ''
+            if hasattr(creds, 'id_token'):
+                # Decode ID token to get email
+                import json
+                from base64 import urlsafe_b64decode
+                # ID token is a JWT with 3 parts: header.payload.signature
+                try:
+                    parts = creds.id_token.split('.')
+                    if len(parts) >= 2:
+                        # Add padding if needed
+                        payload = parts[1]
+                        payload += '=' * (4 - len(payload) % 4)
+                        decoded = urlsafe_b64decode(payload)
+                        token_data = json.loads(decoded)
+                        user_email = token_data.get('email', '')
+                except Exception as e:
+                    logger.error(f"Error decoding ID token: {str(e)}")
 
             # Set authenticated session
             session['authenticated'] = True
