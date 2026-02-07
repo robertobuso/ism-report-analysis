@@ -9,8 +9,8 @@ COPY . .
 
 EXPOSE 8000
 
-# Shell form CMD allows && and env var expansion
-CMD echo "Starting migrations..." && \
-    alembic upgrade head && \
-    echo "Migrations complete. Starting uvicorn on port ${PORT:-8000}..." && \
-    uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Copy and use startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
