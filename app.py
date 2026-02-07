@@ -641,28 +641,9 @@ def oauth2callback():
             return redirect(url_for('landing'))
         
         # Complete the authentication flow
-        creds = finish_google_auth(state, code)
+        creds, user_email = finish_google_auth(state, code)
 
         if creds:
-            # Extract email from ID token
-            user_email = ''
-            if hasattr(creds, 'id_token'):
-                # Decode ID token to get email
-                import json
-                from base64 import urlsafe_b64decode
-                # ID token is a JWT with 3 parts: header.payload.signature
-                try:
-                    parts = creds.id_token.split('.')
-                    if len(parts) >= 2:
-                        # Add padding if needed
-                        payload = parts[1]
-                        payload += '=' * (4 - len(payload) % 4)
-                        decoded = urlsafe_b64decode(payload)
-                        token_data = json.loads(decoded)
-                        user_email = token_data.get('email', '')
-                except Exception as e:
-                    logger.error(f"Error decoding ID token: {str(e)}")
-
             # Set authenticated session
             session['authenticated'] = True
             session['user_email'] = user_email
@@ -671,6 +652,7 @@ def oauth2callback():
             if user_email:
                 jwt_token = generate_jwt_token(user_email)
                 session['jwt_token'] = jwt_token
+                logger.info(f"Generated JWT for user: {user_email}")
 
             # Redirect to original URL if it exists
             next_url = session.pop('next_url', None)

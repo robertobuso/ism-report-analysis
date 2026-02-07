@@ -47,35 +47,53 @@ def get_google_auth_url():
         return None
 
 def finish_google_auth(state, code):
-    """Complete the Google authentication flow."""
+    """Complete the Google authentication flow. Returns (credentials, user_email) tuple."""
     try:
         # Verify state to prevent CSRF
         if state != session.get('state'):
             logger.error("State verification failed")
-            return None
-        
+            return None, None
+
         client_config = get_client_config()
         if not client_config:
-            return None
-        
+            return None, None
+
         # Create flow instance using client secrets file
         flow = Flow.from_client_secrets_file(
             client_config,
             scopes=SCOPES,
             redirect_uri=url_for('oauth2callback', _external=True)
         )
-        
+
         # Use the state from the session
         flow.fetch_token(code=code)
-        
+
+        # Get user email from ID token
+        user_email = ''
+        if hasattr(flow.credentials, 'id_token_jwt'):
+            # Decode the ID token JWT to get email
+            import json
+            from base64 import urlsafe_b64decode
+            try:
+                parts = flow.credentials.id_token_jwt.split('.')
+                if len(parts) >= 2:
+                    payload = parts[1]
+                    # Add padding if needed
+                    payload += '=' * (4 - len(payload) % 4)
+                    decoded = urlsafe_b64decode(payload)
+                    token_data = json.loads(decoded)
+                    user_email = token_data.get('email', '')
+            except Exception as e:
+                logger.error(f"Error decoding ID token JWT: {str(e)}")
+
         # Save credentials to token.pickle
         with open('token.pickle', 'wb') as token:
             pickle.dump(flow.credentials, token)
-        
-        return flow.credentials
+
+        return flow.credentials, user_email
     except Exception as e:
         logger.error(f"Error finishing auth: {str(e)}")
-        return None
+        return None, None
 
 def get_google_sheets_service():
     """Get a Google Sheets API service."""
