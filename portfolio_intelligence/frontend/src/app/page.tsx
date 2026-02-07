@@ -49,8 +49,8 @@ export default function HomePage() {
     );
   }
 
-  if (!isAuthenticated && !hasUrlToken) {
-    // Only redirect if not authenticated AND no URL token being processed
+  if (!isAuthenticated && !hasUrlToken && !authLoading) {
+    // Only redirect if not authenticated AND no URL token AND auth check is complete
     const suiteUrl = process.env.NEXT_PUBLIC_SUITE_URL || "http://localhost:5000";
     if (typeof window !== "undefined") {
       window.location.href = `${suiteUrl}/landing`;
