@@ -8,7 +8,11 @@ from flask import url_for, session, redirect
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid'
+]
 
 def get_client_config():
     """Get client configuration from credentials file."""
