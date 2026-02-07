@@ -29,13 +29,8 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const checked = useRef(false);
 
   useEffect(() => {
-    // Prevent double-checking in React Strict Mode
-    if (checked.current) return;
-    checked.current = true;
-
     const checkAuth = async () => {
       const token = localStorage.getItem("token");
       if (!token) {
