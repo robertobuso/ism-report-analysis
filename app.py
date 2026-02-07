@@ -91,10 +91,12 @@ def inject_suite_globals():
 
 def generate_jwt_token(user_email):
     """Generate JWT token for authenticated user."""
+    import time
+    now = datetime.utcnow()
     payload = {
         'email': user_email,
-        'iat': datetime.utcnow(),
-        'exp': datetime.utcnow() + timedelta(hours=24)
+        'iat': int(now.timestamp()),  # Convert to Unix timestamp
+        'exp': int((now + timedelta(hours=24)).timestamp())  # Convert to Unix timestamp
     }
     token = jwt.encode(payload, app.secret_key, algorithm='HS256')
     return token
