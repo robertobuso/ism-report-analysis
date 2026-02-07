@@ -1,0 +1,26 @@
+# Railway configuration for monorepo structure
+# This file should be at the repository root
+
+[[services]]
+name = "portfolio-intelligence-api"
+root = "portfolio_intelligence/backend"
+
+[services.build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[services.deploy]
+startCommand = "/start.sh"
+healthcheckPath = "/docs"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+
+[[services]]
+name = "portfolio-intelligence-frontend"
+root = "portfolio_intelligence/frontend"
+
+[services.build]
+builder = "nixpacks"
+
+[services.deploy]
+startCommand = "npm start"
