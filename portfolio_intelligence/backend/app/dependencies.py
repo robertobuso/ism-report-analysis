@@ -1,4 +1,5 @@
 import uuid
+import logging
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -14,6 +15,7 @@ from app.services.tradestation import TradeStationClient
 from app.services.mock_tradestation import MockTradeStationClient
 from app.services.alphavantage import AlphaVantageAdapter
 
+logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 
@@ -30,41 +32,62 @@ async def get_current_user(
     settings = get_settings()
     token = credentials.credentials
 
+    logger.info(f"🔐 Attempting JWT validation (token length: {len(token)})")
+    logger.info(f"🔑 SECRET_KEY configured: {settings.secret_key[:10]}... (showing first 10 chars)")
+    logger.info(f"🔧 Algorithm: {settings.jwt_algorithm}")
+
     try:
         payload = jwt.decode(
             token, settings.secret_key, algorithms=[settings.jwt_algorithm]
         )
+        logger.info(f"✅ JWT decoded successfully. Payload keys: {list(payload.keys())}")
 
         # Check if this is a Flask-issued token (has email claim)
         email: str | None = payload.get("email")
         if email:
+            logger.info(f"📧 Flask-issued token detected for email: {email}")
             # Flask-issued JWT - look up or create user by email
-            result = await db.execute(select(User).where(User.email == email))
-            user = result.scalar_one_or_none()
+            try:
+                result = await db.execute(select(User).where(User.email == email))
+                user = result.scalar_one_or_none()
 
-            if user is None:
-                # Create new user from Google OAuth email
-                user = User(
-                    email=email,
-                    tradestation_account_id="google-oauth",  # Placeholder
+                if user is None:
+                    logger.info(f"👤 User not found, creating new user for: {email}")
+                    # Create new user from Google OAuth email
+                    user = User(
+                        email=email,
+                        tradestation_user_id="google-oauth",  # Fixed: was tradestation_account_id
+                    )
+                    db.add(user)
+                    await db.commit()
+                    await db.refresh(user)
+                    logger.info(f"✅ Created new user with ID: {user.id}")
+                else:
+                    logger.info(f"✅ Found existing user with ID: {user.id}")
+
+                return user
+            except Exception as db_error:
+                logger.error(f"❌ Database error during user lookup/creation: {db_error}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Database error: {str(db_error)}",
                 )
-                db.add(user)
-                await db.commit()
-                await db.refresh(user)
-
-            return user
 
         # Otherwise, check for TradeStation-issued token (has sub claim)
         user_id: str | None = payload.get("sub")
         if user_id is None:
+            logger.error(f"❌ Token missing both 'email' and 'sub' claims")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token: missing email or subject",
             )
-    except JWTError:
+
+        logger.info(f"🔷 TradeStation-issued token detected for user_id: {user_id}")
+    except JWTError as e:
+        logger.error(f"❌ JWT decode failed: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail=f"Invalid or expired token: {str(e)}",
         )
 
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))

@@ -150,3 +150,50 @@ async def refresh(
 async def me(user: Annotated[User, Depends(get_current_user)]):
     """Return the current authenticated user profile."""
     return user
+
+
+@router.get("/debug/jwt")
+async def debug_jwt(token: str = Query(...)):
+    """Debug endpoint to test JWT decoding without database operations."""
+    settings = get_settings()
+
+    debug_info = {
+        "secret_key_preview": f"{settings.secret_key[:10]}..." if settings.secret_key else "NOT SET",
+        "algorithm": settings.jwt_algorithm,
+        "token_length": len(token),
+        "token_preview": f"{token[:20]}...{token[-20:]}",
+    }
+
+    try:
+        from jose import jwt
+        payload = jwt.decode(
+            token, settings.secret_key, algorithms=[settings.jwt_algorithm]
+        )
+        debug_info["status"] = "✅ JWT decoded successfully"
+        debug_info["payload"] = payload
+        debug_info["has_email"] = "email" in payload
+        debug_info["has_sub"] = "sub" in payload
+        debug_info["email"] = payload.get("email")
+        debug_info["sub"] = payload.get("sub")
+
+        # Check expiration
+        import time
+        exp = payload.get("exp")
+        iat = payload.get("iat")
+        now = time.time()
+
+        if exp:
+            debug_info["expires_at"] = exp
+            debug_info["expired"] = exp < now
+            debug_info["time_until_expiry_seconds"] = exp - now
+
+        if iat:
+            debug_info["issued_at"] = iat
+            debug_info["token_age_seconds"] = now - iat
+
+    except Exception as e:
+        debug_info["status"] = f"❌ JWT decode failed"
+        debug_info["error_type"] = type(e).__name__
+        debug_info["error_message"] = str(e)
+
+    return debug_info
