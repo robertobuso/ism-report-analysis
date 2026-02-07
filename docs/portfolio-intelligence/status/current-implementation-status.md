@@ -1,13 +1,14 @@
 # Portfolio Intelligence - Current Implementation Status
 
-**Last Updated**: 2026-02-06
-**Status**: In Progress (MVP Development)
+**Last Updated**: 2026-02-07
+**Status**: 🟢 Production (MVP Complete, Cross-Service Auth Working)
 
 ---
 
 ## What's Working
 
-All items completed on 2026-02-06.
+All items from Phase 0-3 completed on 2026-02-06.
+Cross-service authentication fixed on 2026-02-07.
 
 ### Phase 0 - Foundation
 
@@ -39,6 +40,16 @@ All items completed on 2026-02-06.
 - **Portfolio Overview** -- Performance dashboard at `src/app/portfolios/[id]/page.tsx`: NAV and total return header, time range selector (1M/3M/YTD/1Y/All), Recharts AreaChart with gradient fill, holdings table.
 - **Home Page** -- `src/app/page.tsx` with 3 states: loading skeleton, unauthenticated CTA, and portfolio grid with cards plus empty-state CTA.
 - **Shared Header** -- `src/components/layout/header.tsx` with nav links to Suite Home, ISM Analysis, and News Analysis (external via `NEXT_PUBLIC_SUITE_URL`) plus Portfolio Intelligence (internal).
+
+### Cross-Service Authentication (2026-02-07)
+
+- **Flask JWT Integration** -- Flask suite generates JWT tokens after Google OAuth with user email claim, iat, and exp as Unix timestamps.
+- **Pydantic Environment Fix** -- Fixed `config.py` to explicitly read `SECRET_KEY` from Railway environment using `validation_alias`. Backend now validates SECRET_KEY on startup and fails fast if not set.
+- **Frontend Token Flow** -- Token passed via URL query parameter, stored in localStorage, and sent as Bearer token to backend. Fixed race condition by removing `window.location.reload()` and using `window.history.replaceState()` instead.
+- **Robust Error Handling** -- Auth provider only removes token on explicit 401 responses, not on network errors or fetch failures.
+- **Production Deployed** -- All services running on Railway with matching SECRET_KEY values. Auth flow working end-to-end.
+
+**See**: [Implementation Details](../implementations/2026-02-07-cross-service-auth-fix.md)
 
 ---
 
@@ -113,4 +124,39 @@ Remove the "Coming Soon" badge from the Portfolio Intelligence card on the suite
 
 ---
 
-**Last Review**: 2026-02-06
+## Known Issues & Lessons Learned
+
+### ✅ RESOLVED: Cross-Service Authentication Failure (2026-02-07)
+
+**Issue**: Users redirected to landing page after clicking Portfolio Intelligence, despite successful Google OAuth login.
+
+**Root Causes**:
+1. **Pydantic not reading SECRET_KEY** — Backend was using default value instead of Railway environment variable
+2. **Frontend race condition** — `window.location.reload()` killed fetch requests, causing token deletion
+
+**Resolution**: See [Cross-Service Auth Fix](../implementations/2026-02-07-cross-service-auth-fix.md)
+
+**Key Learnings**:
+- ⚠️ **Always use explicit `validation_alias` in Pydantic** for critical environment variables
+- ⚠️ **Never use `window.location.reload()` in React** — use `history.replaceState()` instead
+- ⚠️ **Only remove auth tokens on 401**, not on network errors
+- ⚠️ **Validate critical env vars on startup** — fail fast if misconfigured
+
+### Current Issues
+
+None known as of 2026-02-07.
+
+---
+
+## Recent Changes
+
+| Date | Change | Details |
+|------|--------|---------|
+| 2026-02-07 | Fixed cross-service authentication | Pydantic config fix + frontend race condition fix. Auth flow now working in production. [Details](../implementations/2026-02-07-cross-service-auth-fix.md) |
+| 2026-02-06 | Completed Phase 3 - Frontend MVP | Next.js app with auth, portfolio CRUD, and performance dashboard |
+| 2026-02-06 | Completed Phase 2 - Backend MVP | Analytics engine, Celery worker, and all API endpoints |
+| 2026-02-06 | Completed Phase 1 - Backend Foundation | FastAPI skeleton, OAuth, market data ingestion |
+
+---
+
+**Last Review**: 2026-02-07
