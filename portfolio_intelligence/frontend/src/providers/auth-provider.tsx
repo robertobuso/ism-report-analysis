@@ -47,9 +47,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await api.getMe();
         console.log("🟢 AUTH PROVIDER: ✅ Auth successful, user:", data.email);
         setUser(data);
-      } catch (error) {
+      } catch (error: any) {
         console.error("🟢 AUTH PROVIDER: ❌ Auth check failed:", error);
-        localStorage.removeItem("token");
+        // Only remove token if the server actually rejected it with a 401
+        if (error.status === 401) {
+          localStorage.removeItem("token");
+        }
       } finally {
         console.log("🟢 AUTH PROVIDER: Setting isLoading=false");
         setIsLoading(false);

@@ -24,12 +24,9 @@ export default function HomePage() {
       const stored = localStorage.getItem("token");
       console.log("🔵 PAGE.TSX: Verify stored:", stored ? "YES" : "NO");
 
-      // Remove token from URL for security
-      window.history.replaceState({}, "", "/");
-      console.log("🔵 PAGE.TSX: Reloading page...");
-      // Force reload to trigger auth check with new token
-      window.location.reload();
-      return; // Stop execution here
+      // Remove token from URL for security (without reloading)
+      window.history.replaceState({}, "", window.location.pathname);
+      console.log("🔵 PAGE.TSX: Token stored, URL cleaned");
     } else {
       console.log("🔵 PAGE.TSX: No token in URL, checking localStorage");
       const storedToken = localStorage.getItem("token");
