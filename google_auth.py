@@ -68,23 +68,20 @@ def finish_google_auth(state, code):
         # Use the state from the session
         flow.fetch_token(code=code)
 
-        # Get user email from ID token
+        # Get user email using the access token
         user_email = ''
-        if hasattr(flow.credentials, 'id_token_jwt'):
-            # Decode the ID token JWT to get email
-            import json
-            from base64 import urlsafe_b64decode
-            try:
-                parts = flow.credentials.id_token_jwt.split('.')
-                if len(parts) >= 2:
-                    payload = parts[1]
-                    # Add padding if needed
-                    payload += '=' * (4 - len(payload) % 4)
-                    decoded = urlsafe_b64decode(payload)
-                    token_data = json.loads(decoded)
-                    user_email = token_data.get('email', '')
-            except Exception as e:
-                logger.error(f"Error decoding ID token JWT: {str(e)}")
+        try:
+            import requests
+            headers = {'Authorization': f'Bearer {flow.credentials.token}'}
+            response = requests.get('https://www.googleapis.com/oauth2/v2/userinfo', headers=headers)
+            if response.status_code == 200:
+                user_info = response.json()
+                user_email = user_info.get('email', '')
+                logger.info(f"Got user email from Google: {user_email}")
+            else:
+                logger.error(f"Failed to get user info: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error getting user info from Google: {str(e)}")
 
         # Save credentials to token.pickle
         with open('token.pickle', 'wb') as token:
