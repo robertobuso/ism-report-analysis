@@ -32,7 +32,7 @@
                         <i data-lucide="newspaper" class="ds-nav-icon"></i>
                         News Analysis
                     </a>
-                    <a href="{{ portfolio_intelligence_url or '#' }}" class="ds-nav-link {% if active_page == 'portfolio' %}active{% endif %}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
+                    <a href="{% if portfolio_intelligence_url and jwt_token %}{{ portfolio_intelligence_url }}?token={{ jwt_token }}{% else %}{{ portfolio_intelligence_url or '#' }}{% endif %}" class="ds-nav-link {% if active_page == 'portfolio' %}active{% endif %}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
                         <i data-lucide="pie-chart" class="ds-nav-icon"></i>
                         Portfolio Intelligence
                     </a>
@@ -61,7 +61,7 @@
                 <i data-lucide="newspaper" class="ds-nav-icon"></i>
                 News Analysis
             </a>
-            <a href="{{ portfolio_intelligence_url or '#' }}" class="ds-nav-link {% if active_page == 'portfolio' %}active{% endif %}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
+            <a href="{% if portfolio_intelligence_url and jwt_token %}{{ portfolio_intelligence_url }}?token={{ jwt_token }}{% else %}{{ portfolio_intelligence_url or '#' }}{% endif %}" class="ds-nav-link {% if active_page == 'portfolio' %}active{% endif %}" {% if not portfolio_intelligence_url %}title="Coming Soon"{% endif %}>
                 <i data-lucide="pie-chart" class="ds-nav-icon"></i>
                 Portfolio Intelligence
             </a>

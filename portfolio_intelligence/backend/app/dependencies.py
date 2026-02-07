@@ -34,11 +34,32 @@ async def get_current_user(
         payload = jwt.decode(
             token, settings.secret_key, algorithms=[settings.jwt_algorithm]
         )
+
+        # Check if this is a Flask-issued token (has email claim)
+        email: str | None = payload.get("email")
+        if email:
+            # Flask-issued JWT - look up or create user by email
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+
+            if user is None:
+                # Create new user from Google OAuth email
+                user = User(
+                    email=email,
+                    tradestation_account_id="google-oauth",  # Placeholder
+                )
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
+
+            return user
+
+        # Otherwise, check for TradeStation-issued token (has sub claim)
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing subject",
+                detail="Invalid token: missing email or subject",
             )
     except JWTError:
         raise HTTPException(

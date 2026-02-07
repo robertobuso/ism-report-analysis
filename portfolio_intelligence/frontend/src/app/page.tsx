@@ -6,9 +6,23 @@ import { PlusCircle, TrendingUp, BarChart3 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/providers/auth-provider";
 import { PortfolioSummary } from "@/lib/types";
+import { useEffect } from "react";
 
 export default function HomePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+
+  // Check for JWT token in URL and store it
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get("token");
+    if (token) {
+      localStorage.setItem("token", token);
+      // Remove token from URL for security
+      window.history.replaceState({}, "", "/");
+      // Reload to trigger auth check with new token
+      window.location.reload();
+    }
+  }, []);
 
   const { data: portfolios, isLoading } = useQuery<PortfolioSummary[]>({
     queryKey: ["portfolios"],
@@ -32,21 +46,17 @@ export default function HomePage() {
   }
 
   if (!isAuthenticated) {
+    // Redirect to Suite landing page to log in with Google
+    const suiteUrl = process.env.NEXT_PUBLIC_SUITE_URL || "http://localhost:5000";
+    if (typeof window !== "undefined") {
+      window.location.href = `${suiteUrl}/landing`;
+    }
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6">
         <TrendingUp size={48} className="text-primary mb-4" />
         <h1 className="text-2xl font-bold text-primary mb-2">
-          Portfolio Intelligence
+          Redirecting to login...
         </h1>
-        <p className="text-muted mb-6 text-center max-w-md">
-          A calm, precise, and trustworthy portfolio analytics workspace.
-        </p>
-        <Link
-          href="/login"
-          className="bg-primary text-white px-6 py-3 rounded-button font-semibold hover:bg-primary-hover transition-colors"
-        >
-          Connect with TradeStation
-        </Link>
       </div>
     );
   }

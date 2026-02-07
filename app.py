@@ -37,6 +37,7 @@ from config_loader import config_loader
 from typing import List, Dict, Optional, Tuple
 
 from openai import OpenAI
+import jwt
 
 RUN_CACHE = {}  # In-memory cache - replace with Redis for production
 
@@ -81,10 +82,22 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 # Context processor for shared template variables
 @app.context_processor
 def inject_suite_globals():
+    jwt_token = session.get('jwt_token', '')
     return {
         'portfolio_intelligence_url': os.environ.get('PORTFOLIO_INTELLIGENCE_URL', ''),
-        'active_page': ''
+        'active_page': '',
+        'jwt_token': jwt_token
     }
+
+def generate_jwt_token(user_email):
+    """Generate JWT token for authenticated user."""
+    payload = {
+        'email': user_email,
+        'iat': datetime.utcnow(),
+        'exp': datetime.utcnow() + timedelta(hours=24)
+    }
+    token = jwt.encode(payload, app.secret_key, algorithm='HS256')
+    return token
 
 def convert_markdown_bullet(bullet):
     # Convert **bold:** to <strong>bold:</strong>
@@ -629,10 +642,22 @@ def oauth2callback():
         
         # Complete the authentication flow
         creds = finish_google_auth(state, code)
-        
+
         if creds:
+            # Get user info from Google
+            from googleapiclient.discovery import build
+            oauth2_service = build('oauth2', 'v2', credentials=creds)
+            user_info = oauth2_service.userinfo().get().execute()
+            user_email = user_info.get('email', '')
+
             # Set authenticated session
             session['authenticated'] = True
+            session['user_email'] = user_email
+
+            # Generate JWT token for cross-service auth
+            if user_email:
+                jwt_token = generate_jwt_token(user_email)
+                session['jwt_token'] = jwt_token
 
             # Redirect to original URL if it exists
             next_url = session.pop('next_url', None)

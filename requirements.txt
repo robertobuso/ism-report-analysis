@@ -39,6 +39,7 @@ feedparser>=6.0.10
 # --- Misc ---
 requests>=2.31.0
 python-dotenv>=1.0.0
+PyJWT>=2.8.0
 
 # --- Development/Testing (optional) ---
 pytest>=7.4.3
