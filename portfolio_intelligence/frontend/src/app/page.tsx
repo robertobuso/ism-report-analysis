@@ -11,7 +11,7 @@ import { useEffect } from "react";
 export default function HomePage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Check for JWT token in URL and store it
+  // Check for JWT token in URL and store it BEFORE any auth checks
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get("token");
@@ -19,10 +19,14 @@ export default function HomePage() {
       localStorage.setItem("token", token);
       // Remove token from URL for security
       window.history.replaceState({}, "", "/");
-      // Reload to trigger auth check with new token
+      // Force reload to trigger auth check with new token
       window.location.reload();
+      return; // Stop execution here
     }
   }, []);
+
+  // If we're checking for a URL token, don't redirect yet
+  const hasUrlToken = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("token");
 
   const { data: portfolios, isLoading } = useQuery<PortfolioSummary[]>({
     queryKey: ["portfolios"],
@@ -45,8 +49,8 @@ export default function HomePage() {
     );
   }
 
-  if (!isAuthenticated) {
-    // Redirect to Suite landing page to log in with Google
+  if (!isAuthenticated && !hasUrlToken) {
+    // Only redirect if not authenticated AND no URL token being processed
     const suiteUrl = process.env.NEXT_PUBLIC_SUITE_URL || "http://localhost:5000";
     if (typeof window !== "undefined") {
       window.location.href = `${suiteUrl}/landing`;
@@ -56,6 +60,18 @@ export default function HomePage() {
         <TrendingUp size={48} className="text-primary mb-4" />
         <h1 className="text-2xl font-bold text-primary mb-2">
           Redirecting to login...
+        </h1>
+      </div>
+    );
+  }
+
+  // Show loading while processing URL token
+  if (hasUrlToken) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6">
+        <TrendingUp size={48} className="text-primary mb-4" />
+        <h1 className="text-2xl font-bold text-primary mb-2">
+          Signing you in...
         </h1>
       </div>
     );
