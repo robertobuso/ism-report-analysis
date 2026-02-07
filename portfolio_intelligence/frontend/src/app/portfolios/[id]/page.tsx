@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AreaChart,
@@ -273,7 +274,7 @@ export default function PortfolioOverviewPage() {
             <div className="text-2xl font-bold">
               {(Number(metrics.volatility_30d) * 100).toFixed(1)}%
             </div>
-            <div className="text-xs text-muted">Annualized</div>
+            <div className="text-xs text-muted">Annualized from daily returns</div>
           </div>
 
           <div className="bg-white rounded-card shadow-card p-4">
@@ -290,7 +291,7 @@ export default function PortfolioOverviewPage() {
               {sharpeRatio ? sharpeRatio.toFixed(2) : "—"}
             </div>
             <div className="text-xs text-muted">
-              {sharpeRatio && sharpeRatio > 1 ? "Good" : sharpeRatio && sharpeRatio > 0.5 ? "Fair" : "Poor"}
+              {sharpeRatio ? "Risk-adjusted (vs 4.5% risk-free)" : ""}
             </div>
           </div>
         </div>
@@ -461,10 +462,15 @@ export default function PortfolioOverviewPage() {
       {/* Return Attribution */}
       {attribution && attribution.positions && attribution.positions.length > 0 && (
         <div className="bg-white rounded-card shadow-card p-6 mb-6">
-          <h2 className="font-bold text-lg mb-2">Return Attribution</h2>
-          <p className="text-sm text-muted mb-4">
-            Portfolio return: {attribution.total_return >= 0 ? "+" : ""}
+          <div className="flex items-start justify-between mb-2">
+            <h2 className="font-bold text-lg">Return Attribution</h2>
+          </div>
+          <p className="text-sm text-muted mb-2">
+            Portfolio return ({selectedRange.label}): {attribution.total_return >= 0 ? "+" : ""}
             {(attribution.total_return * 100).toFixed(2)}%
+          </p>
+          <p className="text-xs text-gray-500 mb-4">
+            Note: Attribution uses time-weighted daily returns over the selected period. May differ slightly from cumulative YTD performance due to portfolio rebalancing, cash flows, or weighting methodology.
           </p>
 
           {/* Column Headers */}
@@ -491,7 +497,12 @@ export default function PortfolioOverviewPage() {
               );
               return (
                 <div key={pos.symbol} className="flex items-center gap-4">
-                  <div className="w-20 text-sm font-semibold">{pos.symbol}</div>
+                  <Link
+                    href={`/company/${pos.symbol}?portfolio_id=${portfolio.id}&portfolio_name=${encodeURIComponent(portfolio.name)}`}
+                    className="w-20 text-sm font-semibold text-[#191970] hover:underline"
+                  >
+                    {pos.symbol}
+                  </Link>
                   <div className="w-16 text-xs text-muted text-right">
                     {(pos.weight * 100).toFixed(1)}%
                   </div>
@@ -544,7 +555,7 @@ export default function PortfolioOverviewPage() {
                       {negativeContributions.length > 0 && `+ Others (${(totalNegative * 100).toFixed(1)}pp)`} = Net (+{(attribution.total_return * 100).toFixed(1)}pp)
                     </div>
                   </>
-                ) : contributionPct < 0 ? (
+                ) : topContributor.contribution < 0 ? (
                   <p>
                     All positions contributed negatively. <strong>{topContributor.symbol}</strong> was the least detrimental at{" "}
                     <span className="text-accent-red font-semibold">
@@ -552,13 +563,68 @@ export default function PortfolioOverviewPage() {
                     </span>.
                   </p>
                 ) : (
-                  <p>
-                    <strong>{topContributor.symbol}</strong> was the primary driver, contributing{" "}
-                    <span className="text-accent-green font-semibold">
-                      +{(topContributor.contribution * 100).toFixed(1)}pp
-                    </span>{" "}
-                    ({contributionPct.toFixed(0)}% of portfolio returns).
-                  </p>
+                  <>
+                    <p>
+                      <strong>{topContributor.symbol}</strong> was the primary driver, contributing{" "}
+                      <span className="text-accent-green font-semibold">
+                        +{(topContributor.contribution * 100).toFixed(1)}pp
+                      </span>{" "}
+                      ({contributionPct.toFixed(0)}% of portfolio returns).
+                    </p>
+                    {(() => {
+                      const topPositive = positiveContributions.slice(0, 2);
+                      const topNegative = negativeContributions.slice(0, 2);
+                      const hasNegatives = topNegative.length > 0;
+
+                      return (
+                        <div className="text-xs text-muted pt-2 border-t border-blue-200">
+                          {attribution.total_return < 0 ? (
+                            <>
+                              Losses were driven primarily by{" "}
+                              {topNegative.map((p: any, i: number) => (
+                                <span key={p.symbol}>
+                                  <strong>{p.symbol}</strong>
+                                  {i < topNegative.length - 1 ? " and " : ""}
+                                </span>
+                              ))}, which together accounted for ~{Math.abs(topNegative.reduce((sum: number, p: any) => sum + p.contribution, 0) * 100).toFixed(0)}pp of drawdown
+                              {topPositive.length > 0 && (
+                                <>
+                                  , partially offset by{" "}
+                                  {topPositive.map((p: any, i: number) => (
+                                    <span key={p.symbol}>
+                                      <strong>{p.symbol}</strong>
+                                      {i < topPositive.length - 1 ? " and " : ""}
+                                    </span>
+                                  ))}
+                                </>
+                              )}.
+                            </>
+                          ) : (
+                            <>
+                              Returns were driven by{" "}
+                              {topPositive.map((p: any, i: number) => (
+                                <span key={p.symbol}>
+                                  <strong>{p.symbol}</strong>
+                                  {i < topPositive.length - 1 ? " and " : ""}
+                                </span>
+                              ))}, contributing {(topPositive.reduce((sum: number, p: any) => sum + p.contribution, 0) * 100).toFixed(1)}pp combined
+                              {hasNegatives && (
+                                <>
+                                  , partially offset by{" "}
+                                  {topNegative.map((p: any, i: number) => (
+                                    <span key={p.symbol}>
+                                      <strong>{p.symbol}</strong>
+                                      {i < topNegative.length - 1 ? " and " : ""}
+                                    </span>
+                                  ))}
+                                </>
+                              )}.
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
             );
@@ -600,7 +666,14 @@ export default function PortfolioOverviewPage() {
                     key={holding.symbol}
                     className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
                   >
-                    <td className="py-3 font-semibold">{holding.symbol}</td>
+                    <td className="py-3">
+                      <Link
+                        href={`/company/${holding.symbol}?portfolio_id=${portfolio.id}&portfolio_name=${encodeURIComponent(portfolio.name)}`}
+                        className="font-semibold text-[#191970] hover:underline"
+                      >
+                        {holding.symbol}
+                      </Link>
+                    </td>
                     <td className="py-3 text-right">
                       {Number(holding.quantity).toLocaleString()}
                     </td>

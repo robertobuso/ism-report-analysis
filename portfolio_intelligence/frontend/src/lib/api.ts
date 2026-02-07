@@ -108,4 +108,69 @@ export const api = {
     ),
   getHoldings: (portfolioId: string) =>
     fetchWithAuth(`/api/v1/portfolios/${portfolioId}/holdings`),
+
+  // Company Intelligence
+  getCompanyHeader: (symbol: string, portfolioId?: string) => {
+    const params = new URLSearchParams();
+    if (portfolioId) params.set("portfolio_id", portfolioId);
+    return fetchWithAuth(
+      `/api/v1/company/${symbol}/header?${params.toString()}`,
+    );
+  },
+  getCompanyInsights: (symbol: string, portfolioId?: string) => {
+    const params = new URLSearchParams();
+    if (portfolioId) params.set("portfolio_id", portfolioId);
+    return fetchWithAuth(
+      `/api/v1/company/${symbol}/insights?${params.toString()}`,
+    );
+  },
+  getCompanyOverview: (symbol: string) =>
+    fetchWithAuth(`/api/v1/company/${symbol}/overview`),
+  getCompanyNews: (
+    symbol: string,
+    options?: {
+      time_range?: string;
+      sort?: string;
+      limit?: number;
+      sentiment?: string;
+      topic?: string;
+    },
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.time_range) params.set("time_range", options.time_range);
+    if (options?.sort) params.set("sort", options.sort);
+    if (options?.limit) params.set("limit", options.limit.toString());
+    if (options?.sentiment) params.set("sentiment", options.sentiment);
+    if (options?.topic) params.set("topic", options.topic);
+    return fetchWithAuth(
+      `/api/v1/company/${symbol}/news?${params.toString()}`,
+    );
+  },
+  getCompanyEarnings: (symbol: string) =>
+    fetchWithAuth(`/api/v1/company/${symbol}/earnings`),
+  getCompanyFinancials: (symbol: string, period: "quarterly" | "annual" = "quarterly") =>
+    fetchWithAuth(`/api/v1/company/${symbol}/financials?period=${period}`),
+  getCompanyPrices: (symbol: string, outputsize: "compact" | "full" = "compact") =>
+    fetchWithAuth(`/api/v1/company/${symbol}/prices?outputsize=${outputsize}`),
+  getCompanyTechnicals: (symbol: string, indicators?: string[]) => {
+    const params = new URLSearchParams();
+    if (indicators && indicators.length > 0) {
+      params.set("indicators", indicators.join(","));
+    }
+    return fetchWithAuth(
+      `/api/v1/company/${symbol}/technicals?${params.toString()}`,
+    );
+  },
+  getCompanyPortfolioImpact: (symbol: string, portfolioId: string) =>
+    fetchWithAuth(
+      `/api/v1/company/${symbol}/portfolio-impact?portfolio_id=${portfolioId}`,
+    ),
+  getCompanyScenario: (
+    symbol: string,
+    portfolioId: string,
+    action: "trim_25" | "trim_50" | "exit" | "add_10",
+  ) =>
+    fetchWithAuth(
+      `/api/v1/company/${symbol}/scenario?portfolio_id=${portfolioId}&action=${action}`,
+    ),
 };

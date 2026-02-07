@@ -150,7 +150,7 @@
             <!-- Portfolio Intelligence -->
             <div class="col-md-4">
                 {% if portfolio_intelligence_url %}
-                <a href="{{ portfolio_intelligence_url }}" class="tool-card portfolio">
+                <a href="{% if jwt_token %}{{ portfolio_intelligence_url }}?token={{ jwt_token }}{% else %}{{ portfolio_intelligence_url }}{% endif %}" class="tool-card portfolio">
                 {% else %}
                 <div class="tool-card portfolio" style="cursor: default;">
                 {% endif %}

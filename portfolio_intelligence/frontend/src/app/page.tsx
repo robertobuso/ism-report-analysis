@@ -19,7 +19,9 @@ export default function HomePage() {
     console.log("🔵 PAGE.TSX: Token from URL:", token ? `${token.substring(0, 30)}...` : "NULL");
 
     if (token) {
-      console.log("🔵 PAGE.TSX: Storing token in localStorage");
+      console.log("🔵 PAGE.TSX: New token from URL, storing in localStorage");
+      // Clear any old tokens first (in case SECRET_KEY changed)
+      localStorage.removeItem("token");
       localStorage.setItem("token", token);
       const stored = localStorage.getItem("token");
       console.log("🔵 PAGE.TSX: Verify stored:", stored ? "YES" : "NO");

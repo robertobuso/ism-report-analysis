@@ -8,6 +8,14 @@ const nextConfig = {
     // Disable TypeScript errors during production builds
     ignoreBuildErrors: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: 'http://localhost:8001/api/v1/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

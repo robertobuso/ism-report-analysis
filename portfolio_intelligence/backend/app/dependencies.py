@@ -2,9 +2,11 @@ import uuid
 import logging
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+import redis.asyncio as redis
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +15,9 @@ from app.db.database import get_async_session
 from app.models.user import User
 from app.services.tradestation import TradeStationClient
 from app.services.mock_tradestation import MockTradeStationClient
-from app.services.alphavantage import AlphaVantageAdapter
+from app.services.alphavantage import AlphaVantageAdapter, AlphaVantageClient
+from app.services.redis_cache import RedisCacheService
+from app.services.llm import LLMService
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
@@ -48,15 +52,17 @@ async def get_current_user(
             logger.info(f"📧 Flask-issued token detected for email: {email}")
             # Flask-issued JWT - look up or create user by email
             try:
+                # Look up user by email (Google OAuth users don't have tradestation_user_id)
                 result = await db.execute(select(User).where(User.email == email))
                 user = result.scalar_one_or_none()
 
                 if user is None:
                     logger.info(f"👤 User not found, creating new user for: {email}")
                     # Create new user from Google OAuth email
+                    # Note: tradestation_user_id is None for Google OAuth users
                     user = User(
                         email=email,
-                        tradestation_user_id="google-oauth",  # Fixed: was tradestation_account_id
+                        tradestation_user_id=None,
                     )
                     db.add(user)
                     await db.commit()
@@ -148,3 +154,53 @@ def get_auth_client() -> TradeStationClient | MockTradeStationClient:
         return MockTradeStationClient()
     else:
         return TradeStationClient()
+
+
+async def get_redis(request: Request) -> redis.Redis:
+    """
+    Get Redis client from application state.
+
+    The Redis client is initialized in the lifespan context manager.
+    """
+    return request.app.state.redis
+
+
+def get_llm_service() -> LLMService:
+    """
+    Get LLM service for AI-powered insights.
+
+    Returns:
+        LLMService configured with settings from environment
+    """
+    settings = get_settings()
+    return LLMService(
+        api_key=settings.openai_api_key,
+        model=settings.openai_model,
+        timeout=settings.openai_timeout
+    )
+
+
+def get_alphavantage_client() -> AlphaVantageClient:
+    """
+    Get AlphaVantage client for Company Intelligence.
+
+    Returns:
+        AlphaVantageClient configured with API key from settings
+    """
+    settings = get_settings()
+    return AlphaVantageClient(api_key=settings.alphavantage_api_key)
+
+
+async def get_redis_cache_service(
+    redis_client: Annotated[redis.Redis, Depends(get_redis)]
+) -> RedisCacheService:
+    """
+    Get Redis cache service.
+
+    Args:
+        redis_client: Redis client from application state
+
+    Returns:
+        RedisCacheService instance
+    """
+    return RedisCacheService(redis_client)

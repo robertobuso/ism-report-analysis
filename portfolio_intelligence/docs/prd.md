@@ -298,6 +298,58 @@ User changes strategy confidently.
 
 ---
 
+## Journey 7: Company Intelligence (Decision Cockpit)
+
+### Goal
+
+User deeply understands **why a specific holding is impacting their portfolio** and what actions they might consider — without prescriptive advice.
+
+### Flow
+
+1. **Click any ticker** in the app (portfolio table, attribution, charts)
+2. Navigate to dedicated Company Intelligence page
+3. Immediate orientation:
+
+   * Sticky header: company identity, live price, portfolio context
+   * **"Why This Matters Now"** — 3 insight cards (LLM-generated, portfolio-aware)
+4. Deep dive via tabbed workspace:
+
+   * Overview → Financials → Earnings → News & Sentiment → Price & Technicals → Portfolio Impact
+5. Act on insights:
+
+   * Scenario Explorer: "What if I trim 25%?"
+   * Compare with other holdings
+   * Open SEC filings
+
+### Key Differentiators
+
+* **"Why This Matters Now"** — every company view starts with 3 portfolio-contextualized insight cards, not raw data
+* **Sentiment-Price Overlay** — overlay sentiment trend on price chart; clicking a spike scrolls to the causative articles
+* **Scenario Explorer** — non-prescriptive "what if" simulations showing portfolio impact of position changes
+* **Position Health Score** — explainable composite of fundamentals, price trend, sentiment, and portfolio impact
+
+### UX Requirements
+
+* Page is a workspace, not a popup — no modals or drawers
+* Breadcrumb navigation: Portfolio > {name} > {TICKER}
+* Progressive disclosure: insight cards → charts → tables
+* Loading skeletons per tab (data fetched lazily)
+* Data freshness indicators ("Updated 12 min ago")
+* Explainability toggles on all AI-generated insights
+* Responsive: full layout on desktop, stacked on mobile
+
+### Data Sources
+
+* **Alpha Vantage:** company overview, news + sentiment, earnings, financials, technical indicators
+* **GPT-5.2:** insight cards, financial narratives, business bullets, signal summaries
+* **Existing analytics engine:** portfolio attribution, risk metrics, holdings data
+
+### Implementation Status
+
+🚧 **Planned (2026-02-07)** — see `docs/company-intelligence-tdd.md`
+
+---
+
 ## 5. UI / UX Tech Stack (Modern, Elegant, Scalable)
 
 ### Framework
@@ -401,12 +453,19 @@ Authenticated pages use **client-side data fetching** via TanStack Query, but re
 
 * Polished animations (basic animations complete, advanced Framer Motion integration pending)
 * Portfolio comparison view (comparison endpoint exists, UI pending)
+* **Company Intelligence page** — decision cockpit for individual securities (see `docs/company-intelligence-tdd.md`)
+
+### Planned 🗺️
+
+* Company Intelligence: GPT-5.2 powered insight cards ("Why This Matters Now")
+* Company Intelligence: News & Sentiment analysis with sentiment-price overlay
+* Company Intelligence: Scenario Explorer ("What if I trim 25%?")
+* Company Intelligence: Position Health Score (explainable composite metric)
 
 ### Excluded (Explicit) ❌
 
 * Trading
-* Alerts
-* News feeds
+* Alerts (stubbed as "Coming Soon" in Company Intelligence)
 * Social features
 
 ### Known Issues & Tech Debt
@@ -427,12 +486,21 @@ Authenticated pages use **client-side data fetching** via TanStack Query, but re
 
 ---
 
-## 10. Future-Facing Hooks (Not Implemented Yet)
+## 10. Future-Facing Hooks
 
-* AI insights (“What changed mattered most?”)
-* Scenario modeling
-* Benchmark attribution
+### Now Planned (Company Intelligence)
+
+* AI insights — GPT-5.2 powered "Why This Matters Now" cards ← **in progress**
+* Scenario modeling — "What if I trim/exit/add?" explorer ← **in progress**
+* News & sentiment analysis — article feed with sentiment-price overlay ← **in progress**
+
+### Not Implemented Yet
+
+* Benchmark attribution (beyond simple SPY overlay)
 * Factor exposure visualization
+* Portfolio optimization suggestions
+* Real-time alerts and notifications
+* Covariance-based scenario modeling (v2)
 
 ---
 

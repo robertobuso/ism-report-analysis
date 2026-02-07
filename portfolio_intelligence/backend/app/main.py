@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+import redis.asyncio as redis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -28,6 +29,25 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("SECRET_KEY environment variable is not set!")
 
     logger.info(f"✅ SECRET_KEY is configured (first 10 chars: {settings.secret_key[:10]}...)")
+
+    # Initialize Redis for Company Intelligence caching
+    logger.info(f"🔴 Connecting to Redis: {settings.redis_url}")
+    try:
+        redis_client = await redis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_connect_timeout=5
+        )
+        # Test connection
+        await redis_client.ping()
+        app.state.redis = redis_client
+        logger.info("✅ Redis connected successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Redis: {e}")
+        logger.warning("⚠️  Company Intelligence caching will be unavailable")
+        # Create a dummy client that fails gracefully
+        app.state.redis = None
 
     # Determine market data provider
     provider = settings.market_data_provider.upper()
@@ -67,6 +87,12 @@ async def lifespan(app: FastAPI):
     if scheduler:
         scheduler.shutdown()
         logger.info("Scheduler shut down")
+
+    # Close Redis connection
+    if app.state.redis:
+        await app.state.redis.close()
+        logger.info("Redis connection closed")
+
     await client.close()
     logger.info("Portfolio Intelligence API shutting down.")
 

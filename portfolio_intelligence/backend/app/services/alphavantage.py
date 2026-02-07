@@ -202,6 +202,270 @@ class AlphaVantageClient:
                 continue
         return parsed
 
+    async def get_company_overview(self, symbol: str) -> dict[str, Any]:
+        """
+        Get company overview and fundamental data.
+
+        Returns company information including financials, ratios, and sector data.
+        """
+        params = {
+            "function": "OVERVIEW",
+            "symbol": symbol,
+            "apikey": self.api_key,
+        }
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for {symbol}: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched company overview for {symbol}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching company overview for {symbol}: {e}")
+            return {}
+
+    async def get_news_sentiment(
+        self,
+        tickers: str,
+        time_from: str | None = None,
+        time_to: str | None = None,
+        sort: str = "LATEST",
+        limit: int = 50
+    ) -> dict[str, Any]:
+        """
+        Get news articles with sentiment analysis.
+
+        Args:
+            tickers: Stock symbol(s), comma-separated
+            time_from: Start time in YYYYMMDDTHHMM format
+            time_to: End time in YYYYMMDDTHHMM format
+            sort: "LATEST", "EARLIEST", or "RELEVANCE"
+            limit: Number of articles (max 1000)
+
+        Returns:
+            News feed with sentiment scores per ticker
+        """
+        params = {
+            "function": "NEWS_SENTIMENT",
+            "tickers": tickers,
+            "sort": sort,
+            "limit": str(limit),
+            "apikey": self.api_key,
+        }
+
+        if time_from:
+            params["time_from"] = time_from
+        if time_to:
+            params["time_to"] = time_to
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for news sentiment: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched {len(data.get('feed', []))} news articles for {tickers}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching news sentiment for {tickers}: {e}")
+            return {}
+
+    async def get_earnings(self, symbol: str) -> dict[str, Any]:
+        """
+        Get earnings history (quarterly and annual).
+
+        Returns earnings data with estimates, actuals, and surprises.
+        """
+        params = {
+            "function": "EARNINGS",
+            "symbol": symbol,
+            "apikey": self.api_key,
+        }
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for {symbol}: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched earnings data for {symbol}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching earnings for {symbol}: {e}")
+            return {}
+
+    async def get_income_statement(self, symbol: str) -> dict[str, Any]:
+        """
+        Get income statement (quarterly and annual).
+
+        Returns revenue, expenses, and profitability metrics.
+        """
+        params = {
+            "function": "INCOME_STATEMENT",
+            "symbol": symbol,
+            "apikey": self.api_key,
+        }
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for {symbol}: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched income statement for {symbol}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching income statement for {symbol}: {e}")
+            return {}
+
+    async def get_balance_sheet(self, symbol: str) -> dict[str, Any]:
+        """
+        Get balance sheet (quarterly and annual).
+
+        Returns assets, liabilities, and equity data.
+        """
+        params = {
+            "function": "BALANCE_SHEET",
+            "symbol": symbol,
+            "apikey": self.api_key,
+        }
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for {symbol}: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched balance sheet for {symbol}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching balance sheet for {symbol}: {e}")
+            return {}
+
+    async def get_cash_flow(self, symbol: str) -> dict[str, Any]:
+        """
+        Get cash flow statement (quarterly and annual).
+
+        Returns operating, investing, and financing cash flows.
+        """
+        params = {
+            "function": "CASH_FLOW",
+            "symbol": symbol,
+            "apikey": self.api_key,
+        }
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for {symbol}: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched cash flow statement for {symbol}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching cash flow for {symbol}: {e}")
+            return {}
+
+    async def get_technical_indicator(
+        self,
+        symbol: str,
+        indicator: str,
+        interval: str = "daily",
+        time_period: int = 14,
+        series_type: str = "close"
+    ) -> dict[str, Any]:
+        """
+        Get technical indicator data.
+
+        Args:
+            symbol: Stock symbol
+            indicator: Indicator name (RSI, MACD, BBANDS, SMA, etc.)
+            interval: Time interval (daily, weekly, monthly)
+            time_period: Number of periods (e.g., 14 for RSI)
+            series_type: Price type (close, open, high, low)
+
+        Returns:
+            Technical indicator time series
+        """
+        params = {
+            "function": indicator.upper(),
+            "symbol": symbol,
+            "interval": interval,
+            "time_period": str(time_period),
+            "series_type": series_type,
+            "apikey": self.api_key,
+        }
+
+        try:
+            response = await self._client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if "Error Message" in data:
+                logger.error(f"AlphaVantage error for {symbol} {indicator}: {data['Error Message']}")
+                return {}
+
+            if "Note" in data:
+                logger.warning(f"AlphaVantage rate limit: {data['Note']}")
+                return {}
+
+            logger.info(f"Fetched {indicator} for {symbol}")
+            return data
+
+        except Exception as e:
+            logger.error(f"Error fetching {indicator} for {symbol}: {e}")
+            return {}
+
     async def close(self):
         await self._client.aclose()
 

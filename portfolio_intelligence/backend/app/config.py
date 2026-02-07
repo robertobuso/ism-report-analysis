@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     # Scheduler
     enable_nightly_updates: bool = True  # Set to False to disable automatic price updates
 
+    # OpenAI / LLM
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.2-chat-latest"
+    openai_timeout: int = 10  # seconds
+
+    # Company Intelligence Cache TTLs (seconds)
+    cache_ttl_quote: int = 300  # 5 min
+    cache_ttl_news: int = 900  # 15 min
+    cache_ttl_technicals: int = 3600  # 1 hour
+    cache_ttl_overview: int = 86400  # 24 hours
+    cache_ttl_financials: int = 86400  # 24 hours
+    cache_ttl_earnings: int = 86400  # 24 hours
+    cache_ttl_insights: int = 1800  # 30 min
+    cache_ttl_narrative: int = 86400  # 24 hours
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
