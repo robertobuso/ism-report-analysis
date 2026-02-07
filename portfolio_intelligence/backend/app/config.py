@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from functools import lru_cache
 
 
@@ -19,7 +20,7 @@ class Settings(BaseSettings):
     tradestation_audience: str = "https://api.tradestation.com"
 
     # Security
-    secret_key: str = "change-me-in-production"
+    secret_key: str = Field(default="change-me-in-production", validation_alias="SECRET_KEY")
     encryption_key: str = ""  # Fernet key for refresh token encryption
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 60
@@ -40,7 +41,12 @@ class Settings(BaseSettings):
     # Scheduler
     enable_nightly_updates: bool = True  # Set to False to disable automatic price updates
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore"
+    }
 
 
 @lru_cache
