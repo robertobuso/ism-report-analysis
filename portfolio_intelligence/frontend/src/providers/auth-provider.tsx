@@ -32,19 +32,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async () => {
+      console.log("🟢 AUTH PROVIDER: checkAuth starting");
       const token = localStorage.getItem("token");
+      console.log("🟢 AUTH PROVIDER: Token from localStorage:", token ? "EXISTS" : "NULL");
+
       if (!token) {
+        console.log("🟢 AUTH PROVIDER: No token, setting isLoading=false");
         setIsLoading(false);
         return;
       }
 
+      console.log("🟢 AUTH PROVIDER: Calling /api/v1/auth/me...");
       try {
         const data = await api.getMe();
+        console.log("🟢 AUTH PROVIDER: ✅ Auth successful, user:", data.email);
         setUser(data);
       } catch (error) {
-        console.error("Auth check failed:", error);
+        console.error("🟢 AUTH PROVIDER: ❌ Auth check failed:", error);
         localStorage.removeItem("token");
       } finally {
+        console.log("🟢 AUTH PROVIDER: Setting isLoading=false");
         setIsLoading(false);
       }
     };

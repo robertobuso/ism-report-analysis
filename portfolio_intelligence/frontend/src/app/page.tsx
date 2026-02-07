@@ -13,15 +13,27 @@ export default function HomePage() {
 
   // Check for JWT token in URL and store it BEFORE any auth checks
   useEffect(() => {
+    console.log("🔵 PAGE.TSX: useEffect running");
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get("token");
+    console.log("🔵 PAGE.TSX: Token from URL:", token ? `${token.substring(0, 30)}...` : "NULL");
+
     if (token) {
+      console.log("🔵 PAGE.TSX: Storing token in localStorage");
       localStorage.setItem("token", token);
+      const stored = localStorage.getItem("token");
+      console.log("🔵 PAGE.TSX: Verify stored:", stored ? "YES" : "NO");
+
       // Remove token from URL for security
       window.history.replaceState({}, "", "/");
+      console.log("🔵 PAGE.TSX: Reloading page...");
       // Force reload to trigger auth check with new token
       window.location.reload();
       return; // Stop execution here
+    } else {
+      console.log("🔵 PAGE.TSX: No token in URL, checking localStorage");
+      const storedToken = localStorage.getItem("token");
+      console.log("🔵 PAGE.TSX: Token in localStorage:", storedToken ? "YES" : "NO");
     }
   }, []);
 
@@ -49,8 +61,11 @@ export default function HomePage() {
     );
   }
 
+  console.log("🔴 PAGE.TSX: Render check - isAuthenticated:", isAuthenticated, "hasUrlToken:", hasUrlToken, "authLoading:", authLoading);
+
   if (!isAuthenticated && !hasUrlToken && !authLoading) {
     // Only redirect if not authenticated AND no URL token AND auth check is complete
+    console.log("🔴 PAGE.TSX: ❌ Redirecting to landing");
     const suiteUrl = process.env.NEXT_PUBLIC_SUITE_URL || "http://localhost:5000";
     if (typeof window !== "undefined") {
       window.location.href = `${suiteUrl}/landing`;
