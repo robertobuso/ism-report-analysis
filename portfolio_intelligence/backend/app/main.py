@@ -21,6 +21,14 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("Portfolio Intelligence API starting up...")
 
+    # CRITICAL: Verify SECRET_KEY is properly configured
+    if settings.secret_key == "change-me-in-production":
+        logger.error("🚨 FATAL: SECRET_KEY is not set! Using default value. JWT validation will fail!")
+        logger.error("🚨 Set SECRET_KEY environment variable in Railway and redeploy.")
+        raise RuntimeError("SECRET_KEY environment variable is not set!")
+
+    logger.info(f"✅ SECRET_KEY is configured (first 10 chars: {settings.secret_key[:10]}...)")
+
     # Determine market data provider
     provider = settings.market_data_provider.upper()
     auth_mode = "Mock OAuth" if settings.use_mock_tradestation else "TradeStation OAuth"

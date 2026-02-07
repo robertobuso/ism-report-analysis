@@ -65,8 +65,17 @@ logging.getLogger().addHandler(console_handler)
 # Create Flask application
 app = Flask(__name__)
 app.config['PREFERRED_URL_SCHEME'] = 'https'
-app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
-logger.info("Secret key set.")
+
+# CRITICAL: SECRET_KEY must be set for JWT to work with Portfolio Intelligence
+secret_key_from_env = os.environ.get('SECRET_KEY')
+if not secret_key_from_env:
+    logger.error("🚨 FATAL: SECRET_KEY environment variable is not set!")
+    logger.error("🚨 JWT tokens will not work with Portfolio Intelligence backend.")
+    logger.error("🚨 Set SECRET_KEY in Railway environment variables and redeploy.")
+    raise RuntimeError("SECRET_KEY environment variable is required!")
+
+app.secret_key = secret_key_from_env
+logger.info(f"✅ SECRET_KEY configured (first 10 chars: {app.secret_key[:10]}...)")
 
 # --- ADD THIS WRAPPER ---
 # Tell Flask it is behind one proxy (Railway's load balancer)
